@@ -64,6 +64,16 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .d-slide{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font:700 13px var(--num)}.d-slide input{width:100%;min-width:0;accent-color:var(--brass)}
 .d-line{display:flex;gap:4px;align-items:center;justify-content:space-between;font-size:13px}.d-barter button{flex:1;padding:4px 2px;font-size:12.5px}
 .k-game .d-apply{background:var(--brass);color:#16110a;font-weight:600;border:0;padding:6px}.k-game .d-apply:disabled{background:var(--panel2);color:var(--dim);cursor:default}
+.k-set{z-index:14;background:rgba(8,12,22,.8);justify-content:center}
+.s-panel{box-sizing:border-box;width:min(100%,680px);align-self:flex-start;background:var(--panel);padding-block:14px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:10px;min-height:100%}
+.s-head{display:flex;justify-content:space-between;align-items:center;position:sticky;top:-14px;background:var(--panel);padding-block:4px;z-index:1}.s-head h2{margin:0;font:400 28px var(--display);color:var(--brass)}
+.s-note{margin:0;font-size:13px;line-height:1.5;color:var(--dim)}
+.s-presets{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.s-presets span{font-size:13px;color:var(--dim)}
+.s-panel section{display:grid;gap:6px;border-top:1px solid var(--line);padding-top:8px}.s-panel h3{margin:0;font-size:12px;letter-spacing:.14em;color:var(--brass);font-weight:600}
+.s-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(120px,190px) 76px;gap:10px;align-items:center}.s-row label{display:grid;min-width:0;gap:1px}.s-row b{font-weight:600}.s-row small{font-size:12.5px;color:var(--dim)}.s-row.off{opacity:.55}
+.s-row input[type=range]{width:100%;min-width:0;accent-color:var(--brass)}.s-row input[type=checkbox]{justify-self:start;width:20px;height:20px;accent-color:var(--brass)}.s-row output{text-align:right;font:700 14px var(--num);font-variant-numeric:tabular-nums}
+.s-foot{padding-block:6px}
+@media (max-width:520px){.s-row{grid-template-columns:minmax(0,1fr) 76px}.s-row label{grid-column:1/-1}}
 .k-msg.warn{border-color:var(--bad);color:#ffd5cf}.k-msg.ok{border-color:var(--ok)}
 .k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:4px 12px;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 .k-paused{position:absolute;inset:0;display:grid;place-items:center;font:400 44px var(--display);letter-spacing:.06em;background:rgba(8,12,22,.45);pointer-events:none}
@@ -167,10 +177,13 @@ RTS.rand = G => { // mulberry32. 상태가 G.rng에 있어 저장/리플레이�
 RTS.on = (G, type, fn) => { (G._ls[type] = G._ls[type] || []).push(fn); };
 RTS.emit = (G, type, data) => { (G._ls[type] || []).forEach(f => f(data, G)); };
 
+// 설정값. 옛 저장 파일에 없는 항목은 기본값으로 채운다.
+RTS.cfg = G => G.cfg || (G.cfg = RTS.defaultSettings());
 RTS.createGame = function (opts) {
   // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
-    over: null, mapId: opts.map, seed: opts.seed || 1, nofog: !!opts.nofog, _ls: {} };
+    over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
+  G.nofog = !!opts.nofog || !G.cfg.fog;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
   G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
@@ -178,7 +191,7 @@ RTS.createGame = function (opts) {
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;
     const t = { id: i, faction: p.faction, ai: p.ai || null, name: p.name || RTS.defs.factions[p.faction].name,
-      res: { ore: 100, gas: 0 }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
+      res: { ore: G.cfg.startOre, gas: G.cfg.startGas }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
       stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
     if (p.ai) t.inc = RTS.defs.difficulties[p.ai].income;
     G.teams.push(t);
@@ -219,7 +232,7 @@ RTS.step = function (G) {
 // 저장은 '_' 로 시작하지 않는 모든 필드를 JSON으로 직렬화한다.
 RTS.serialize = G => JSON.stringify(G, (k, v) => (k[0] === '_' ? undefined : v));
 RTS.deserialize = function (json) {
-  const G = JSON.parse(json); G._ls = {}; RTS.initRuntime(G);
+  const G = JSON.parse(json); G._ls = {}; G.cfg = Object.assign(RTS.defaultSettings(), G.cfg); RTS.initRuntime(G);
   G.byId = {}; for (const e of G.ents) { G.byId[e.id] = e; const d = RTS.defs.entities[e.def]; if (d.size) RTS.occupy(G, e, e.id); }
   return G;
 };
@@ -556,6 +569,7 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
+  if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 
 RTS.scan = function (G, u, w, r) {
@@ -776,7 +790,7 @@ RTS.census = function (G) {
       for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += D()[p.id].supply || 0;
       if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += d.provides || 0; } }
   }
-  for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), 100);
+  for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), RTS.cfg(G).supplyCap);
 };
 RTS.systems.push(
   { id: 'commands', run(G) { const q = G.cmds; G.cmds = []; for (const c of q) (RTS.commands[c.type] || (() => {}))(G, c.team, c); } },
@@ -823,9 +837,9 @@ RTS.systems.push(
 
 // market.js — 공유 주식시장. 회사 4곳, 총 100주씩, 나와 AI가 같은 물량을 두고 경쟁한다.
 // 주가: 평균회귀 + 무작위 변동 + 매매 충격. 배당: 30초마다 실적에 비례. 51주 이상이면 경영권.
-RTS.MARKET = { shares: 100, control: 51, divSec: 30, impact: .008, fee: .03, ctrlBonus: 1.5, minority: .5, downSec: 40 };
+RTS.MARKET = { shares: 100 }; // 나머지 수치는 설정 메뉴(RTS.cfg)에서 온다
 RTS.initMarket = function (G) {
-  const m = G.market = { cos: {}, news: [], nextEvent: 45 * RTS.HZ, nextDiv: RTS.MARKET.divSec * RTS.HZ };
+  const m = G.market = { cos: {}, news: [], nextEvent: 45 * RTS.HZ, nextDiv: G.cfg.divSec * RTS.HZ };
   Object.values(RTS.defs.companies).forEach((c, i) => {
     const s = G.siteSpots[i], d = RTS.defs.entities[c.site]; let site = 0;
     if (s) { let tx = Math.round(s.x - 1.5), ty = Math.round(s.y - 1.5), ok = false;
@@ -835,11 +849,11 @@ RTS.initMarket = function (G) {
   });
 };
 RTS.fair = (c) => RTS.defs.companies[c.id].price * c.earn;
-RTS.dividend = (c) => RTS.defs.companies[c.id].price * RTS.defs.companies[c.id].yield * c.earn;
+RTS.dividend = (G, c) => RTS.defs.companies[c.id].price * RTS.defs.companies[c.id].yield * c.earn * RTS.cfg(G).divRate / 100;
 function tell(G, text, kind) { for (const t of G.teams) RTS.emit(G, 'notice', { team: t.id, text, kind }); }
 function news(G, text) { const m = G.market; m.news.unshift({ t: G.tick, text }); m.news.length = Math.min(m.news.length, 6); tell(G, text, 'market'); }
 function syncControl(G, c) {
-  let owner = -1; c.shares.forEach((n, i) => { if (n >= RTS.MARKET.control) owner = i; });
+  let owner = -1; c.shares.forEach((n, i) => { if (n >= RTS.cfg(G).control) owner = i; });
   if (owner === c.owner) return;
   c.owner = owner; const e = G.byId[c.site], d = RTS.defs.companies[c.id];
   if (e) { e.team = owner; e.hitAt = 0; }
@@ -847,55 +861,66 @@ function syncControl(G, c) {
   RTS.emit(G, 'takeover', { company: c.id, owner });
 }
 // 체결가를 미리 계산한다. UI 표시와 실제 체결이 같은 식을 쓴다.
-RTS.quote = function (c, qty) {
-  const M = RTS.MARKET; let p = c.price, sum = 0, n = Math.abs(qty);
-  for (let i = 0; i < n; i++) { sum += p; p *= qty > 0 ? 1 + M.impact : 1 - M.impact; }
-  return { total: qty > 0 ? sum : sum * (1 - M.fee), end: p };
+RTS.quote = function (G, c, qty) {
+  const C = RTS.cfg(G), imp = C.impact / 100; let p = c.price, sum = 0, n = Math.abs(qty);
+  for (let i = 0; i < n; i++) { sum += p; p *= qty > 0 ? 1 + imp : 1 - imp; }
+  return { total: qty > 0 ? sum : sum * (1 - C.fee / 100), end: p };
 };
 RTS.commands.trade = function (G, team, cmd) {
   const c = G.market.cos[cmd.company], t = G.teams[team]; if (!c) return;
   let qty = cmd.qty | 0;
   if (qty > 0) { qty = Math.min(qty, c.free);
-    while (qty > 0 && RTS.quote(c, qty).total > t.res.ore) qty--;
+    while (qty > 0 && RTS.quote(G, c, qty).total > t.res.ore) qty--;
     if (qty <= 0) { RTS.emit(G, 'notice', { team, text: c.free ? '광석이 부족합니다' : '시장에 남은 주식이 없습니다', kind: 'warn' }); return; }
-    const q = RTS.quote(c, qty); t.res.ore -= q.total; c.price = q.end; c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) - q.total;
+    const q = RTS.quote(G, c, qty); t.res.ore -= q.total; c.price = q.end; c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) - q.total;
   } else if (qty < 0) { qty = -Math.min(-qty, c.shares[team]); if (!qty) return;
-    const q = RTS.quote(c, qty); t.res.ore += q.total; c.price = Math.max(1, q.end); c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) + q.total;
+    const q = RTS.quote(G, c, qty); t.res.ore += q.total; c.price = Math.max(1, q.end); c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) + q.total;
   } else return;
   syncControl(G, c); RTS.emit(G, 'traded', { team, company: c.id, qty });
 };
 RTS.siteHit = function (G, e, dmg, src) {
   const c = G.market.cos[e.company], d = RTS.defs.entities[e.def];
-  c.price = Math.max(1, c.price * (1 - Math.min(.02, dmg / d.hp * .5)));
+  c.price = Math.max(1, c.price * (1 - Math.min(.02, dmg / d.hp * .5) * RTS.cfg(G).siteImpact / 100));
   if (e.team >= 0) RTS.emit(G, 'attacked', { e, src });
   if (e.hp > 0) return;
-  e.hp = 1; e.downUntil = G.tick + RTS.MARKET.downSec * RTS.HZ; c.earn *= .75;
+  e.hp = 1; e.downUntil = G.tick + RTS.cfg(G).siteDown * RTS.HZ; c.earn *= .75;
   news(G, RTS.defs.companies[c.id].name + ' 거점 피습, 가동 중단'); RTS.emit(G, 'siteDown', { e });
+};
+// 본진 함락: 패전 진영의 사령부가 모두 사라지면 시장 전체에 충격이 온다. 수치는 설정의 '전쟁과 시장'.
+RTS.warFall = function (G, team) {
+  const C = RTS.cfg(G), t = G.teams[team], cos = Object.values(G.market.cos); let cash = 0, sold = 0;
+  for (const c of cos) { c.price = Math.max(1, c.price * (1 - C.warCrash / 100)); const n = Math.floor(c.shares[team] * C.warSell / 100);
+    if (n) { cash += n * c.price * (1 - C.warHaircut / 100); sold += n; c.shares[team] -= n; c.free += n; syncControl(G, c); }
+    if (RTS.defs.companies[c.id].resource === 'ore') c.earn = Math.min(2.5, c.earn * (1 + C.warRebuild / 100)); }
+  t.res.ore += cash;
+  if (C.warAlly && G.dip) for (const b of Object.values(G.dip.list)) if (b.ally === team) RTS.branchDown(G, G.byId[b.site]);
+  news(G, `${t.name} 본진 함락: 증시 -${C.warCrash}%` + (sold ? `, 지분 ${sold}주 강제 매각` : ''));
+  RTS.emit(G, 'warFall', { team, sold, cash });
 };
 RTS.systems.splice(RTS.systems.findIndex(s => s.id === 'cleanup'), 0, { id: 'market', run(G) {
   if (!G.market) RTS.initMarket(G);
-  const m = G.market, M = RTS.MARKET;
+  const m = G.market, C = RTS.cfg(G);
   if (G.tick % RTS.HZ) return;
   for (const c of Object.values(m.cos)) {
     const d = RTS.defs.companies[c.id], e = G.byId[c.site];
     const g = (RTS.rand(G) + RTS.rand(G) + RTS.rand(G) - 1.5) * 1.15; // 근사 정규분포
     const fair = RTS.fair(c) * (e && e.downUntil > G.tick ? .6 : 1);
-    c.price = Math.max(1, c.price + (fair - c.price) * .02 + c.price * d.vol * g);
+    c.price = Math.max(1, c.price + (fair - c.price) * .02 + c.price * d.vol * g * C.volatility / 100);
     c.earn += (1 - c.earn) * .004;
     if (G.tick % (RTS.HZ * 5) === 0) { c.hist.push(+c.price.toFixed(2)); if (c.hist.length > 72) c.hist.shift(); }
     if (e) { const was = e.downUntil; const hp = RTS.defs.entities[e.def].hp;
-      if (e.downUntil > G.tick) e.hp = Math.min(hp, e.hp + hp / M.downSec);
+      if (e.downUntil > G.tick) e.hp = Math.min(hp, e.hp + hp / C.siteDown);
       else { if (was) { e.downUntil = 0; news(G, d.name + ' 거점 가동 재개'); } if (e.hp < hp && G.tick - (e.hitAt || 0) > 100) e.hp = Math.min(hp, e.hp + hp * .01); } }
   }
-  if (G.tick >= m.nextDiv) { m.nextDiv += M.divSec * RTS.HZ;
+  if (G.tick >= m.nextDiv) { m.nextDiv += C.divSec * RTS.HZ;
     for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id], e = G.byId[c.site]; if (e && e.downUntil > G.tick) continue;
-      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? M.ctrlBonus : M.minority, t = G.teams[i], pay = n * RTS.dividend(c) * k * (1 + RTS.allyPerk(G, i, 'divBonus'));
+      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? C.ctrlBonus / 100 : C.minority / 100, t = G.teams[i], pay = n * RTS.dividend(G, c) * k * (1 + RTS.allyPerk(G, i, 'divBonus'));
         t.res[d.resource] = (t.res[d.resource] || 0) + pay; t.stats.div = (t.stats.div || 0) + pay; }); }
     RTS.emit(G, 'dividend', {}); }
-  if (G.tick >= m.nextEvent) { m.nextEvent = G.tick + Math.round((40 + RTS.rand(G) * 40) * RTS.HZ);
+  if (C.newsEvery > 0 && G.tick >= m.nextEvent) { m.nextEvent = G.tick + Math.round(C.newsEvery * (.67 + RTS.rand(G) * .66) * RTS.HZ); const pow = C.newsImpact / 100;
     const list = Object.values(RTS.defs.marketEvents); let r = RTS.rand(G) * list.reduce((s, e) => s + e.w, 0), ev = list[0];
     for (const x of list) { r -= x.w; if (r <= 0) { ev = x; break; } }
-    for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id]; if (ev.scope === 'all' || ev.scope === d.resource || ev.scope === c.id) { c.earn = Math.max(.3, Math.min(2.5, c.earn * ev.earn)); c.price = Math.max(1, c.price * ev.price); } }
+    for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id]; if (ev.scope === 'all' || ev.scope === d.resource || ev.scope === c.id) { c.earn = Math.max(.3, Math.min(2.5, c.earn * (1 + (ev.earn - 1) * pow))); c.price = Math.max(1, c.price * Math.max(.1, 1 + (ev.price - 1) * pow)); } }
     news(G, ev.text); }
 } });
 // AI 투자: 저평가 종목을 사고, 과열되면 팔고, 과반이 가까우면 인수까지 밀어붙인다.
@@ -905,7 +930,7 @@ RTS.aiInvest = function (G, t, diff, ready) {
   const S = t.aiState; if (!ready || t.res.ore < diff.invest || G.tick < (S.nextInvest || 120 * RTS.HZ)) return;
   S.nextInvest = G.tick + diff.investEvery * RTS.HZ;
   const foe = c => c.shares.some((n, i) => i !== t.id && n > 25);
-  const score = c => RTS.dividend(c) / c.price * (RTS.defs.companies[c.id].resource === 'gas' ? 1.5 : 1) + (foe(c) ? .05 : 0); // 에테르 배당은 광석보다 비싸게 친다
+  const score = c => RTS.dividend(G, c) / c.price * (RTS.defs.companies[c.id].resource === 'gas' ? 1.5 : 1) + (foe(c) ? .05 : 0); // 에테르 배당은 광석보다 비싸게 친다
   const chase = cos.find(c => c.owner < 0 && c.shares[t.id] >= 30 && c.free > 0);
   const pick = chase || cos.filter(c => c.free > 0 && c.owner < 0 && c.price < RTS.fair(c) * 1.1).sort((a, b) => score(b) - score(a))[0];
   if (pick) cmd({ type: 'trade', company: pick.id, qty: 5 });
@@ -927,7 +952,7 @@ RTS.branchKnown = (G, team, e) => team < 0 || G.nofog || !e.branch || (G.dip.lis
 RTS.tradeSpread = function (G, team) { const D = RTS.DIP, L = Object.values(G.dip.list).filter(b => b.ally === team); if (!L.length) return D.spread; return Math.min(...L.map(b => RTS.defs.branches[b.id].perk.spread ?? D.allySpread)); };
 RTS.allyPerk = function (G, team, key) { let v = 0; for (const b of Object.values((G.dip || { list: {} }).list)) if (b.ally === team) v += RTS.defs.branches[b.id].perk[key] || 0; return v; };
 RTS.allyChance = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], k = Math.max(0, Math.min(1, (stake - D.min) / (D.full - D.min)));
-  return Math.min(D.cap, d.base + k * .5 + (b.finder === team ? D.firstBonus : 0) + b.trust[team]); };
+  return Math.min(D.cap, d.base + k * .5 + (b.finder === team ? RTS.cfg(G).firstBonus / 100 : 0) + b.trust[team]); };
 RTS.allyBlock = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], t = G.teams[team];
   if (!b.found[team]) return '아직 찾지 못한 지부입니다';
   if (b.ally === team) return '이미 동맹입니다';
@@ -942,8 +967,8 @@ const dipTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kin
 RTS.commands.ally = function (G, team, c) {
   const block = RTS.allyBlock(G, team, c.branch, c.stake); if (block) { dipTell(G, team, block, 'warn'); return; }
   const D = RTS.DIP, b = G.dip.list[c.branch], d = RTS.defs.branches[c.branch], t = G.teams[team], ok = RTS.rand(G) < RTS.allyChance(G, team, c.branch, c.stake);
-  t.res.ore -= c.stake; b.wait[team] = G.tick + D.cooldown * RTS.HZ;
-  if (!ok) { b.trust[team] = Math.min(.25, b.trust[team] + D.failTrust); t.stats.burned = (t.stats.burned || 0) + c.stake; dipTell(G, team, `${d.name}가 거절했습니다. 동맹금 ${c.stake} 손실`, 'warn'); RTS.emit(G, 'allyResult', { team, id: b.id, ok }); return; }
+  const loss = ok ? c.stake : Math.round(c.stake * RTS.cfg(G).rejectLoss / 100); t.res.ore -= loss; b.wait[team] = G.tick + D.cooldown * RTS.HZ;
+  if (!ok) { b.trust[team] = Math.min(.25, b.trust[team] + D.failTrust); t.stats.burned = (t.stats.burned || 0) + loss; dipTell(G, team, `${d.name}가 거절했습니다. 동맹금 ${loss} 손실`, 'warn'); RTS.emit(G, 'allyResult', { team, id: b.id, ok }); return; }
   b.ally = team; b.stake = c.stake; b.nextCaravan = G.tick + 20 * RTS.HZ; const e = G.byId[b.site]; e.team = team;
   for (const o of G.teams) dipTell(G, o.id, o.id === team ? `${d.name}와 동맹 성립` : `${t.name}, ${d.name}와 동맹`, o.id === team ? 'ok' : 'market');
   for (let i = 0; i < (d.perk.mercs || 0); i++) { const p = RTS.nearestFree(G, e.x, e.y + 3); RTS.spawn(G, 'n_merc', team, p.x + (i % 3) * .3, p.y + i * .15); }
@@ -968,10 +993,10 @@ RTS.addSystem({ id: 'diplomacy', run(G) {
   m.rate = Math.max(1.2, Math.min(3.2, 2 * avg('gas') / avg('ore')));
   for (const b of Object.values(m.list)) { const e = G.byId[b.site], d = RTS.defs.branches[b.id]; if (!e) continue;
     G.teams.forEach(t => { if (b.found[t.id]) return; let near = false; RTS.query(G, e.x, e.y, 9, o => { if (o.team === t.id && !o.dead && Math.hypot(o.x - e.x, o.y - e.y) < 9) near = true; }); if (!near) return;
-      b.found[t.id] = true; if (b.finder < 0) { b.finder = t.id; t.res.ore += RTS.DIP.firstOre; dipTell(G, t.id, `${d.name} 최초 발견: 광석 +${RTS.DIP.firstOre}, 수락 확률 +15%`, 'ok'); } else dipTell(G, t.id, d.name + ' 발견', 'ok'); RTS.emit(G, 'found', { team: t.id, id: b.id }); });
+      b.found[t.id] = true; if (b.finder < 0) { b.finder = t.id; t.res.ore += RTS.DIP.firstOre; dipTell(G, t.id, `${d.name} 최초 발견: 광석 +${RTS.DIP.firstOre}, 수락 확률 +${RTS.cfg(G).firstBonus}%`, 'ok'); } else dipTell(G, t.id, d.name + ' 발견', 'ok'); RTS.emit(G, 'found', { team: t.id, id: b.id }); });
     if (b.ally < 0) continue; const t = G.teams[b.ally];
     if (d.perk.caravan && G.tick >= b.nextCaravan) { b.nextCaravan = G.tick + d.perk.caravan.every * RTS.HZ; const p = RTS.nearestFree(G, e.x, e.y + 2.5), u = RTS.spawn(G, 'n_caravan', b.ally, p.x, p.y); u.order = { type: 'caravan', res: d.perk.caravan.res, amount: d.perk.caravan.amount }; }
-    if (G.tick % (30 * RTS.HZ) === 0) { const pay = b.stake * RTS.DIP.stakeYield; t.res.ore += pay; t.stats.div = (t.stats.div || 0) + pay; } }
+    if (G.tick % (30 * RTS.HZ) === 0) { const pay = b.stake * RTS.cfg(G).stakeYield / 100; t.res.ore += pay; t.stats.div = (t.stats.div || 0) + pay; } }
 } }, { before: 'cleanup' });
 // AI: 난이도별 시점에 정찰을 보내고, 조건이 맞으면 동맹금을 건다.
 RTS.aiDiplomacy = function (G, t, diff, units) {
@@ -1026,7 +1051,7 @@ RTS.aiThink = function (G, t) {
   for (const s of sites) { const has = units.some(u => u.order && u.order.type === 'build' && u.order.site === s.id); if (!has && !s.active) { const w = builder(); if (w) RTS.issue(G, w, { type: 'build', site: s.id }); } }
 
   // 보급
-  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < 100 && !sites.some(s => s.def === f.supply)) place(f.supply);
+  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < RTS.cfg(G).supplyCap && !sites.some(s => s.def === f.supply)) place(f.supply);
   else {
     // 빌드 오더: 앞에서부터 처음 미충족 항목 하나만 실행
     for (const step of P.build) {
@@ -1236,6 +1261,58 @@ RTS.mod({
       lanes: [[11, 24, 40, 24, 2.5], [34, 10, 62, 10, 2.5], [34, 38, 62, 38, 2.5]] },
   },
 });
+
+// settings.js — 설정 항목 정의. 항목을 추가하면 설정 메뉴에 자동으로 나타난다.
+// 코드에서는 RTS.cfg(G).키 로 읽는다. startOnly는 새 게임부터, client는 이 브라우저 전용(시뮬레이션과 무관).
+RTS.SETTINGS = [
+  { group: '게임', items: [
+    { id: 'startOre', label: '시작 광석', min: 0, max: 1000, step: 50, def: 100, startOnly: true },
+    { id: 'startGas', label: '시작 에테르', min: 0, max: 500, step: 25, def: 0, startOnly: true },
+    { id: 'supplyCap', label: '최대 보급', min: 40, max: 200, step: 10, def: 100 },
+    { id: 'fog', label: '전장의 안개', type: 'toggle', def: true, startOnly: true },
+  ] },
+  { group: '시장 뉴스', items: [
+    { id: 'newsEvery', label: '뉴스 평균 간격', desc: '실제 간격은 이 값의 ±33%에서 무작위로 정해집니다', min: 0, max: 180, step: 10, def: 60, unit: '초', zero: '뉴스 없음' },
+    { id: 'newsImpact', label: '뉴스 영향 강도', desc: '뉴스가 주가와 실적을 바꾸는 폭', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+  ] },
+  { group: '주식시장', items: [
+    { id: 'volatility', label: '주가 변동성', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'divSec', label: '배당 주기', min: 10, max: 120, step: 5, def: 30, unit: '초' },
+    { id: 'divRate', label: '배당 규모', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'impact', label: '주당 매매 충격', desc: '한 주를 사고팔 때 주가가 움직이는 폭', min: 0, max: 3, step: .1, def: .8, unit: '%' },
+    { id: 'fee', label: '매도 수수료', min: 0, max: 20, step: 1, def: 3, unit: '%' },
+  ] },
+  { group: '경영권', items: [
+    { id: 'control', label: '인수에 필요한 주식', desc: '회사당 총 100주', min: 51, max: 90, step: 1, def: 51, unit: '주' },
+    { id: 'ctrlBonus', label: '지배 주주 배당', min: 100, max: 300, step: 10, def: 150, unit: '%' },
+    { id: 'minority', label: '소수 주주 배당', min: 0, max: 100, step: 10, def: 50, unit: '%' },
+  ] },
+  { group: '전쟁과 시장', note: '한 진영의 사령부가 모두 파괴되면 발동합니다. 남은 건물까지 전멸하면 게임이 끝나므로, 이 효과는 패전 직전 단계와 재건 경쟁에 작용합니다.', items: [
+    { id: 'warCrash', label: '본진 함락 시 증시 하락', desc: '전 종목에 즉시 적용', min: 0, max: 60, step: 5, def: 15, unit: '%' },
+    { id: 'warSell', label: '패전 진영 지분 강제 매각', desc: '보유 주식 중 시장에 풀리는 비율', min: 0, max: 100, step: 10, def: 50, unit: '%' },
+    { id: 'warHaircut', label: '강제 매각 할인', desc: '시세에서 깎이고 남은 금액만 받습니다', min: 0, max: 100, step: 10, def: 40, unit: '%' },
+    { id: 'warRebuild', label: '재건 특수', desc: '광석 회사 실적 상승', min: 0, max: 100, step: 5, def: 15, unit: '%' },
+    { id: 'warAlly', label: '패전 진영 동맹 해제', desc: '자유상단 동맹과 출자금이 사라집니다', type: 'toggle', def: true },
+    { id: 'siteImpact', label: '거점 피격 주가 영향', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'siteDown', label: '거점 가동 중단 시간', min: 10, max: 120, step: 5, def: 40, unit: '초' },
+  ] },
+  { group: '자유상단', items: [
+    { id: 'firstBonus', label: '최초 발견 수락 확률 보너스', min: 0, max: 40, step: 5, def: 15, unit: '%' },
+    { id: 'rejectLoss', label: '거절 시 동맹금 손실', min: 0, max: 100, step: 10, def: 100, unit: '%' },
+    { id: 'stakeYield', label: '출자금 수익률', desc: '30초당', min: 0, max: 20, step: 1, def: 6, unit: '%' },
+  ] },
+  { group: '화면과 소리', items: [
+    { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
+    { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
+  ] },
+];
+RTS.PRESETS = {
+  기본: {},
+  안정: { newsEvery: 120, newsImpact: 50, volatility: 50, warCrash: 5, warSell: 20, warHaircut: 10 },
+  투기장: { newsEvery: 30, newsImpact: 200, volatility: 250, impact: 1.5, divRate: 150 },
+  총력전: { warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
+};
+RTS.defaultSettings = () => { const o = {}; for (const g of RTS.SETTINGS) for (const s of g.items) o[s.id] = s.def; return o; };
 
 // render.js — Canvas 2D 렌더러. 게임 상태를 읽기만 하고 바꾸지 않는다.
 // 새 유닛 그림은 RTS.art.units.이름, 건물은 RTS.art.buildings.이름 함수 하나만 추가한다.
@@ -1484,6 +1561,7 @@ const HTML = `
       <button id="k-speed" title="게임 속도">1배속</button>
       <button id="k-pause" title="일시정지 (F2)">정지</button>
       <button id="k-mute" title="소리">소리 끔</button>
+      <button id="k-setbtn" title="설정">설정</button>
       <button id="k-menu">메뉴</button>
     </div>
   </header>
@@ -1501,7 +1579,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
@@ -1509,13 +1587,14 @@ const HTML = `
         <dt>B</dt><dd>일꾼 건설 메뉴. 명령 카드의 글자가 단축키입니다</dd>
         <dt>Ctrl 또는 Alt + 숫자</dt><dd>부대 지정. 숫자로 호출, 두 번 누르면 이동. Shift + 숫자는 추가</dd>
         <dt>방향키·화면 가장자리·휠</dt><dd>카메라 이동과 확대. F2 일시정지, Esc 취소</dd>
-        <dt>M</dt><dd>거래소. 회사당 100주, 30초마다 배당. 51주면 인수해 거점을 차지합니다</dd>
+        <dt>M</dt><dd>거래소. 회사당 100주를 사고팔고, 기준 주식을 모으면 인수해 거점을 차지합니다</dd>
         <dt>N</dt><dd>자유상단. 맵에 숨은 지부를 찾아 조건을 채우고 동맹금을 걸어 신청합니다. 거절되면 동맹금을 잃습니다</dd>
         <dt>회사 거점 공격</dt><dd>우클릭으로 공격하면 주가가 내리고, 무너지면 40초간 가동이 멈추며 배당도 끊깁니다</dd>
         <dt>터치</dt><dd>한 손가락은 지도 이동, 탭은 선택 또는 명령. 범위 선택 버튼을 켜면 드래그로 묶습니다</dd>
       </dl></details>
     </div>
   </section>
+  <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
 </div>`;
 
@@ -1523,13 +1602,13 @@ RTS.mount = function (root, opts = {}) {
   root.innerHTML = HTML;
   const $ = id => root.querySelector('#' + id), view = $('k-view'), mini = $('k-mini'), TS = 32;
   const store = { get(k) { try { return localStorage.getItem('kjh-rts:' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('kjh-rts:' + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem('kjh-rts:' + k); } catch (e) {} } };
-  const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' } };
+  const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' }, settings: Object.assign(RTS.defaultSettings(), JSON.parse(store.get('settings') || '{}')) };
   const R = app.R = RTS.Renderer(view, app), cam = R.cam;
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
   let ac = null, muted = store.get('mute') === '1'; const last = {};
   const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); };
-  function tone(f, f2, dur, type, vol) { const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
+  function tone(f, f2, dur, type, vol) { vol *= app.settings.volume / 100; if (vol <= 0) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
   app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
     ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
 
@@ -1547,11 +1626,11 @@ RTS.mount = function (root, opts = {}) {
   function clampCam() { const G = app.G; if (!G) return; const vw = view.width / cam.z, vh = view.height / cam.z, W = G.w * TS, H = G.h * TS;
     cam.x = vw >= W ? (W - vw) / 2 : Math.max(0, Math.min(W - vw, cam.x)); cam.y = vh >= H ? (H - vh) / 2 : Math.max(0, Math.min(H - vh, cam.y)); }
   function demo() { app.demo = true; app.team = -1; const fs = Object.keys(RTS.defs.factions);
-    const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
+    const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, settings: app.settings, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
     for (let i = 0; i < 20 * 100; i++) RTS.step(G); // 메뉴 뒤 배경이 이미 진행 중인 기지가 되도록 미리 돌린다
     bind(G); cam.z = 1; root.querySelector('.k-game').classList.add('demo'); layout(); const base = G.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff) || { x: G.w / 2, y: G.h / 2 }; centerOn(base.x - (view.width > 900 ? 5 : 0), base.y); }
   app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions), foe = f.find(x => x !== app.cfg.faction); app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
-    const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
+    const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
     showGame(G); };
   function showGame(G) { bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
@@ -1573,7 +1652,7 @@ RTS.mount = function (root, opts = {}) {
 
   function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
     if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
-    if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 3%)`, ok: true, run: () => trade(id, qty) });
+    if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(G, c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(G, c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 ${RTS.cfg(G).fee}%)`, ok: true, run: () => trade(id, qty) });
       tr(5, 'Q', '+5', '5주 매수'); tr(20, 'W', '+20', '20주 매수'); tr(-5, 'E', '-5', '5주 매도'); tr(-100, 'R', '전량', '보유 주식 전량 매도'); return items; }
     if (!L) return items;
     const d = RTS.defOf(L), f = t.faction, ids = list.filter(e => e.def === L.def).map(e => e.id), allIds = list.filter(e => RTS.defOf(e).kind === 'unit').map(e => e.id);
@@ -1610,10 +1689,10 @@ RTS.mount = function (root, opts = {}) {
     for (const c of Object.values(G.market.cos)) { const r = app.exRows[c.id], mine = c.shares[app.team], theirs = c.shares[foe.id], h = c.hist, ref = h[Math.max(0, h.length - 13)], ch = (c.price / ref - 1) * 100, e = G.byId[c.site], down = e && e.downUntil > G.tick, min = Math.min(...h, c.price), max = Math.max(...h, c.price), span = Math.max(.01, max - min); value += mine * c.price;
       const pts = [...h, c.price].map((v, i, a) => `${(i / Math.max(1, a.length - 1) * 90).toFixed(1)},${(26 - (v - min) / span * 24).toFixed(1)}`).join(' '), line = r.querySelector('polyline'); line.setAttribute('points', pts); line.setAttribute('stroke', ch >= 0 ? '#ff6a5a' : '#5aa8ff');
       r.querySelector('.x-price b').textContent = c.price.toFixed(1); const sm = r.querySelector('.x-price small'); sm.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'; sm.className = ch >= 0 ? 'up' : 'dn';
-      r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
-      const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.MARKET.ctrlBonus : RTS.MARKET.minority, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
+      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
+      const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.cfg(G).ctrlBonus / 100 : RTS.cfg(G).minority / 100, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
       r.querySelector('.x-own').textContent = `내 ${mine}주 · 상대 ${theirs}주 · 시장 ${c.free}주` + (c.owner === app.team ? ' · 내 경영권' : c.owner >= 0 ? ' · 상대 경영권' : '');
-      r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
+      r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
       r.querySelectorAll('.x-btn button').forEach(b => { const q = +b.dataset.q; b.disabled = q > 0 ? !c.free || t.res.ore < c.price : !mine; }); }
     $('x-value').textContent = Math.round(value); $('x-div').textContent = Math.round(t.stats.div || 0); $('x-next').textContent = '다음 배당 ' + Math.max(0, Math.ceil((G.market.nextDiv - G.tick) / 20)) + '초';
     const sig = G.market.news.map(n => n.t).join(); if (sig !== app.newsSig) { app.newsSig = sig; $('x-news').innerHTML = G.market.news.map(n => `<p><time>${String(Math.floor(n.t / 1200)).padStart(2, '0')}:${String(Math.floor(n.t / 20) % 60).padStart(2, '0')}</time>${n.text}</p>`).join('') || '<p>아직 시장 소식이 없습니다.</p>'; } }
@@ -1621,7 +1700,7 @@ RTS.mount = function (root, opts = {}) {
   function toggleDip() { app.dipOpen = !app.dipOpen; if (app.dipOpen && app.exOpen) toggleExchange(); $('k-dip').hidden = !app.dipOpen; $('k-dipbtn').classList.toggle('on', app.dipOpen); if (app.dipOpen) { app.dipSig = ''; updateDip(); } }
   function updateDip() { const G = app.G, D = RTS.DIP, el = $('k-dip'), me = app.team, list = Object.values(G.dip.list);
     const sig = list.map(b => [b.found[me], b.ally].join()).join('|');
-    if (sig !== app.dipSig) { app.dipSig = sig; el.innerHTML = `<div class="x-head"><h2>자유상단</h2><span id="d-rate"></span><button id="d-close" aria-label="자유상단 닫기">닫기</button></div><p class="d-help">지부 위치는 게임마다 바뀝니다. 유닛을 보내 찾아야 거래와 동맹이 열리고, 먼저 찾으면 수락 확률이 15% 오릅니다.</p><div id="d-rows"></div>`;
+    if (sig !== app.dipSig) { app.dipSig = sig; el.innerHTML = `<div class="x-head"><h2>자유상단</h2><span id="d-rate"></span><button id="d-close" aria-label="자유상단 닫기">닫기</button></div><p class="d-help">지부 위치는 게임마다 바뀝니다. 유닛을 보내 찾아야 거래와 동맹이 열리고, 먼저 찾으면 수락 확률이 ${RTS.cfg(G).firstBonus}% 오릅니다.</p><div id="d-rows"></div>`;
       const rows = $('d-rows'); list.forEach(b => { const d = RTS.defs.branches[b.id], r = document.createElement('div'); r.className = 'd-row'; r.id = 'd-' + b.id; const mineA = b.ally === me;
         if (!b.found[me]) r.innerHTML = `<b>미발견 지부</b><small>맵 어딘가에 있습니다. 유닛을 보내 찾으세요.</small>`;
         else { r.innerHTML = `<div class="d-top"><button class="x-name d-go"><b>${d.name}</b></button><em class="d-state"></em></div><small>혜택: ${d.perkText}</small><small class="d-need"></small>` +
@@ -1637,8 +1716,8 @@ RTS.mount = function (root, opts = {}) {
     for (const b of list) { const r = $('d-' + b.id), d = RTS.defs.branches[b.id]; if (!r || !b.found[me]) continue;
       const st = r.querySelector('.d-state'); st.textContent = b.ally === me ? '내 동맹' : b.ally >= 0 ? '상대 동맹' : b.lockUntil > G.tick ? '복구 중' : '중립'; st.className = 'd-state ' + (b.ally === me ? 'ok' : b.ally >= 0 ? 'bad' : '');
       const nd = r.querySelector('.d-need'), ok = d.check(G, t); nd.textContent = `조건: ${d.need} ${ok ? '(충족)' : '(미달)'}`; nd.classList.toggle('bad', !ok);
-      const sl = r.querySelector('input'); if (sl) { const s = +sl.value; r.querySelector('.d-amt').textContent = '동맹금 ' + s; r.querySelector('.d-pct').textContent = '수락 ' + Math.round(RTS.allyChance(G, me, b.id, s) * 100) + '%'; const block = RTS.allyBlock(G, me, b.id, s), ap = r.querySelector('.d-apply'); ap.disabled = !!block; ap.textContent = block || `동맹 신청 (거절 시 ${s} 손실)`; }
-      const ds = r.querySelector('.d-stake'); if (ds) ds.textContent = `출자금 ${b.stake} · 30초당 광석 ${(b.stake * D.stakeYield).toFixed(0)}`;
+      const sl = r.querySelector('input'); if (sl) { const s = +sl.value; r.querySelector('.d-amt').textContent = '동맹금 ' + s; r.querySelector('.d-pct').textContent = '수락 ' + Math.round(RTS.allyChance(G, me, b.id, s) * 100) + '%'; const block = RTS.allyBlock(G, me, b.id, s), ap = r.querySelector('.d-apply'); ap.disabled = !!block; ap.textContent = block || `동맹 신청 (거절 시 ${Math.round(s * RTS.cfg(G).rejectLoss / 100)} 손실)`; }
+      const ds = r.querySelector('.d-stake'); if (ds) ds.textContent = `출자금 ${b.stake} · 30초당 광석 ${(b.stake * RTS.cfg(G).stakeYield / 100).toFixed(0)}`;
       const bu = r.querySelector('.d-buy'); if (bu) { bu.textContent = `광석 ${Math.ceil(D.lot * rate * (1 + sp))} → 에테르 ${D.lot}`; r.querySelector('.d-sell').textContent = `에테르 ${D.lot} → 광석 ${Math.floor(D.lot * rate * (1 - sp))}`; } } }
   function toggleExchange() { app.exOpen = !app.exOpen; if (app.exOpen && app.dipOpen) toggleDip(); $('k-ex').hidden = !app.exOpen; $('k-exbtn').classList.toggle('on', app.exOpen); if (app.exOpen) updateExchange(); }
   function renderCard() { const G = app.G, el = $('k-card'), items = app.card = cardItems(), t = G.teams[app.team];
@@ -1735,7 +1814,7 @@ RTS.mount = function (root, opts = {}) {
   mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });
   mini.addEventListener('pointerup', () => { app.miniDrag = false; });
   const keys = {}; let lastDigit = 0, lastDigitT = 0;
-  const onKey = e => { const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const onKey = e => { if (app.setOpen) { if (e.key === 'Escape') toggleSettings(); return; } const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
     if (k.startsWith('Arrow')) { e.preventDefault(); return; }
     if (k === 'F2') { e.preventDefault(); togglePause(); return; }
     if (/^[0-9]$/.test(k)) { e.preventDefault(); const list = selected().filter(u => u.team === app.team).map(u => u.id);
@@ -1751,9 +1830,22 @@ RTS.mount = function (root, opts = {}) {
     const it = (app.card || []).find(i => i.key === k); if (it) { e.preventDefault(); useItem(it); } };
   const offKey = e => { keys[e.key] = false; };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', offKey);
+  // ── 설정 메뉴: RTS.SETTINGS를 읽어 자동 생성한다. 게임 중에는 일시정지되고 바로 적용된다 ──
+  const liveGame = () => app.G && !app.demo && !app.G.over;
+  const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.zero && v === 0 ? s.zero : v + (s.unit || '');
+  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (liveGame() && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
+  function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
+    el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
+      RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && s.startOnly, v = src(s.id), id = 's-' + s.id;
+        return `<div class="s-row${off ? ' off' : ''}"><label for="${id}"><b>${s.label}</b>${s.desc ? `<small>${s.desc}</small>` : ''}${off ? '<small>다음 판부터 적용</small>' : ''}</label>` + (s.type === 'toggle' ? `<input type="checkbox" id="${id}" data-s="${s.id}" ${v ? 'checked' : ''} ${off ? 'disabled' : ''}>` : `<input type="range" id="${id}" data-s="${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}" ${off ? 'disabled' : ''}>`) + `<output id="${id}-v">${fmtSet(s, v)}</output></div>`; }).join('')}</section>`).join('') + `<div class="s-foot"><button id="s-reset">기본값으로 되돌리기</button></div></div>`;
+    el.querySelectorAll('[data-s]').forEach(i => { const s = RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === i.dataset.s); i.oninput = () => { const v = s.type === 'toggle' ? i.checked : +i.value; setValue(s, v); $('s-' + s.id + '-v').textContent = fmtSet(s, v); }; });
+    el.querySelectorAll('[data-preset]').forEach(b => { b.onclick = () => applySettings(Object.assign(RTS.defaultSettings(), RTS.PRESETS[b.dataset.preset]), true); });
+    $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings; }
+  function applySettings(vals, keepOther) { for (const s of RTS.SETTINGS.flatMap(g => g.items)) { if (keepOther && (s.client || s.startOnly)) continue; setValue(s, vals[s.id]); } renderSettings(); }
+  function toggleSettings() { app.setOpen = !app.setOpen; $('k-set').hidden = !app.setOpen; if (app.setOpen) renderSettings(); else { app.exRows = null; updateSpeed(); } }
   function togglePause() { app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
-  $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
+  $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); };
   $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => app.toMenu(); $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
@@ -1765,10 +1857,10 @@ RTS.mount = function (root, opts = {}) {
   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
   let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
-    if (!app.paused && !G.over) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
+    if (!app.paused && !G.over && (app.demo || !app.setOpen)) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
     if (app.demo) { if (!reduce) { const fight = G.ents.find(e => e.firedAt > G.tick - 20 && RTS.defOf(e).kind === 'unit'); if (fight) { const tx = fight.x * TS - view.width / 2, ty = fight.y * TS - view.height / 2; cam.x += (tx - cam.x) * .006; cam.y += (ty - cam.y) * .006; clampCam(); } } }
     else { const m = app.mouse, sp = 14 / cam.z, e = 12; let dx = 0, dy = 0; if (keys.ArrowLeft) dx = -sp; if (keys.ArrowRight) dx = sp; if (keys.ArrowUp) dy = -sp; if (keys.ArrowDown) dy = sp;
-      if (m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
+      if (app.settings.edgeScroll && m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
       if (dx || dy) { cam.x += dx; cam.y += dy; clampCam(); [m.wx, m.wy] = toWorld(m.x, m.y); }
       view.style.cursor = app.mode ? 'crosshair' : 'default';
       if (app.frame % 12 === 0) renderHud(); }

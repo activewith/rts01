@@ -14,7 +14,7 @@ RTS.branchKnown = (G, team, e) => team < 0 || G.nofog || !e.branch || (G.dip.lis
 RTS.tradeSpread = function (G, team) { const D = RTS.DIP, L = Object.values(G.dip.list).filter(b => b.ally === team); if (!L.length) return D.spread; return Math.min(...L.map(b => RTS.defs.branches[b.id].perk.spread ?? D.allySpread)); };
 RTS.allyPerk = function (G, team, key) { let v = 0; for (const b of Object.values((G.dip || { list: {} }).list)) if (b.ally === team) v += RTS.defs.branches[b.id].perk[key] || 0; return v; };
 RTS.allyChance = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], k = Math.max(0, Math.min(1, (stake - D.min) / (D.full - D.min)));
-  return Math.min(D.cap, d.base + k * .5 + (b.finder === team ? D.firstBonus : 0) + b.trust[team]); };
+  return Math.min(D.cap, d.base + k * .5 + (b.finder === team ? RTS.cfg(G).firstBonus / 100 : 0) + b.trust[team]); };
 RTS.allyBlock = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], t = G.teams[team];
   if (!b.found[team]) return '아직 찾지 못한 지부입니다';
   if (b.ally === team) return '이미 동맹입니다';
@@ -29,8 +29,8 @@ const dipTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kin
 RTS.commands.ally = function (G, team, c) {
   const block = RTS.allyBlock(G, team, c.branch, c.stake); if (block) { dipTell(G, team, block, 'warn'); return; }
   const D = RTS.DIP, b = G.dip.list[c.branch], d = RTS.defs.branches[c.branch], t = G.teams[team], ok = RTS.rand(G) < RTS.allyChance(G, team, c.branch, c.stake);
-  t.res.ore -= c.stake; b.wait[team] = G.tick + D.cooldown * RTS.HZ;
-  if (!ok) { b.trust[team] = Math.min(.25, b.trust[team] + D.failTrust); t.stats.burned = (t.stats.burned || 0) + c.stake; dipTell(G, team, `${d.name}가 거절했습니다. 동맹금 ${c.stake} 손실`, 'warn'); RTS.emit(G, 'allyResult', { team, id: b.id, ok }); return; }
+  const loss = ok ? c.stake : Math.round(c.stake * RTS.cfg(G).rejectLoss / 100); t.res.ore -= loss; b.wait[team] = G.tick + D.cooldown * RTS.HZ;
+  if (!ok) { b.trust[team] = Math.min(.25, b.trust[team] + D.failTrust); t.stats.burned = (t.stats.burned || 0) + loss; dipTell(G, team, `${d.name}가 거절했습니다. 동맹금 ${loss} 손실`, 'warn'); RTS.emit(G, 'allyResult', { team, id: b.id, ok }); return; }
   b.ally = team; b.stake = c.stake; b.nextCaravan = G.tick + 20 * RTS.HZ; const e = G.byId[b.site]; e.team = team;
   for (const o of G.teams) dipTell(G, o.id, o.id === team ? `${d.name}와 동맹 성립` : `${t.name}, ${d.name}와 동맹`, o.id === team ? 'ok' : 'market');
   for (let i = 0; i < (d.perk.mercs || 0); i++) { const p = RTS.nearestFree(G, e.x, e.y + 3); RTS.spawn(G, 'n_merc', team, p.x + (i % 3) * .3, p.y + i * .15); }
@@ -55,10 +55,10 @@ RTS.addSystem({ id: 'diplomacy', run(G) {
   m.rate = Math.max(1.2, Math.min(3.2, 2 * avg('gas') / avg('ore')));
   for (const b of Object.values(m.list)) { const e = G.byId[b.site], d = RTS.defs.branches[b.id]; if (!e) continue;
     G.teams.forEach(t => { if (b.found[t.id]) return; let near = false; RTS.query(G, e.x, e.y, 9, o => { if (o.team === t.id && !o.dead && Math.hypot(o.x - e.x, o.y - e.y) < 9) near = true; }); if (!near) return;
-      b.found[t.id] = true; if (b.finder < 0) { b.finder = t.id; t.res.ore += RTS.DIP.firstOre; dipTell(G, t.id, `${d.name} 최초 발견: 광석 +${RTS.DIP.firstOre}, 수락 확률 +15%`, 'ok'); } else dipTell(G, t.id, d.name + ' 발견', 'ok'); RTS.emit(G, 'found', { team: t.id, id: b.id }); });
+      b.found[t.id] = true; if (b.finder < 0) { b.finder = t.id; t.res.ore += RTS.DIP.firstOre; dipTell(G, t.id, `${d.name} 최초 발견: 광석 +${RTS.DIP.firstOre}, 수락 확률 +${RTS.cfg(G).firstBonus}%`, 'ok'); } else dipTell(G, t.id, d.name + ' 발견', 'ok'); RTS.emit(G, 'found', { team: t.id, id: b.id }); });
     if (b.ally < 0) continue; const t = G.teams[b.ally];
     if (d.perk.caravan && G.tick >= b.nextCaravan) { b.nextCaravan = G.tick + d.perk.caravan.every * RTS.HZ; const p = RTS.nearestFree(G, e.x, e.y + 2.5), u = RTS.spawn(G, 'n_caravan', b.ally, p.x, p.y); u.order = { type: 'caravan', res: d.perk.caravan.res, amount: d.perk.caravan.amount }; }
-    if (G.tick % (30 * RTS.HZ) === 0) { const pay = b.stake * RTS.DIP.stakeYield; t.res.ore += pay; t.stats.div = (t.stats.div || 0) + pay; } }
+    if (G.tick % (30 * RTS.HZ) === 0) { const pay = b.stake * RTS.cfg(G).stakeYield / 100; t.res.ore += pay; t.stats.div = (t.stats.div || 0) + pay; } }
 } }, { before: 'cleanup' });
 // AI: 난이도별 시점에 정찰을 보내고, 조건이 맞으면 동맹금을 건다.
 RTS.aiDiplomacy = function (G, t, diff, units) {

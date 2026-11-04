@@ -33,7 +33,7 @@ RTS.aiThink = function (G, t) {
   for (const s of sites) { const has = units.some(u => u.order && u.order.type === 'build' && u.order.site === s.id); if (!has && !s.active) { const w = builder(); if (w) RTS.issue(G, w, { type: 'build', site: s.id }); } }
 
   // 보급
-  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < 100 && !sites.some(s => s.def === f.supply)) place(f.supply);
+  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < RTS.cfg(G).supplyCap && !sites.some(s => s.def === f.supply)) place(f.supply);
   else {
     // 빌드 오더: 앞에서부터 처음 미충족 항목 하나만 실행
     for (const step of P.build) {

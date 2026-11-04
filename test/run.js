@@ -1,6 +1,6 @@
 // 헤드리스 검증: node test/run.js  — AI 대전을 돌려 경로/전투/승패/저장 복원을 확인
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/diplomacy','engine/ai','data/content']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/diplomacy','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const out = []; const start = Date.now();
 function match(map, seed, a, b, da, db, max = 20 * 60 * 25) {
   const G = RTS.createGame({ map, seed, players: [{ faction: a, ai: da }, { faction: b, ai: db }] });

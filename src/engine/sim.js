@@ -179,6 +179,7 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
+  if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 
 RTS.scan = function (G, u, w, r) {
@@ -399,7 +400,7 @@ RTS.census = function (G) {
       for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += D()[p.id].supply || 0;
       if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += d.provides || 0; } }
   }
-  for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), 100);
+  for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), RTS.cfg(G).supplyCap);
 };
 RTS.systems.push(
   { id: 'commands', run(G) { const q = G.cmds; G.cmds = []; for (const c of q) (RTS.commands[c.type] || (() => {}))(G, c.team, c); } },

@@ -13,6 +13,7 @@ const HTML = `
       <button id="k-speed" title="게임 속도">1배속</button>
       <button id="k-pause" title="일시정지 (F2)">정지</button>
       <button id="k-mute" title="소리">소리 끔</button>
+      <button id="k-setbtn" title="설정">설정</button>
       <button id="k-menu">메뉴</button>
     </div>
   </header>
@@ -30,7 +31,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
@@ -38,13 +39,14 @@ const HTML = `
         <dt>B</dt><dd>일꾼 건설 메뉴. 명령 카드의 글자가 단축키입니다</dd>
         <dt>Ctrl 또는 Alt + 숫자</dt><dd>부대 지정. 숫자로 호출, 두 번 누르면 이동. Shift + 숫자는 추가</dd>
         <dt>방향키·화면 가장자리·휠</dt><dd>카메라 이동과 확대. F2 일시정지, Esc 취소</dd>
-        <dt>M</dt><dd>거래소. 회사당 100주, 30초마다 배당. 51주면 인수해 거점을 차지합니다</dd>
+        <dt>M</dt><dd>거래소. 회사당 100주를 사고팔고, 기준 주식을 모으면 인수해 거점을 차지합니다</dd>
         <dt>N</dt><dd>자유상단. 맵에 숨은 지부를 찾아 조건을 채우고 동맹금을 걸어 신청합니다. 거절되면 동맹금을 잃습니다</dd>
         <dt>회사 거점 공격</dt><dd>우클릭으로 공격하면 주가가 내리고, 무너지면 40초간 가동이 멈추며 배당도 끊깁니다</dd>
         <dt>터치</dt><dd>한 손가락은 지도 이동, 탭은 선택 또는 명령. 범위 선택 버튼을 켜면 드래그로 묶습니다</dd>
       </dl></details>
     </div>
   </section>
+  <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
 </div>`;
 
@@ -52,13 +54,13 @@ RTS.mount = function (root, opts = {}) {
   root.innerHTML = HTML;
   const $ = id => root.querySelector('#' + id), view = $('k-view'), mini = $('k-mini'), TS = 32;
   const store = { get(k) { try { return localStorage.getItem('kjh-rts:' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('kjh-rts:' + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem('kjh-rts:' + k); } catch (e) {} } };
-  const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' } };
+  const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' }, settings: Object.assign(RTS.defaultSettings(), JSON.parse(store.get('settings') || '{}')) };
   const R = app.R = RTS.Renderer(view, app), cam = R.cam;
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
   let ac = null, muted = store.get('mute') === '1'; const last = {};
   const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); };
-  function tone(f, f2, dur, type, vol) { const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
+  function tone(f, f2, dur, type, vol) { vol *= app.settings.volume / 100; if (vol <= 0) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
   app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
     ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
 
@@ -76,11 +78,11 @@ RTS.mount = function (root, opts = {}) {
   function clampCam() { const G = app.G; if (!G) return; const vw = view.width / cam.z, vh = view.height / cam.z, W = G.w * TS, H = G.h * TS;
     cam.x = vw >= W ? (W - vw) / 2 : Math.max(0, Math.min(W - vw, cam.x)); cam.y = vh >= H ? (H - vh) / 2 : Math.max(0, Math.min(H - vh, cam.y)); }
   function demo() { app.demo = true; app.team = -1; const fs = Object.keys(RTS.defs.factions);
-    const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
+    const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, settings: app.settings, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
     for (let i = 0; i < 20 * 100; i++) RTS.step(G); // 메뉴 뒤 배경이 이미 진행 중인 기지가 되도록 미리 돌린다
     bind(G); cam.z = 1; root.querySelector('.k-game').classList.add('demo'); layout(); const base = G.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff) || { x: G.w / 2, y: G.h / 2 }; centerOn(base.x - (view.width > 900 ? 5 : 0), base.y); }
   app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions), foe = f.find(x => x !== app.cfg.faction); app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
-    const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
+    const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
     showGame(G); };
   function showGame(G) { bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
@@ -102,7 +104,7 @@ RTS.mount = function (root, opts = {}) {
 
   function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
     if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
-    if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 3%)`, ok: true, run: () => trade(id, qty) });
+    if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(G, c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(G, c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 ${RTS.cfg(G).fee}%)`, ok: true, run: () => trade(id, qty) });
       tr(5, 'Q', '+5', '5주 매수'); tr(20, 'W', '+20', '20주 매수'); tr(-5, 'E', '-5', '5주 매도'); tr(-100, 'R', '전량', '보유 주식 전량 매도'); return items; }
     if (!L) return items;
     const d = RTS.defOf(L), f = t.faction, ids = list.filter(e => e.def === L.def).map(e => e.id), allIds = list.filter(e => RTS.defOf(e).kind === 'unit').map(e => e.id);
@@ -139,10 +141,10 @@ RTS.mount = function (root, opts = {}) {
     for (const c of Object.values(G.market.cos)) { const r = app.exRows[c.id], mine = c.shares[app.team], theirs = c.shares[foe.id], h = c.hist, ref = h[Math.max(0, h.length - 13)], ch = (c.price / ref - 1) * 100, e = G.byId[c.site], down = e && e.downUntil > G.tick, min = Math.min(...h, c.price), max = Math.max(...h, c.price), span = Math.max(.01, max - min); value += mine * c.price;
       const pts = [...h, c.price].map((v, i, a) => `${(i / Math.max(1, a.length - 1) * 90).toFixed(1)},${(26 - (v - min) / span * 24).toFixed(1)}`).join(' '), line = r.querySelector('polyline'); line.setAttribute('points', pts); line.setAttribute('stroke', ch >= 0 ? '#ff6a5a' : '#5aa8ff');
       r.querySelector('.x-price b').textContent = c.price.toFixed(1); const sm = r.querySelector('.x-price small'); sm.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'; sm.className = ch >= 0 ? 'up' : 'dn';
-      r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
-      const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.MARKET.ctrlBonus : RTS.MARKET.minority, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
+      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
+      const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.cfg(G).ctrlBonus / 100 : RTS.cfg(G).minority / 100, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
       r.querySelector('.x-own').textContent = `내 ${mine}주 · 상대 ${theirs}주 · 시장 ${c.free}주` + (c.owner === app.team ? ' · 내 경영권' : c.owner >= 0 ? ' · 상대 경영권' : '');
-      r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
+      r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
       r.querySelectorAll('.x-btn button').forEach(b => { const q = +b.dataset.q; b.disabled = q > 0 ? !c.free || t.res.ore < c.price : !mine; }); }
     $('x-value').textContent = Math.round(value); $('x-div').textContent = Math.round(t.stats.div || 0); $('x-next').textContent = '다음 배당 ' + Math.max(0, Math.ceil((G.market.nextDiv - G.tick) / 20)) + '초';
     const sig = G.market.news.map(n => n.t).join(); if (sig !== app.newsSig) { app.newsSig = sig; $('x-news').innerHTML = G.market.news.map(n => `<p><time>${String(Math.floor(n.t / 1200)).padStart(2, '0')}:${String(Math.floor(n.t / 20) % 60).padStart(2, '0')}</time>${n.text}</p>`).join('') || '<p>아직 시장 소식이 없습니다.</p>'; } }
@@ -150,7 +152,7 @@ RTS.mount = function (root, opts = {}) {
   function toggleDip() { app.dipOpen = !app.dipOpen; if (app.dipOpen && app.exOpen) toggleExchange(); $('k-dip').hidden = !app.dipOpen; $('k-dipbtn').classList.toggle('on', app.dipOpen); if (app.dipOpen) { app.dipSig = ''; updateDip(); } }
   function updateDip() { const G = app.G, D = RTS.DIP, el = $('k-dip'), me = app.team, list = Object.values(G.dip.list);
     const sig = list.map(b => [b.found[me], b.ally].join()).join('|');
-    if (sig !== app.dipSig) { app.dipSig = sig; el.innerHTML = `<div class="x-head"><h2>자유상단</h2><span id="d-rate"></span><button id="d-close" aria-label="자유상단 닫기">닫기</button></div><p class="d-help">지부 위치는 게임마다 바뀝니다. 유닛을 보내 찾아야 거래와 동맹이 열리고, 먼저 찾으면 수락 확률이 15% 오릅니다.</p><div id="d-rows"></div>`;
+    if (sig !== app.dipSig) { app.dipSig = sig; el.innerHTML = `<div class="x-head"><h2>자유상단</h2><span id="d-rate"></span><button id="d-close" aria-label="자유상단 닫기">닫기</button></div><p class="d-help">지부 위치는 게임마다 바뀝니다. 유닛을 보내 찾아야 거래와 동맹이 열리고, 먼저 찾으면 수락 확률이 ${RTS.cfg(G).firstBonus}% 오릅니다.</p><div id="d-rows"></div>`;
       const rows = $('d-rows'); list.forEach(b => { const d = RTS.defs.branches[b.id], r = document.createElement('div'); r.className = 'd-row'; r.id = 'd-' + b.id; const mineA = b.ally === me;
         if (!b.found[me]) r.innerHTML = `<b>미발견 지부</b><small>맵 어딘가에 있습니다. 유닛을 보내 찾으세요.</small>`;
         else { r.innerHTML = `<div class="d-top"><button class="x-name d-go"><b>${d.name}</b></button><em class="d-state"></em></div><small>혜택: ${d.perkText}</small><small class="d-need"></small>` +
@@ -166,8 +168,8 @@ RTS.mount = function (root, opts = {}) {
     for (const b of list) { const r = $('d-' + b.id), d = RTS.defs.branches[b.id]; if (!r || !b.found[me]) continue;
       const st = r.querySelector('.d-state'); st.textContent = b.ally === me ? '내 동맹' : b.ally >= 0 ? '상대 동맹' : b.lockUntil > G.tick ? '복구 중' : '중립'; st.className = 'd-state ' + (b.ally === me ? 'ok' : b.ally >= 0 ? 'bad' : '');
       const nd = r.querySelector('.d-need'), ok = d.check(G, t); nd.textContent = `조건: ${d.need} ${ok ? '(충족)' : '(미달)'}`; nd.classList.toggle('bad', !ok);
-      const sl = r.querySelector('input'); if (sl) { const s = +sl.value; r.querySelector('.d-amt').textContent = '동맹금 ' + s; r.querySelector('.d-pct').textContent = '수락 ' + Math.round(RTS.allyChance(G, me, b.id, s) * 100) + '%'; const block = RTS.allyBlock(G, me, b.id, s), ap = r.querySelector('.d-apply'); ap.disabled = !!block; ap.textContent = block || `동맹 신청 (거절 시 ${s} 손실)`; }
-      const ds = r.querySelector('.d-stake'); if (ds) ds.textContent = `출자금 ${b.stake} · 30초당 광석 ${(b.stake * D.stakeYield).toFixed(0)}`;
+      const sl = r.querySelector('input'); if (sl) { const s = +sl.value; r.querySelector('.d-amt').textContent = '동맹금 ' + s; r.querySelector('.d-pct').textContent = '수락 ' + Math.round(RTS.allyChance(G, me, b.id, s) * 100) + '%'; const block = RTS.allyBlock(G, me, b.id, s), ap = r.querySelector('.d-apply'); ap.disabled = !!block; ap.textContent = block || `동맹 신청 (거절 시 ${Math.round(s * RTS.cfg(G).rejectLoss / 100)} 손실)`; }
+      const ds = r.querySelector('.d-stake'); if (ds) ds.textContent = `출자금 ${b.stake} · 30초당 광석 ${(b.stake * RTS.cfg(G).stakeYield / 100).toFixed(0)}`;
       const bu = r.querySelector('.d-buy'); if (bu) { bu.textContent = `광석 ${Math.ceil(D.lot * rate * (1 + sp))} → 에테르 ${D.lot}`; r.querySelector('.d-sell').textContent = `에테르 ${D.lot} → 광석 ${Math.floor(D.lot * rate * (1 - sp))}`; } } }
   function toggleExchange() { app.exOpen = !app.exOpen; if (app.exOpen && app.dipOpen) toggleDip(); $('k-ex').hidden = !app.exOpen; $('k-exbtn').classList.toggle('on', app.exOpen); if (app.exOpen) updateExchange(); }
   function renderCard() { const G = app.G, el = $('k-card'), items = app.card = cardItems(), t = G.teams[app.team];
@@ -264,7 +266,7 @@ RTS.mount = function (root, opts = {}) {
   mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });
   mini.addEventListener('pointerup', () => { app.miniDrag = false; });
   const keys = {}; let lastDigit = 0, lastDigitT = 0;
-  const onKey = e => { const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const onKey = e => { if (app.setOpen) { if (e.key === 'Escape') toggleSettings(); return; } const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
     if (k.startsWith('Arrow')) { e.preventDefault(); return; }
     if (k === 'F2') { e.preventDefault(); togglePause(); return; }
     if (/^[0-9]$/.test(k)) { e.preventDefault(); const list = selected().filter(u => u.team === app.team).map(u => u.id);
@@ -280,9 +282,22 @@ RTS.mount = function (root, opts = {}) {
     const it = (app.card || []).find(i => i.key === k); if (it) { e.preventDefault(); useItem(it); } };
   const offKey = e => { keys[e.key] = false; };
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', offKey);
+  // ── 설정 메뉴: RTS.SETTINGS를 읽어 자동 생성한다. 게임 중에는 일시정지되고 바로 적용된다 ──
+  const liveGame = () => app.G && !app.demo && !app.G.over;
+  const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.zero && v === 0 ? s.zero : v + (s.unit || '');
+  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (liveGame() && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
+  function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
+    el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
+      RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && s.startOnly, v = src(s.id), id = 's-' + s.id;
+        return `<div class="s-row${off ? ' off' : ''}"><label for="${id}"><b>${s.label}</b>${s.desc ? `<small>${s.desc}</small>` : ''}${off ? '<small>다음 판부터 적용</small>' : ''}</label>` + (s.type === 'toggle' ? `<input type="checkbox" id="${id}" data-s="${s.id}" ${v ? 'checked' : ''} ${off ? 'disabled' : ''}>` : `<input type="range" id="${id}" data-s="${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}" ${off ? 'disabled' : ''}>`) + `<output id="${id}-v">${fmtSet(s, v)}</output></div>`; }).join('')}</section>`).join('') + `<div class="s-foot"><button id="s-reset">기본값으로 되돌리기</button></div></div>`;
+    el.querySelectorAll('[data-s]').forEach(i => { const s = RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === i.dataset.s); i.oninput = () => { const v = s.type === 'toggle' ? i.checked : +i.value; setValue(s, v); $('s-' + s.id + '-v').textContent = fmtSet(s, v); }; });
+    el.querySelectorAll('[data-preset]').forEach(b => { b.onclick = () => applySettings(Object.assign(RTS.defaultSettings(), RTS.PRESETS[b.dataset.preset]), true); });
+    $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings; }
+  function applySettings(vals, keepOther) { for (const s of RTS.SETTINGS.flatMap(g => g.items)) { if (keepOther && (s.client || s.startOnly)) continue; setValue(s, vals[s.id]); } renderSettings(); }
+  function toggleSettings() { app.setOpen = !app.setOpen; $('k-set').hidden = !app.setOpen; if (app.setOpen) renderSettings(); else { app.exRows = null; updateSpeed(); } }
   function togglePause() { app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
-  $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
+  $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); };
   $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => app.toMenu(); $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
@@ -294,10 +309,10 @@ RTS.mount = function (root, opts = {}) {
   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
   let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
-    if (!app.paused && !G.over) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
+    if (!app.paused && !G.over && (app.demo || !app.setOpen)) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
     if (app.demo) { if (!reduce) { const fight = G.ents.find(e => e.firedAt > G.tick - 20 && RTS.defOf(e).kind === 'unit'); if (fight) { const tx = fight.x * TS - view.width / 2, ty = fight.y * TS - view.height / 2; cam.x += (tx - cam.x) * .006; cam.y += (ty - cam.y) * .006; clampCam(); } } }
     else { const m = app.mouse, sp = 14 / cam.z, e = 12; let dx = 0, dy = 0; if (keys.ArrowLeft) dx = -sp; if (keys.ArrowRight) dx = sp; if (keys.ArrowUp) dy = -sp; if (keys.ArrowDown) dy = sp;
-      if (m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
+      if (app.settings.edgeScroll && m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
       if (dx || dy) { cam.x += dx; cam.y += dy; clampCam(); [m.wx, m.wy] = toWorld(m.x, m.y); }
       view.style.cursor = app.mode ? 'crosshair' : 'default';
       if (app.frame % 12 === 0) renderHud(); }

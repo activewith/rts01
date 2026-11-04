@@ -37,10 +37,13 @@ RTS.rand = G => { // mulberry32. 상태가 G.rng에 있어 저장/리플레이�
 RTS.on = (G, type, fn) => { (G._ls[type] = G._ls[type] || []).push(fn); };
 RTS.emit = (G, type, data) => { (G._ls[type] || []).forEach(f => f(data, G)); };
 
+// 설정값. 옛 저장 파일에 없는 항목은 기본값으로 채운다.
+RTS.cfg = G => G.cfg || (G.cfg = RTS.defaultSettings());
 RTS.createGame = function (opts) {
   // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
-    over: null, mapId: opts.map, seed: opts.seed || 1, nofog: !!opts.nofog, _ls: {} };
+    over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
+  G.nofog = !!opts.nofog || !G.cfg.fog;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
   G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
@@ -48,7 +51,7 @@ RTS.createGame = function (opts) {
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;
     const t = { id: i, faction: p.faction, ai: p.ai || null, name: p.name || RTS.defs.factions[p.faction].name,
-      res: { ore: 100, gas: 0 }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
+      res: { ore: G.cfg.startOre, gas: G.cfg.startGas }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
       stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
     if (p.ai) t.inc = RTS.defs.difficulties[p.ai].income;
     G.teams.push(t);
@@ -89,7 +92,7 @@ RTS.step = function (G) {
 // 저장은 '_' 로 시작하지 않는 모든 필드를 JSON으로 직렬화한다.
 RTS.serialize = G => JSON.stringify(G, (k, v) => (k[0] === '_' ? undefined : v));
 RTS.deserialize = function (json) {
-  const G = JSON.parse(json); G._ls = {}; RTS.initRuntime(G);
+  const G = JSON.parse(json); G._ls = {}; G.cfg = Object.assign(RTS.defaultSettings(), G.cfg); RTS.initRuntime(G);
   G.byId = {}; for (const e of G.ents) { G.byId[e.id] = e; const d = RTS.defs.entities[e.def]; if (d.size) RTS.occupy(G, e, e.id); }
   return G;
 };
