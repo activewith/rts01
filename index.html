@@ -1,0 +1,1794 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>광맥전선</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Black+Han+Sans&family=Chakra+Petch:wght@500;700&family=IBM+Plex+Sans+KR:wght@400;600&display=swap">
+<style>
+/* 레이아웃: 전장이 화면을 채우고, 위아래 금속 콘솔이 조작부가 된다. 한 가지 다크 룩으로 고정한다. */
+:root{color-scheme:dark;
+  --ink:#10151f;--panel:#1b2433;--panel2:#26324a;--line:#46587a;--brass:#d2a85a;--text:#e8edf5;--dim:#9fb0c8;
+  --ore:#ffc247;--gas:#ea7be0;--ok:#58e08a;--warn:#f2c14e;--bad:#ee5545;
+  --display:"Black Han Sans","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --body:"IBM Plex Sans KR","Apple SD Gothic Neo","Malgun Gothic",sans-serif;
+  --num:"Chakra Petch","IBM Plex Sans KR",monospace;
+  --cut:polygon(8px 0,100% 0,100% calc(100% - 8px),calc(100% - 8px) 100%,0 100%,0 8px)}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);overflow:hidden}
+#kr-app{height:100%}
+.k-game{position:relative;height:100%;display:grid;grid-template-rows:auto minmax(0,1fr) auto;overflow:hidden;font-size:14px}
+.k-game button{font:inherit;color:inherit;background:var(--panel2);border:1px solid var(--line);cursor:pointer;padding:6px 10px;touch-action:manipulation}
+.k-game button:hover{border-color:var(--brass)}
+.k-game button:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
+.k-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border-bottom:2px solid var(--brass);padding-block:6px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
+.k-res{display:flex;gap:14px}
+.k-chip{display:inline-flex;align-items:center;gap:6px;font:700 17px var(--num);font-variant-numeric:tabular-nums}
+.k-chip i{width:13px;height:13px;display:block;transform:rotate(45deg)}
+.k-chip.ore i{background:var(--ore)}.k-chip.gas i{background:var(--gas);border-radius:50%}.k-chip.sup i{background:var(--ok);clip-path:polygon(50% 0,100% 100%,0 100%);transform:none}
+.k-chip.full b{color:var(--bad)}
+.k-clock{font:700 17px var(--num);color:var(--brass);font-variant-numeric:tabular-nums}
+.k-tools{margin-left:auto;display:flex;gap:6px;flex-wrap:wrap}
+.k-tools button{padding:4px 9px;font-size:13px}
+.k-tools button.on{background:var(--brass);color:#16110a}
+.k-touch{display:none}
+@media (pointer:coarse){.k-touch{display:inline-block}}
+.k-stage{position:relative;min-height:0;background:#0a0f18}
+#k-view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
+.k-msgs{z-index:5;position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;width:min(90%,420px)}
+.k-msg{background:rgba(16,21,31,.88);padding:4px 12px;border-left:3px solid var(--dim);font-size:14px}
+
+.k-msg.market{border-color:var(--brass);color:#ffe6b0}
+.k-tools button.k-ex-open{background:var(--brass);color:#16110a;font-weight:600}
+.k-tools button.k-ex-open.on{background:var(--panel2);color:var(--brass)}
+.k-ex{box-sizing:border-box;position:absolute;top:0;left:0;bottom:0;z-index:4;width:min(430px,100%);overflow:auto;background:rgba(16,21,31,.95);border-right:2px solid var(--brass);padding-block:10px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:12px;display:flex;flex-direction:column;gap:8px}
+.x-head{display:flex;align-items:center;gap:10px}.x-head h2{margin:0;font:400 22px var(--display);color:var(--brass)}.x-head span{font:700 14px var(--num);color:var(--dim)}.x-head button{margin-left:auto;padding:3px 9px}
+.x-sum{display:flex;gap:16px;color:var(--dim)}.x-sum b{font:700 15px var(--num);color:var(--text)}
+#x-rows{display:grid;gap:7px}
+.x-row{display:grid;gap:4px;background:var(--panel);padding:7px 8px;border-left:3px solid var(--ore)}.x-row.gas{border-left-color:var(--gas)}
+.x-top{display:grid;grid-template-columns:minmax(0,1fr) 90px 62px;gap:6px;align-items:center}
+.k-game .x-name{all:unset;cursor:pointer;display:grid;min-width:0}.x-name b{font-size:15px}.x-name small{font-size:12px;color:var(--dim)}.k-game .x-name:focus-visible{outline:2px solid var(--brass)}
+.x-top svg{width:90px;height:28px;display:block}
+.x-price{text-align:right;font-family:var(--num);font-variant-numeric:tabular-nums}.x-price b{display:block;font-size:17px}.x-price small{font-size:12px}.x-price .up{color:#ff8a7a}.x-price .dn{color:#7fbcff}
+.x-stake{position:relative;height:7px;background:var(--panel2);display:flex;justify-content:space-between}.x-stake i{display:block;height:100%}.x-stake .me{background:#46c4ff}.x-stake .foe{background:#ff7350}.x-stake s{position:absolute;left:51%;top:-2px;bottom:-2px;width:2px;background:var(--text)}
+.x-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--dim)}.x-pay.bad{color:#ff8a7a}
+.x-btn{display:grid;grid-template-columns:1fr 1fr 1fr 1.6fr;gap:4px}.k-game .x-btn button{padding:4px 0;font-size:13px}.k-game .x-btn button:disabled{opacity:.38;cursor:default}
+.x-news{font-size:13px;color:var(--dim)}.x-news p{margin:0;padding:2px 0}.x-news time{font-family:var(--num);color:var(--brass);margin-right:6px}
+.d-help{margin:0;font-size:13px;line-height:1.5;color:var(--dim)}
+#d-rows{display:grid;gap:7px}
+.d-row{display:grid;gap:4px;background:var(--panel);padding:8px;border-left:3px solid var(--brass)}.d-row small{font-size:12.5px;color:var(--dim)}.d-row small.bad{color:#ff9d90}
+.d-top{display:flex;justify-content:space-between;align-items:center}.d-state{font-style:normal;font-size:12.5px;color:var(--dim)}.d-state.ok{color:var(--ok)}.d-state.bad{color:var(--bad)}
+.d-slide{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:8px;align-items:center;font:700 13px var(--num)}.d-slide input{width:100%;min-width:0;accent-color:var(--brass)}
+.d-line{display:flex;gap:4px;align-items:center;justify-content:space-between;font-size:13px}.d-barter button{flex:1;padding:4px 2px;font-size:12.5px}
+.k-game .d-apply{background:var(--brass);color:#16110a;font-weight:600;border:0;padding:6px}.k-game .d-apply:disabled{background:var(--panel2);color:var(--dim);cursor:default}
+.k-msg.warn{border-color:var(--bad);color:#ffd5cf}.k-msg.ok{border-color:var(--ok)}
+.k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:4px 12px;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
+.k-paused{position:absolute;inset:0;display:grid;place-items:center;font:400 44px var(--display);letter-spacing:.06em;background:rgba(8,12,22,.45);pointer-events:none}
+.k-bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;background:var(--panel);border-top:2px solid var(--brass);padding-block:8px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));min-height:176px}
+.k-mapbox{width:160px;height:160px;background:#0a0f18;border:1px solid var(--line)}
+#k-mini{width:100%;height:100%;display:block;touch-action:none;cursor:pointer}
+.k-info{min-width:0;overflow:hidden;background:var(--ink);border:1px solid var(--line);padding:10px;clip-path:var(--cut)}
+.k-empty{margin:0;color:var(--dim)}
+.k-one{display:flex;gap:12px;align-items:flex-start}
+.k-one img{width:76px;height:76px;background:var(--panel);border:1px solid var(--line)}
+.k-one>div{min-width:0;flex:1}
+.k-one h3{margin:0 0 2px;font:400 21px var(--display);letter-spacing:.02em}
+.k-hp{margin:0;font:700 15px var(--num);color:var(--ok)}
+.k-st{margin:2px 0 0;color:var(--dim)}
+.k-prod{margin-top:6px;display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px}
+.k-prod i{flex:1;min-width:70px;height:7px;background:var(--panel2);display:block}.k-prod s{display:block;height:100%;background:var(--brass)}
+.k-many{display:grid;grid-template-columns:repeat(auto-fill,minmax(40px,1fr));gap:3px;max-height:136px;overflow:auto}
+.k-many button{padding:0;position:relative;aspect-ratio:1;background:var(--panel)!important;min-width:0}
+.k-many img{width:100%;height:100%;display:block}.k-many i{position:absolute;left:0;bottom:0;height:3px}
+.k-card{display:grid;grid-template-columns:repeat(4,58px);grid-auto-rows:50px;gap:4px;align-content:start;min-width:244px}
+.k-cmd{position:relative;padding:0!important;display:grid;place-items:center;overflow:hidden;clip-path:var(--cut)}
+.k-cmd img{width:42px;height:42px}
+.k-cmd em{font-style:normal;font-weight:600;font-size:14px}
+.k-cmd kbd{position:absolute;right:3px;top:1px;font:700 11px var(--num);color:var(--brass)}
+.k-cmd u{position:absolute;inset:0;display:grid;place-items:center;background:rgba(8,12,22,.75);text-decoration:none;font:700 17px var(--num)}
+.k-cmd.off{opacity:.42}.k-cmd.poor img,.k-cmd.poor em{opacity:.5}
+.k-tip{position:absolute;z-index:6;max-width:250px;background:var(--ink);border:1px solid var(--brass);padding:8px 10px;pointer-events:none;font-size:13px}
+.k-tip b{font-size:14px}.k-tip p{margin:3px 0 0;color:var(--dim)}.k-tip .why{color:#ffb3a8}
+.c-ore{color:var(--ore)}.c-gas{color:var(--gas)}
+.k-overlay{position:absolute;inset:0;z-index:10;display:flex;overflow:auto}
+.k-start{background:linear-gradient(90deg,rgba(10,15,24,.9) 0,rgba(10,15,24,.72) 430px,rgba(10,15,24,.04) 620px)}
+.k-end{background:rgba(8,12,22,.74);justify-content:center;align-items:center}
+.k-game.demo{grid-template-rows:minmax(0,1fr)}
+.k-game.demo .k-top,.k-game.demo .k-bottom{display:none}
+.k-panel{width:min(100%,480px);padding-block:24px;padding-left:max(24px,env(safe-area-inset-left,0px));padding-right:max(20px,env(safe-area-inset-right,0px));display:flex;flex-direction:column;gap:9px;margin-block:auto}
+.k-panel h1{margin:0;font:400 clamp(46px,8vw,70px)/1 var(--display);color:var(--brass);letter-spacing:.015em;text-wrap:balance}
+.k-sub{margin:0 0 4px;line-height:1.6;color:var(--text);max-width:62ch}
+.k-panel h2{margin:6px 0 0;font:600 12px var(--body);letter-spacing:.14em;color:var(--dim)}
+.k-opts{display:grid;grid-template-columns:1fr 1fr;gap:6px}.k-three{grid-template-columns:repeat(3,1fr)}
+.k-game .k-opt{text-align:left;padding:8px 10px;background:rgba(27,36,51,.86);display:flex;flex-direction:column;gap:3px;min-width:0}
+.k-opt b{font-size:15px}.k-opt span{font-size:12.5px;line-height:1.4;color:var(--dim)}
+.k-game .k-opt.on{border-color:var(--brass);box-shadow:inset 0 0 0 1px var(--brass);background:#33301f}
+.k-go{display:flex;gap:8px;margin-top:6px}
+.k-game .k-primary{background:var(--brass);color:#16110a;border:0;font:400 23px var(--display);padding:10px 34px;clip-path:var(--cut)}
+.k-go button:not(.k-primary){padding:8px 16px}
+.k-help{color:var(--dim);font-size:13px}.k-help summary{cursor:pointer;padding:4px 0}
+.k-help dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:4px 0 0}.k-help dt{color:var(--text);font-weight:600}.k-help dd{margin:0}
+#k-stats{border-collapse:collapse;font-family:var(--num);font-variant-numeric:tabular-nums;width:100%}
+#k-stats th{font:400 14px var(--body);text-align:left;color:var(--dim)}#k-stats td{text-align:right;padding:4px 0 4px 18px}
+#k-stats thead td{color:var(--brass);font-family:var(--body)}
+.k-end .k-panel{background:var(--panel);border:1px solid var(--brass);padding:24px;width:min(92%,420px)}
+@media (max-width:760px){
+  .k-bottom{grid-template-columns:104px minmax(0,1fr);min-height:0;gap:6px}
+  .k-mapbox{width:104px;height:104px}
+  .k-info{height:104px;padding:6px;font-size:13px}.k-one img{width:48px;height:48px}.k-one h3{font-size:17px}.k-many{max-height:90px}
+  .k-card{grid-column:1/-1;grid-template-columns:repeat(auto-fill,minmax(52px,1fr));grid-auto-rows:46px;min-width:0;min-height:46px}
+  .k-start{background:rgba(10,15,24,.8)}
+  .k-panel{padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  .k-tools button{padding:3px 7px;font-size:12px}.k-res{gap:10px}.k-chip{font-size:15px}
+}
+</style>
+</head>
+<body>
+<div id="kr-app"></div>
+<script>// ─────────────────────────────────────────────────────────────
+// core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
+// 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
+// 좌표 단위는 타일(float). 시뮬레이션은 20틱/초 고정이며 결정적이다.
+// ─────────────────────────────────────────────────────────────
+const RTS = (globalThis.RTS = globalThis.RTS || {});
+RTS.version = '0.1.0';
+RTS.HZ = 20;
+RTS.defs = { terrain: {}, entities: {}, upgrades: {}, abilities: {}, factions: {}, maps: {}, mapgens: {}, difficulties: {}, companies: {}, marketEvents: {}, branches: {} };
+RTS.orders = {};      // 유닛 명령 핸들러: RTS.orders.move = (G,u,o)=>...
+RTS.systems = [];     // 틱 파이프라인: [{id, run(G)}]
+RTS.commands = {};    // 플레이어 입력 처리기: RTS.commands.train = (G,team,cmd)=>...
+
+// 콘텐츠 추가는 전부 이 함수 하나로 한다. 같은 id는 덮어쓴다.
+RTS.mod = function (pack) {
+  for (const k of Object.keys(pack)) {
+    if (!RTS.defs[k]) throw new Error('알 수 없는 콘텐츠 종류: ' + k);
+    for (const id of Object.keys(pack[k])) RTS.defs[k][id] = Object.assign({ id }, pack[k][id]);
+  }
+};
+// 기존 정의 일부만 수정: RTS.patch('entities','p_rifle',{hp:60})
+RTS.patch = (kind, id, change) => Object.assign(RTS.defs[kind][id], change);
+// 시스템 삽입: RTS.addSystem({id:'weather',run}, {before:'movement'})
+RTS.addSystem = function (sys, pos = {}) {
+  const ref = pos.before || pos.after;
+  const i = ref ? RTS.systems.findIndex(s => s.id === ref) : -1;
+  if (i < 0) RTS.systems.push(sys); else RTS.systems.splice(pos.before ? i : i + 1, 0, sys);
+};
+
+RTS.rand = G => { // mulberry32. 상태가 G.rng에 있어 저장/리플레이가 재현된다.
+  G.rng = (G.rng + 0x6D2B79F5) | 0;
+  let t = G.rng; t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
+
+RTS.on = (G, type, fn) => { (G._ls[type] = G._ls[type] || []).push(fn); };
+RTS.emit = (G, type, data) => { (G._ls[type] || []).forEach(f => f(data, G)); };
+
+RTS.createGame = function (opts) {
+  // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
+  const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
+    over: null, mapId: opts.map, seed: opts.seed || 1, nofog: !!opts.nofog, _ls: {} };
+  const spec = RTS.defs.maps[opts.map];
+  const m = RTS.defs.mapgens[spec.gen](spec, G);
+  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
+  RTS.initRuntime(G);
+  opts.players.forEach((p, i) => {
+    const size = G.w * G.h;
+    const t = { id: i, faction: p.faction, ai: p.ai || null, name: p.name || RTS.defs.factions[p.faction].name,
+      res: { ore: 100, gas: 0 }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
+      stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
+    if (p.ai) t.inc = RTS.defs.difficulties[p.ai].income;
+    G.teams.push(t);
+  });
+  m.nodes.forEach(n => {
+    const e = RTS.spawn(G, n.def, -1, n.tx + RTS.defs.entities[n.def].size[0] / 2, n.ty + RTS.defs.entities[n.def].size[1] / 2);
+    e.amount = RTS.defs.entities[n.def].amount;
+  });
+  const starts = G.bases.filter(b => b.start !== undefined);
+  G.teams.forEach((t, i) => {
+    const b = starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
+    b.owner = i;
+    const hs = RTS.defs.entities[f.hq].size, hq = RTS.spawn(G, f.hq, i, Math.round(b.x - hs[0] / 2) + hs[0] / 2, Math.round(b.y - hs[1] / 2) + hs[1] / 2); hq.built = hq.buildT; hq.hp = RTS.stat(G, hq, 'hp');
+    const ore = RTS.nearestNode(G, b.x, b.y, 'ore', 30);
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2;
+      const w = RTS.spawn(G, f.worker, i, b.x + Math.cos(a) * 3, b.y + Math.sin(a) * 3);
+      RTS.issue(G, w, { type: 'gather', node: ore.id });
+    }
+  });
+  RTS.initMarket(G); RTS.initDip(G); RTS.census(G); RTS.updateFog(G, true);
+  return G;
+};
+
+RTS.initRuntime = function (G) {
+  G._occ = new Int32Array(G.w * G.h);
+  G._cols = Math.ceil(G.w / 4); G._rows = Math.ceil(G.h / 4);
+  G._grid = Array.from({ length: G._cols * G._rows }, () => []);
+  G._pathQ = 0;
+};
+
+RTS.step = function (G) {
+  if (G.over) return;
+  G.tick++;
+  for (const s of RTS.systems) s.run(G);
+};
+
+// 저장은 '_' 로 시작하지 않는 모든 필드를 JSON으로 직렬화한다.
+RTS.serialize = G => JSON.stringify(G, (k, v) => (k[0] === '_' ? undefined : v));
+RTS.deserialize = function (json) {
+  const G = JSON.parse(json); G._ls = {}; RTS.initRuntime(G);
+  G.byId = {}; for (const e of G.ents) { G.byId[e.id] = e; const d = RTS.defs.entities[e.def]; if (d.size) RTS.occupy(G, e, e.id); }
+  return G;
+};
+
+// map.js — 타일, 점유, 경로탐색(A*), 시야선, 공간 해시, 시야(안개), 기본 맵 생성기
+RTS.tile = (G, x, y) => (x < 0 || y < 0 || x >= G.w || y >= G.h ? 1 : G.tiles[y * G.w + x]);
+RTS.walkable = (G, x, y) => {
+  if (x < 0 || y < 0 || x >= G.w || y >= G.h) return false;
+  const i = y * G.w + x;
+  return RTS.terrainPass[G.tiles[i]] && !G._occ[i];
+};
+RTS.terrainPass = [true, false, true]; // 0 땅, 1 암벽, 2 모래. 맵 생성 후 defs.terrain이 덮어씀
+
+RTS.rectOf = e => { const s = RTS.defs.entities[e.def].size; return { x0: e.x - s[0] / 2, y0: e.y - s[1] / 2, w: s[0], h: s[1] }; };
+RTS.occupy = function (G, e, val) {
+  const r = RTS.rectOf(e);
+  for (let y = 0; y < r.h; y++) for (let x = 0; x < r.w; x++) {
+    const tx = Math.round(r.x0) + x, ty = Math.round(r.y0) + y;
+    if (tx >= 0 && ty >= 0 && tx < G.w && ty < G.h) G._occ[ty * G.w + tx] = val;
+  }
+};
+
+// 가장 가까운 통행 가능 타일 (나선 탐색)
+RTS.nearestFree = function (G, x, y, maxR = 12) {
+  const cx = Math.floor(x), cy = Math.floor(y);
+  if (RTS.walkable(G, cx, cy)) return { x, y };
+  for (let r = 1; r <= maxR; r++) {
+    let best = null, bd = 1e9;
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) {
+      if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !RTS.walkable(G, cx + dx, cy + dy)) continue;
+      const d = (cx + dx + .5 - x) ** 2 + (cy + dy + .5 - y) ** 2;
+      if (d < bd) { bd = d; best = { x: cx + dx + .5, y: cy + dy + .5 }; }
+    }
+    if (best) return best;
+  }
+  return { x, y };
+};
+
+RTS.lineClear = function (G, x0, y0, x1, y1, r = .32) {
+  const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
+  if (len < .01) return true;
+  const n = Math.ceil(len / .25), px = -dy / len * r, py = dx / len * r;
+  for (let i = 1; i <= n; i++) {
+    const x = x0 + dx * i / n, y = y0 + dy * i / n;
+    if (!RTS.walkable(G, Math.floor(x + px), Math.floor(y + py)) || !RTS.walkable(G, Math.floor(x - px), Math.floor(y - py))) return false;
+  }
+  return true;
+};
+
+// 이진 힙 A*. goal = {x,y} 또는 {x0,y0,x1,y1} 타일 사각형
+const AS = { size: 0 };
+function asInit(n) { if (AS.size === n) return; AS.size = n; AS.g = new Float32Array(n); AS.from = new Int32Array(n); AS.stamp = new Int32Array(n); AS.closed = new Int32Array(n); AS.gen = 0; }
+RTS.findPath = function (G, sx, sy, goal) {
+  const w = G.w, n = w * G.h; asInit(n);
+  const gen = ++AS.gen, start = Math.floor(sy) * w + Math.floor(sx);
+  const rect = goal.x0 !== undefined;
+  const gx = rect ? (goal.x0 + goal.x1) / 2 : Math.floor(goal.x), gy = rect ? (goal.y0 + goal.y1) / 2 : Math.floor(goal.y);
+  const H = (x, y) => { const a = Math.abs(x - gx), b = Math.abs(y - gy); return (a + b) + (1.414 - 2) * Math.min(a, b); };
+  const isGoal = (x, y) => rect ? (x >= goal.x0 && x <= goal.x1 && y >= goal.y0 && y <= goal.y1) : (x === gx && y === gy);
+  const heap = [], f = []; // 힙은 노드 인덱스, f는 우선순위
+  const push = (i, p) => { let c = heap.length; heap.push(i); f.push(p);
+    while (c > 0) { const q = (c - 1) >> 1; if (f[q] <= f[c]) break; [heap[q], heap[c]] = [heap[c], heap[q]]; [f[q], f[c]] = [f[c], f[q]]; c = q; } };
+  const pop = () => { const top = heap[0], li = heap.pop(), lf = f.pop();
+    if (heap.length) { heap[0] = li; f[0] = lf; let c = 0;
+      for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && f[l] < f[m]) m = l; if (r < heap.length && f[r] < f[m]) m = r; if (m === c) break;
+        [heap[m], heap[c]] = [heap[c], heap[m]]; [f[m], f[c]] = [f[c], f[m]]; c = m; } }
+    return top; };
+  AS.g[start] = 0; AS.stamp[start] = gen; AS.from[start] = -1; push(start, 0);
+  let best = start, bestH = 1e9, found = -1, visited = 0;
+  const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
+  while (heap.length && visited < 7000) {
+    const cur = pop();
+    if (AS.closed[cur] === gen) continue; AS.closed[cur] = gen; visited++;
+    const cx = cur % w, cy = (cur / w) | 0;
+    if (isGoal(cx, cy)) { found = cur; break; }
+    const h = H(cx, cy); if (h < bestH) { bestH = h; best = cur; }
+    for (let d = 0; d < 8; d++) {
+      const nx = cx + DX[d], ny = cy + DY[d];
+      if (!RTS.walkable(G, nx, ny)) continue;
+      if (d >= 4 && (!RTS.walkable(G, nx, cy) || !RTS.walkable(G, cx, ny))) continue; // 모서리 끼기 금지
+      const ni = ny * w + nx, cost = AS.g[cur] + (d >= 4 ? 1.414 : 1);
+      if (AS.stamp[ni] !== gen || cost < AS.g[ni]) { AS.stamp[ni] = gen; AS.g[ni] = cost; AS.from[ni] = cur; AS.closed[ni] = 0; push(ni, cost + H(nx, ny) * 1.02); }
+    }
+  }
+  const end = found >= 0 ? found : best, pts = [];
+  for (let c = end; c !== -1; c = AS.from[c]) pts.push([c % w + .5, ((c / w) | 0) + .5]);
+  pts.reverse();
+  if (found >= 0 && !rect) pts[pts.length - 1] = [goal.x, goal.y];
+  const out = []; let ax = sx, ay = sy, i = 0; // 끈 당기기 평활화
+  while (i < pts.length) {
+    let j = pts.length - 1;
+    while (j > i && !RTS.lineClear(G, ax, ay, pts[j][0], pts[j][1])) j--;
+    out.push(pts[j]); ax = pts[j][0]; ay = pts[j][1]; i = j + 1;
+  }
+  return out;
+};
+
+// 공간 해시 — 매 틱 재구성. 저장되지 않는다.
+RTS.rebuildGrid = function (G) {
+  for (const c of G._grid) c.length = 0;
+  for (const e of G.ents) { if (e.dead || e.team < 0) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
+};
+RTS.query = function (G, x, y, r, fn) {
+  const pad = r + 3, x0 = Math.max(0, (x - pad) >> 2), x1 = Math.min(G._cols - 1, (x + pad) >> 2), y0 = Math.max(0, (y - pad) >> 2), y1 = Math.min(G._rows - 1, (y + pad) >> 2);
+  for (let cy = y0; cy <= y1; cy++) for (let cx = x0; cx <= x1; cx++) { const c = G._grid[cy * G._cols + cx]; for (let i = 0; i < c.length; i++) fn(c[i]); }
+};
+
+// 시야: 8틱마다 사람 팀만 계산. vis=현재 보임, seen=한 번이라도 봄
+RTS.updateFog = function (G, force) {
+  if (G.nofog || (!force && G.tick % 8)) return;
+  for (const t of G.teams) {
+    if (t.ai) continue;
+    t.vis.fill(0);
+    for (const e of G.ents) {
+      if (e.team !== t.id || e.dead) continue;
+      const r = RTS.defs.entities[e.def].sight || 8, cx = e.x | 0, cy = e.y | 0, R = r * r;
+      for (let y = Math.max(0, cy - r); y <= Math.min(G.h - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(G.w - 1, cx + r); x++) {
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= R) { const i = y * G.w + x; t.vis[i] = 1; t.seen[i] = 1; }
+      }
+    }
+  }
+};
+RTS.visibleTo = (G, teamId, x, y) => { const t = G.teams[teamId]; return G.nofog || !t || !!t.vis[(y | 0) * G.w + (x | 0)]; };
+
+// 기본 맵 생성기: 데이터(암벽 원/선, 기지 위치)만 받아 180도 회전 대칭으로 찍는다.
+RTS.defs.mapgens.symmetric = function (spec, G) {
+  const w = spec.w, h = spec.h, tiles = new Array(w * h).fill(0);
+  const rng = () => RTS.rand(G);
+  const set = (x, y, v) => { if (x >= 0 && y >= 0 && x < w && y < h) { tiles[y * w + x] = v; tiles[(h - 1 - y) * w + (w - 1 - x)] = v; } };
+  const disc = (cx, cy, r, v) => { for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) set(x, y, v); };
+  const line = (a, b, c, d, t, v) => { const n = Math.ceil(Math.hypot(c - a, d - b)); for (let i = 0; i <= n; i++) disc(a + (c - a) * i / n, b + (d - b) * i / n, t + (v === 1 ? rng() * .9 : 0), v); };
+  for (const [x, y, r] of spec.sand || []) disc(x, y, r, 2);
+  for (const [x, y, r] of spec.rocks || []) { disc(x, y, r, 1); for (let i = 0; i < 6; i++) { const a = rng() * 6.28; disc(x + Math.cos(a) * r * .8, y + Math.sin(a) * r * .8, r * .45, 1); } }
+  for (const [a, b, c, d, t] of spec.walls || []) line(a, b, c, d, t, 1);
+  const half = spec.bases;
+  for (const b of half) disc(b.x, b.y, 10, 0);
+  for (const [a, b, c, d, t] of spec.lanes || []) line(a, b, c, d, t, 0);
+  for (let x = 0; x < w; x++) { set(x, 0, 1); }
+  for (let y = 0; y < h; y++) { set(0, y, 1); }
+  const nodes = [], bases = [], sites = [], posts = [];
+  for (const [x, y] of spec.posts || []) { disc(x, y, 3.5, 0); posts.push({ x, y }); posts.push({ x: w - x, y: h - y }); }
+  for (const [x, y] of spec.sites || []) { disc(x, y, 3.5, 0); sites.push({ x, y }); sites.push({ x: w - x, y: h - y }); }
+  const cx = w / 2, cy = h / 2;
+  half.forEach((b, i) => {
+    const dir = b.dir !== undefined ? b.dir : Math.atan2(b.y - cy, b.x - cx);
+    bases.push({ x: b.x, y: b.y, start: b.start }); bases.push({ x: w - b.x, y: h - b.y, start: b.start !== undefined ? 1 : undefined });
+    const add = (def, tx, ty, fw, fh) => { nodes.push({ def, tx, ty }); nodes.push({ def, tx: w - tx - fw, ty: h - ty - fh }); };
+    const ore = b.ore || 8;
+    for (let k = 0; k < ore; k++) { const a = dir + (k - (ore - 1) / 2) * .36, d = 6.6 + (k % 2) * .9; add('ore_node', Math.round(b.x + Math.cos(a) * d - 1), Math.round(b.y + Math.sin(a) * d - .5), 2, 1); }
+    add('vent', Math.round(b.x + Math.cos(dir + 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir + 2.05) * 7.5 - 1), 2, 2);
+    if (!b.oneVent) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
+  });
+  return { w, h, tiles, bases, nodes, sites, posts };
+};
+
+// sim.js — 엔티티, 스탯, 명령, 이동, 전투, 생산, 승패. 규칙 대부분은 여기 있다.
+const D = () => RTS.defs.entities;
+const defOf = e => RTS.defs.entities[e.def];
+RTS.defOf = defOf;
+const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+RTS.spawn = function (G, defId, team, x, y) {
+  const d = D()[defId];
+  const e = { id: G.nextId++, def: defId, team, x, y, px: x, py: y, hp: d.hp || 1, facing: 1.57, cd: 0, order: null, queue: [], buffs: [], cds: {} };
+  if (d.kind === 'building') { e.buildT = Math.round((d.time || 10) * RTS.HZ); e.built = 0; e.prod = []; e.rally = null; e.hp = Math.max(1, d.hp * .1); }
+  if (d.kind === 'unit') { e.cargo = 0; e.cargoType = null; e.path = null; e.pathI = 0; e.dest = null; e.destEnt = 0; e.needPath = false; e.stuck = 0; e.stuckN = 0; }
+  G.ents.push(e); G.byId[e.id] = e;
+  if (d.size) RTS.occupy(G, e, e.id);
+  if (d.kind === 'unit' && team >= 0) e.hp = RTS.stat(G, e, 'hp');
+  return e;
+};
+RTS.complete = e => defOf(e).kind !== 'building' || e.built >= e.buildT;
+
+// ── 스탯: 정의값 + 업그레이드(team.mods 캐시) + 버프 ──────────
+function modded(G, teamId, d, name, base) {
+  const t = G.teams[teamId]; if (!t) return base;
+  const key = d.id + ':' + name;
+  let m = t.mods[key];
+  if (!m) { m = { add: 0, mul: 1 };
+    for (const uid of Object.keys(t.upgrades)) for (const fx of RTS.defs.upgrades[uid].effects || []) {
+      if (fx.stat !== name || !(fx.tag === '*' || fx.id === d.id || (d.tags || []).includes(fx.tag))) continue;
+      m.add += fx.add || 0; m.mul *= fx.mul || 1;
+    }
+    t.mods[key] = m; }
+  return (base + m.add) * m.mul;
+}
+RTS.stat = function (G, e, name) {
+  const d = defOf(e); let v = modded(G, e.team, d, name, d[name] || 0);
+  for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  return v;
+};
+RTS.weapon = e => { const d = defOf(e); return (e.sieged && d.siegeWeapon) || d.weapon || null; };
+RTS.wStat = function (G, e, w, name) {
+  let v = modded(G, e.team, defOf(e), name, w[name] || 0);
+  for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  return v;
+};
+RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
+  const da = defOf(a), db = defOf(b), ra = da.r || 0;
+  if (db.size) { const r = RTS.rectOf(b), cx = Math.max(r.x0, Math.min(a.x, r.x0 + r.w)), cy = Math.max(r.y0, Math.min(a.y, r.y0 + r.h)); return Math.max(0, Math.hypot(a.x - cx, a.y - cy) - ra); }
+  return Math.max(0, dist(a, b) - ra - (db.r || 0));
+};
+RTS.canHit = (w, t) => { const air = !!defOf(t).air; return air ? w.air !== false : w.ground !== false; };
+
+// ── 명령 ───────────────────────────────────────────────────
+RTS.issue = function (G, u, order, queue) {
+  if (queue && (u.order || u.queue.length)) { u.queue.push(order); return; }
+  releaseNode(G, u); u.queue.length = 0; u.order = order; u.stuckN = 0;
+  if (!order) stopMove(u);
+};
+function nextOrder(G, u) { releaseNode(G, u); u.order = u.queue.shift() || null; if (!u.order) stopMove(u); }
+function stopMove(u) { u.path = null; u.dest = null; u.destEnt = 0; u.needPath = false; }
+function moveTo(G, u, x, y) {
+  if (u.dest && !u.destEnt && Math.abs(u.dest.x - x) + Math.abs(u.dest.y - y) < .2) return;
+  u.dest = { x, y }; u.destEnt = 0; u.needPath = true;
+}
+function moveToEnt(G, u, t) {
+  const fixed = !!defOf(t).size;
+  if (u.destEnt === t.id && (u.path || u.needPath) && (fixed || G.tick - (u.pathT || 0) < 14)) return;
+  if (u.destEnt === t.id && G.tick - (u.pathT || 0) < 10) return;
+  u.dest = { x: t.x, y: t.y }; u.destEnt = t.id; u.needPath = true;
+}
+RTS.goTo = moveToEnt;
+const arrived = u => !u.path && !u.needPath;
+function releaseNode(G, u) { if (u.claim) { const n = G.byId[u.claim]; if (n && n.busy === u.id) n.busy = 0; u.claim = 0; } }
+
+RTS.command = (G, team, cmd) => G.cmds.push(Object.assign({ team }, cmd));
+const mine = (G, team, ids) => ids.map(i => G.byId[i]).filter(e => e && !e.dead && e.team === team);
+function say(G, team, text, kind) { RTS.emit(G, 'notice', { team, text, kind }); }
+const canPay = (t, c = {}) => Object.keys(c).every(k => (t.res[k] || 0) >= c[k]);
+const pay = (t, c = {}, s = 1) => { for (const k of Object.keys(c)) t.res[k] = (t.res[k] || 0) - c[k] * s; };
+RTS.canPay = canPay;
+RTS.techOk = (t, d) => (d.requires || []).every(r => t.have[r] > 0 || t.upgrades[r]);
+function lack(G, team, t, c = {}) { for (const k of Object.keys(c)) if ((t.res[k] || 0) < c[k]) { say(G, team, k === 'ore' ? '광석이 부족합니다' : '에테르가 부족합니다', 'warn'); return true; } return false; }
+
+RTS.commands.order = function (G, team, c) {
+  for (const u of mine(G, team, c.ids)) {
+    if (defOf(u).kind !== 'unit' || defOf(u).uncontrollable) continue;
+    if (!c.order) { RTS.issue(G, u, null); continue; }
+    if (u.sieged && ['move', 'patrol'].includes(c.order.type)) continue;
+    const pos = c.spread && c.spread[u.id];
+    const o = Object.assign({}, c.order, pos ? { x: pos.x, y: pos.y } : null);
+    if (o.type === 'patrol') { o.ax = u.x; o.ay = u.y; }
+    RTS.issue(G, u, o, c.queue);
+  }
+};
+RTS.commands.train = function (G, team, c) {
+  const t = G.teams[team], b = G.byId[c.building], d = D()[c.unit];
+  if (!b || b.dead || b.team !== team || !RTS.complete(b) || b.prod.length >= 5 || !RTS.techOk(t, d)) return;
+  if (lack(G, team, t, d.cost)) return;
+  pay(t, d.cost); b.prod.push({ kind: 'unit', id: c.unit, t: 0, total: Math.round(d.time * RTS.HZ), started: false });
+};
+RTS.commands.research = function (G, team, c) {
+  const t = G.teams[team], b = G.byId[c.building], u = RTS.defs.upgrades[c.upgrade];
+  if (!b || b.dead || b.team !== team || !RTS.complete(b) || t.upgrades[u.id] || t.research[u.id] || !RTS.techOk(t, u)) return;
+  if (lack(G, team, t, u.cost)) return;
+  pay(t, u.cost); t.research[u.id] = 1; b.prod.push({ kind: 'upgrade', id: u.id, t: 0, total: Math.round(u.time * RTS.HZ), started: true });
+};
+RTS.commands.cancel = function (G, team, c) {
+  const t = G.teams[team], b = G.byId[c.building]; if (!b || b.team !== team) return;
+  if (!RTS.complete(b)) { pay(t, defOf(b).cost, -.75); RTS.kill(G, b, null, true); return; }
+  const p = b.prod.pop(); if (!p) return;
+  pay(t, (p.kind === 'unit' ? D()[p.id] : RTS.defs.upgrades[p.id]).cost, -1);
+  if (p.kind === 'upgrade') delete t.research[p.id];
+};
+RTS.commands.rally = function (G, team, c) { for (const b of mine(G, team, c.ids)) b.rally = { x: c.x, y: c.y, ent: c.ent || 0 }; };
+RTS.commands.ability = function (G, team, c) {
+  const ab = RTS.defs.abilities[c.ability];
+  for (const u of mine(G, team, c.ids)) {
+    if (!(defOf(u).abilities || []).includes(ab.id) || !RTS.abilityReady(G, u, ab)) continue;
+    if (ab.target === 'point') { RTS.issue(G, u, { type: 'cast', ability: ab.id, x: c.x, y: c.y }); if (c.one) break; }
+    else RTS.useAbility(G, u, ab, c);
+  }
+};
+RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]);
+RTS.useAbility = function (G, u, ab, c) { if (ab.use(G, u, c) !== false && ab.cooldown) u.cds[ab.id] = G.tick + Math.round(ab.cooldown * RTS.HZ); RTS.emit(G, 'ability', { e: u, ab }); };
+RTS.addBuff = function (G, u, id, sec, mods) { u.buffs = u.buffs.filter(b => b.id !== id); u.buffs.push({ id, until: G.tick + Math.round(sec * RTS.HZ), mods }); };
+
+RTS.canPlace = function (G, team, defId, tx, ty, margin = 0) {
+  const d = D()[defId], [w, h] = d.size;
+  if (d.placeOn) { const v = G.ents.find(e => e.def === d.placeOn && !e.dead && Math.round(e.x - 1) === tx && Math.round(e.y - 1) === ty); return v && !v.ext ? v : null; }
+  for (let y = -margin; y < h + margin; y++) for (let x = -margin; x < w + margin; x++) if (!RTS.walkable(G, tx + x, ty + y)) return null;
+  if (d.dropoff) for (const e of G.ents) if (e.team === -1 && !e.dead && RTS.edgeDist({ def: 'none_', x: tx + w / 2, y: ty + h / 2 }, e) < Math.max(w, h) / 2 + 1.5) return null;
+  return true;
+};
+D().none_ = { id: 'none_', r: 0 };
+RTS.commands.place = function (G, team, c) {
+  const t = G.teams[team], d = D()[c.def], ws = mine(G, team, c.ids);
+  if (!ws.length || !RTS.techOk(t, d)) return;
+  const ok = RTS.canPlace(G, team, c.def, c.tx, c.ty);
+  if (!ok) { say(G, team, '이 위치에는 건설할 수 없습니다', 'warn'); return; }
+  if (lack(G, team, t, d.cost)) return;
+  pay(t, d.cost);
+  const site = RTS.spawn(G, c.def, team, c.tx + d.size[0] / 2, c.ty + d.size[1] / 2);
+  if (d.placeOn) { site.vent = ok.id; ok.ext = site.id; }
+  RTS.issue(G, ws[0], { type: 'build', site: site.id }, c.queue);
+};
+
+// ── 유닛 행동 핸들러. 새 명령은 RTS.orders.xxx 추가로 끝난다. ──
+function fire(G, u, w, t) {
+  u.facing = Math.atan2(t.y - u.y, t.x - u.x);
+  u.cd = Math.round(RTS.wStat(G, u, w, 'cooldown') * RTS.HZ);
+  u.firedAt = G.tick;
+  const dmg = RTS.wStat(G, u, w, 'damage');
+  RTS.emit(G, 'shot', { e: u, t, w });
+  if (!w.speed) RTS.hit(G, t, t.x, t.y, dmg, w, u);
+  else G.projectiles.push({ x: u.x, y: u.y, sx: u.x, sy: u.y, tx: t.x, ty: t.y, target: t.id, dmg, speed: w.speed, team: u.team, wdef: u.def, sieged: !!u.sieged, src: u.id, art: w.art || 'bolt' });
+}
+RTS.hit = function (G, t, x, y, dmg, w, src) {
+  const team = src.team;
+  if (w.splash) RTS.query(G, x, y, w.splash, o => {
+    if (o.dead || o.team === team || o.team < 0 || !RTS.canHit(w, o)) return;
+    const d = RTS.edgeDist({ def: 'none_', x, y }, o);
+    if (d <= w.splash) RTS.damage(G, o, dmg * (d < w.splash / 2 ? 1 : .5), src);
+  }); if (w.splash && t && t.team < 0 && !t.dead) RTS.damage(G, t, dmg, src); // 중립 회사 거점은 공간 해시에 없다
+  if (!w.splash && t && !t.dead) RTS.damage(G, t, dmg + ((w.vs || {})[(defOf(t).tags || []).find(k => (w.vs || {})[k])] || 0), src);
+  RTS.emit(G, 'impact', { x, y, w, team });
+};
+RTS.damage = function (G, t, dmg, src) {
+  if (t.dead) return;
+  t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
+  if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
+  if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
+  if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src });
+  if (src && !src.dead && defOf(t).kind === 'unit' && !t.order && RTS.weapon(t) && !defOf(t).passive) t.order = { type: 'amove', x: t.x, y: t.y };
+  if (t.hp <= 0) RTS.kill(G, t, src);
+};
+RTS.kill = function (G, e, src, silent) {
+  if (e.dead) return; e.dead = true;
+  const d = defOf(e);
+  if (d.size) { RTS.occupy(G, e, 0); if (e.vent) { const v = G.byId[e.vent]; if (v && !v.dead) { v.ext = 0; RTS.occupy(G, v, v.id); } } }
+  if (d.kind === 'unit') releaseNode(G, e);
+  if (e.team >= 0 && !silent) G.teams[e.team].stats.lost++;
+  if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
+  if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
+  if (!silent) RTS.emit(G, 'death', { e });
+};
+
+RTS.scan = function (G, u, w, r) {
+  let best = null, bs = -1e9;
+  RTS.query(G, u.x, u.y, r, t => {
+    if (t.dead || t.team === u.team || t.team < 0 || t.downUntil > G.tick || !RTS.canHit(w, t)) return;
+    const d = RTS.edgeDist(u, t); if (d > r) return;
+    const td = defOf(t), s = (td.weapon ? (td.kind === 'unit' ? 3 : 2.4) : td.kind === 'unit' ? 2 : 1) * 100 - d * 8;
+    if (s > bs) { bs = s; best = t; }
+  });
+  return best;
+};
+function engage(G, u, t, chase) {
+  const w = RTS.weapon(u); if (!w || !RTS.canHit(w, t)) return false;
+  const rng = RTS.wStat(G, u, w, 'range');
+  if (RTS.edgeDist(u, t) <= rng + .05) {
+    stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
+    if (u.cd <= 0) fire(G, u, w, t);
+    return true;
+  }
+  if (chase) moveToEnt(G, u, t);
+  return chase;
+}
+function autoTarget(G, u) {
+  const w = RTS.weapon(u); if (!w) return null;
+  const cur = u.tgt && G.byId[u.tgt];
+  if (cur && !cur.dead && RTS.edgeDist(u, cur) <= (defOf(u).aggro || 8) + 2 && (G.tick + u.id) % 12) return cur;
+  if ((G.tick + u.id) % 6 && !cur) return null;
+  const t = RTS.scan(G, u, w, Math.max(defOf(u).aggro || 8, RTS.wStat(G, u, w, 'range')));
+  u.tgt = t ? t.id : 0; return t;
+}
+function tryHeal(G, u, chase) {
+  const h = defOf(u).heal; if (!h) return false;
+  const cur = u.tgt && G.byId[u.tgt];
+  let t = cur && !cur.dead && cur.team === u.team && cur.hp < RTS.stat(G, cur, 'hp') ? cur : null;
+  if (!t && (G.tick + u.id) % 8 === 0) {
+    let bd = 1e9;
+    RTS.query(G, u.x, u.y, 8, o => { if (o.dead || o.id === u.id || o.team !== u.team || defOf(o).kind !== 'unit' || !(defOf(o).tags || []).includes(h.tag) || o.hp >= RTS.stat(G, o, 'hp')) return; const d = dist(u, o); if (d < bd) { bd = d; t = o; } });
+    u.tgt = t ? t.id : 0;
+  }
+  if (!t) return false;
+  if (RTS.edgeDist(u, t) <= h.range) { stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
+    if (u.cd <= 0) { u.cd = Math.round(h.cooldown * RTS.HZ); t.hp = Math.min(RTS.stat(G, t, 'hp'), t.hp + h.amount); RTS.emit(G, 'heal', { e: u, t }); } return true; }
+  if (chase) { moveToEnt(G, u, t); return true; }
+  return false;
+}
+Object.assign(RTS.orders, {
+  move(G, u, o) { moveTo(G, u, o.x, o.y); if (arrived(u) && u.dest === null) nextOrder(G, u); else if (arrived(u)) { u.dest = null; nextOrder(G, u); } },
+  amove(G, u, o) {
+    if (tryHeal(G, u, true)) return;
+    const t = autoTarget(G, u);
+    if (t && engage(G, u, t, true)) return;
+    if (Math.hypot(u.x - o.x, u.y - o.y) < .8) { nextOrder(G, u); return; }
+    moveTo(G, u, o.x, o.y); if (arrived(u)) { u.dest = null; nextOrder(G, u); }
+  },
+  patrol(G, u, o) { const t = autoTarget(G, u); if (t && engage(G, u, t, true)) return;
+    moveTo(G, u, o.x, o.y); if (arrived(u) || Math.hypot(u.x - o.x, u.y - o.y) < .8) { u.dest = null; [o.x, o.ax] = [o.ax, o.x]; [o.y, o.ay] = [o.ay, o.y]; } },
+  hold(G, u) { stopMove(u); const t = autoTarget(G, u); if (t) engage(G, u, t, false); },
+  attack(G, u, o) { const t = G.byId[o.target]; if (!t || t.dead || t.downUntil > G.tick) { stopMove(u); nextOrder(G, u); return; } engage(G, u, t, true); },
+  cast(G, u, o) { const ab = RTS.defs.abilities[o.ability];
+    if (Math.hypot(u.x - o.x, u.y - o.y) > ab.range) { moveTo(G, u, o.x, o.y); return; }
+    stopMove(u); if (RTS.abilityReady(G, u, ab)) RTS.useAbility(G, u, ab, o); nextOrder(G, u); },
+  gather(G, u, o) {
+    const d = defOf(u); let n = G.byId[o.node];
+    const stuff = n && !n.dead && (n.amount > 0 || (n.vent && RTS.complete(n) && G.byId[n.vent].amount > 0));
+    if (!stuff && (o.phase || 'go') === 'go') { const prev = n || u; const r = RTS.nearestNode(G, prev.x, prev.y, 'ore', 14, n && n.vent ? 0 : 0); if (!r) { nextOrder(G, u); return; } o.node = r.id; return; }
+    o.phase = o.phase || (u.cargo >= d.carry ? 'back' : 'go');
+    if (o.phase === 'go') {
+      moveToEnt(G, u, n);
+      if (RTS.edgeDist(u, n) < .55) {
+        stopMove(u);
+        if (n.busy && n.busy !== u.id && G.byId[n.busy] && !G.byId[n.busy].dead) { // 사용 중이면 옆 광맥으로
+          if (!n.vent && (G.tick + u.id) % 10 === 0) { const r = RTS.nearestNode(G, u.x, u.y, 'ore', 5, n.id, true); if (r) o.node = r.id; } return; }
+        n.busy = u.id; u.claim = n.id; o.phase = 'mine'; o.t = Math.round((n.vent ? 1.5 : 2.2) * RTS.HZ);
+        u.facing = Math.atan2(n.y - u.y, n.x - u.x);
+      } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
+    } else if (o.phase === 'mine') {
+      if (--o.t > 0) { u.mining = G.tick; return; }
+      const src = n.vent ? G.byId[n.vent] : n, take = Math.min(src.amount, n.vent ? 4 : 5);
+      src.amount -= take; u.cargo = take; u.cargoType = n.vent ? 'gas' : 'ore';
+      releaseNode(G, u); o.phase = 'back';
+      if (src.amount <= 0 && !n.vent) { RTS.kill(G, n, null, true); }
+    } else {
+      const drop = RTS.nearestDrop(G, u);
+      if (!drop) { return; }
+      moveToEnt(G, u, drop);
+      if (RTS.edgeDist(u, drop) < .55) {
+        stopMove(u); const t = G.teams[u.team], amt = u.cargo * t.inc;
+        t.res[u.cargoType] = (t.res[u.cargoType] || 0) + amt; t.stats[u.cargoType] += u.cargo; u.cargo = 0; o.phase = 'go';
+      } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
+    }
+  },
+  build(G, u, o) {
+    const s = G.byId[o.site];
+    if (!s || s.dead || RTS.complete(s)) {
+      if (s && !s.dead && defOf(s).placeOn) { RTS.issue(G, u, { type: 'gather', node: s.id }); return; }
+      nextOrder(G, u); if (!u.order && !G.teams[u.team].ai) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } return; }
+    moveToEnt(G, u, s);
+    if (RTS.edgeDist(u, s) < .7) { stopMove(u);
+      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
+      else { s.builder = G.tick; u.building = G.tick; }
+    } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
+  },
+});
+RTS.nearestNode = function (G, x, y, type, maxD, skip, freeOnly) {
+  let best = null, bd = maxD * maxD;
+  for (const e of G.ents) {
+    if (e.team !== -1 || e.dead || e.id === skip || defOf(e).resource !== type || (freeOnly && e.busy)) continue;
+    const d = (e.x - x) ** 2 + (e.y - y) ** 2; if (d < bd) { bd = d; best = e; }
+  }
+  return best;
+};
+RTS.nearestDrop = function (G, u) {
+  let best = null, bd = 1e12;
+  for (const e of G.ents) { if (e.team !== u.team || e.dead || !defOf(e).dropoff || !RTS.complete(e)) continue; const d = (e.x - u.x) ** 2 + (e.y - u.y) ** 2; if (d < bd) { bd = d; best = e; } }
+  return best;
+};
+
+// ── 건물 틱 ────────────────────────────────────────────────
+function runBuilding(G, b) {
+  const d = defOf(b), t = G.teams[b.team];
+  if (b.built < b.buildT) {
+    const on = RTS.defs.factions[t.faction].selfBuild ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
+    if (on) { b.built++; b.hp = Math.min(RTS.stat(G, b, 'hp'), b.hp + d.hp * .9 / b.buildT);
+      if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); say(G, b.team, d.name + ' 건설 완료', 'ok'); } }
+    return;
+  }
+  if (d.weapon) { if (b.cd > 0) b.cd--; const w = d.weapon, tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, w, 'range') && b.cd <= 0) fire(G, b, w, tg); }
+  const p = b.prod[0]; if (!p) return;
+  if (!p.started) {
+    const need = D()[p.id].supply || 0;
+    if (t.sup + need > t.cap) { if (G.tick % 100 === 0) say(G, b.team, '보급이 부족합니다. 보급 건물을 지으세요', 'warn'); return; }
+    p.started = true; t.sup += need;
+  }
+  if (++p.t < p.total) return;
+  b.prod.shift();
+  if (p.kind === 'upgrade') { t.upgrades[p.id] = 1; delete t.research[p.id]; t.mods = {}; say(G, b.team, RTS.defs.upgrades[p.id].name + ' 연구 완료', 'ok'); RTS.emit(G, 'researched', { team: b.team, id: p.id }); return; }
+  const r = RTS.rectOf(b), side = b.rally ? Math.atan2(b.rally.y - b.y, b.rally.x - b.x) : 1.57;
+  const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.nearestFree(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
+  const u = RTS.spawn(G, p.id, b.team, pos.x, pos.y); t.stats.made++;
+  const ud = D()[p.id]; RTS.emit(G, 'trained', { e: u });
+  if (ud.gather) { const n = (b.rally && b.rally.ent && G.byId[b.rally.ent]) || RTS.nearestNode(G, b.x, b.y, 'ore', 16); if (n && !n.dead) u.order = { type: 'gather', node: n.id }; else if (b.rally) u.order = { type: 'move', x: b.rally.x, y: b.rally.y }; }
+  else if (b.rally) u.order = { type: 'amove', x: b.rally.x, y: b.rally.y };
+}
+
+// ── 이동 ───────────────────────────────────────────────────
+function pathFor(G, u) {
+  const d = defOf(u); u.needPath = false; u.pathT = G.tick; u.stuck = 0;
+  const t = u.destEnt && G.byId[u.destEnt];
+  if (d.air) { u.path = [[u.dest.x, u.dest.y]]; u.pathI = 0; return; }
+  if (t && t.dead) { stopMove(u); return; }
+  let goal;
+  if (t && defOf(t).size) { const r = RTS.rectOf(t); goal = { x0: Math.round(r.x0) - 1, y0: Math.round(r.y0) - 1, x1: Math.round(r.x0) + r.w, y1: Math.round(r.y0) + r.h }; }
+  else { const f = RTS.nearestFree(G, u.dest.x, u.dest.y); u.dest = f; goal = f; }
+  if (!goal.x0 && goal.x0 !== 0 && RTS.lineClear(G, u.x, u.y, goal.x, goal.y)) { u.path = [[goal.x, goal.y]]; u.pathI = 0; return; }
+  u.path = RTS.findPath(G, u.x, u.y, goal); u.pathI = 0;
+  if (!u.path.length) u.path = null;
+}
+function moveUnits(G) {
+  let budget = 30;
+  for (const u of G.ents) {
+    if (u.dead || defOf(u).kind !== 'unit') continue;
+    u.px = u.x; u.py = u.y;
+    if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
+    if (!u.path || u.stunned > G.tick) continue;
+    const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
+    if (d <= step) { u.x = wp[0]; u.y = wp[1]; if (++u.pathI >= u.path.length) u.path = null; }
+    else { u.x += dx / d * step; u.y += dy / d * step; u.facing = Math.atan2(dy, dx); }
+  }
+  separate(G);
+  for (const u of G.ents) { // 막힘 감지
+    if (u.dead || !u.path) continue;
+    const moved = Math.hypot(u.x - u.px, u.y - u.py), step = RTS.stat(G, u, 'speed') / RTS.HZ;
+    if (moved < step * .3) u.stuck++; else u.stuck = Math.max(0, u.stuck - 1);
+    const last = u.path[u.path.length - 1];
+    if (u.stuck > 12 && !u.destEnt && Math.hypot(last[0] - u.x, last[1] - u.y) < 2.4) { u.path = null; continue; } // 무리 도착
+    if (u.stuck > 30) { u.stuck = 0; u.stuckN++; if (u.stuckN > 3) { u.path = null; u.stuckN = 0; } else u.needPath = true; }
+  }
+}
+function separate(G) {
+  RTS.rebuildGrid(G);
+  for (const a of G.ents) {
+    const da = defOf(a); if (a.dead || da.kind !== 'unit') continue;
+    const noPush = a.order && a.order.type === 'gather';
+    if (noPush && da.gather) { fixPos(G, a); continue; }
+    RTS.query(G, a.x, a.y, 1.2, b => {
+      if (b === a || b.dead || b.id < a.id) return;
+      const db = defOf(b); if (db.kind !== 'unit' || !!da.air !== !!db.air) return;
+      if (db.gather && b.order && b.order.type === 'gather') return;
+      const min = (da.r + db.r) * .95, dx = b.x - a.x, dy = b.y - a.y; let dd = Math.hypot(dx, dy);
+      if (dd >= min) return;
+      const nx = dd > .01 ? dx / dd : Math.cos(a.id), ny = dd > .01 ? dy / dd : Math.sin(a.id), push = (min - dd) * .5;
+      const ha = a.order && a.order.type === 'hold' || a.sieged, hb = b.order && b.order.type === 'hold' || b.sieged;
+      if (!ha) { a.x -= nx * push; a.y -= ny * push; }
+      if (!hb) { b.x += nx * push; b.y += ny * push; }
+    });
+    fixPos(G, a);
+  }
+}
+function fixPos(G, u) {
+  if (defOf(u).air) { u.x = Math.max(.5, Math.min(G.w - .5, u.x)); u.y = Math.max(.5, Math.min(G.h - .5, u.y)); return; }
+  if (RTS.walkable(G, u.x | 0, u.y | 0)) return;
+  if (RTS.walkable(G, u.px | 0, u.y | 0)) { u.x = u.px; return; }
+  if (RTS.walkable(G, u.x | 0, u.py | 0)) { u.y = u.py; return; }
+  if (RTS.walkable(G, u.px | 0, u.py | 0)) { u.x = u.px; u.y = u.py; return; }
+  const f = RTS.nearestFree(G, u.x, u.y); u.x = f.x; u.y = f.y;
+}
+
+// ── 시스템 파이프라인 등록 ─────────────────────────────────
+RTS.census = function (G) {
+  for (const t of G.teams) { t.sup = 0; t.cap = 0; t.have = {}; t.alive = 0; }
+  for (const e of G.ents) {
+    if (e.dead || e.team < 0) continue;
+    const d = defOf(e), t = G.teams[e.team];
+    if (d.site) continue; // 회사 거점은 승패와 보급에 포함하지 않는다
+    if (d.kind === 'unit') t.sup += d.supply || 0;
+    else { t.alive++;
+      for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += D()[p.id].supply || 0;
+      if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += d.provides || 0; } }
+  }
+  for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), 100);
+};
+RTS.systems.push(
+  { id: 'commands', run(G) { const q = G.cmds; G.cmds = []; for (const c of q) (RTS.commands[c.type] || (() => {}))(G, c.team, c); } },
+  { id: 'census', run: G => RTS.census(G) },
+  { id: 'ai', run(G) { for (const t of G.teams) if (t.ai) RTS.aiThink(G, t); } },
+  { id: 'entities', run(G) {
+    for (const e of G.ents) {
+      if (e.dead) continue;
+      const d = defOf(e); if (d.kind === 'resource') continue;
+      if (e.buffs.length) e.buffs = e.buffs.filter(b => b.until > G.tick);
+      if (d.site) continue; // 거점 상태는 market 시스템이 관리한다
+      if (d.kind === 'building') { runBuilding(G, e); continue; }
+      if (e.cd > 0) e.cd--;
+      if (e.stunned > G.tick) continue;
+      if (d.regen && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + d.regen);
+      if (e.order) RTS.orders[e.order.type](G, e, e.order);
+      else if (!d.passive) { if (tryHeal(G, e, true)) continue;
+        if (e.sieged || d.immobile) { const t = autoTarget(G, e); if (t) engage(G, e, t, false); continue; }
+        const t = autoTarget(G, e); if (t) e.order = { type: 'amove', x: e.x, y: e.y }; }
+    }
+  } },
+  { id: 'movement', run: moveUnits },
+  { id: 'projectiles', run(G) {
+    G.projectiles = G.projectiles.filter(p => {
+      const t = G.byId[p.target]; if (t && !t.dead) { p.tx = t.x; p.ty = t.y; }
+      const d = Math.hypot(p.tx - p.x, p.ty - p.y), step = p.speed / RTS.HZ;
+      if (d > step) { p.x += (p.tx - p.x) / d * step; p.y += (p.ty - p.y) / d * step; return true; }
+      const de = D()[p.wdef], w = (p.sieged && de.siegeWeapon) || de.weapon;
+      RTS.hit(G, t, p.tx, p.ty, p.dmg, w, G.byId[p.src] || { team: p.team, dead: true });
+      return false;
+    });
+  } },
+  { id: 'cleanup', run(G) {
+    if (G.ents.some(e => e.dead)) { G.ents = G.ents.filter(e => { if (e.dead) delete G.byId[e.id]; return !e.dead; }); }
+  } },
+  { id: 'fog', run: G => RTS.updateFog(G) },
+  { id: 'victory', run(G) {
+    if (G.tick % 10) return;
+    RTS.census(G);
+    const live = G.teams.filter(t => t.alive > 0);
+    if (live.length <= 1) { G.over = { winner: live[0] ? live[0].id : -1, tick: G.tick }; RTS.emit(G, 'gameover', G.over); }
+  } },
+);
+
+// market.js — 공유 주식시장. 회사 4곳, 총 100주씩, 나와 AI가 같은 물량을 두고 경쟁한다.
+// 주가: 평균회귀 + 무작위 변동 + 매매 충격. 배당: 30초마다 실적에 비례. 51주 이상이면 경영권.
+RTS.MARKET = { shares: 100, control: 51, divSec: 30, impact: .008, fee: .03, ctrlBonus: 1.5, minority: .5, downSec: 40 };
+RTS.initMarket = function (G) {
+  const m = G.market = { cos: {}, news: [], nextEvent: 45 * RTS.HZ, nextDiv: RTS.MARKET.divSec * RTS.HZ };
+  Object.values(RTS.defs.companies).forEach((c, i) => {
+    const s = G.siteSpots[i], d = RTS.defs.entities[c.site]; let site = 0;
+    if (s) { let tx = Math.round(s.x - 1.5), ty = Math.round(s.y - 1.5), ok = false;
+      for (let r = 0; r < 10 && !ok; r++) for (let dy = -r; dy <= r && !ok; dy++) for (let dx = -r; dx <= r && !ok; dx++) if (RTS.canPlace(G, -1, c.site, tx + dx, ty + dy, 1)) { tx += dx; ty += dy; ok = true; }
+      const e = RTS.spawn(G, c.site, -1, tx + 1.5, ty + 1.5); e.built = e.buildT; e.hp = d.hp; e.company = c.id; site = e.id; }
+    m.cos[c.id] = { id: c.id, price: c.price, earn: 1, open: c.price, hist: [c.price], shares: G.teams.map(() => 0), free: RTS.MARKET.shares, site, owner: -1 };
+  });
+};
+RTS.fair = (c) => RTS.defs.companies[c.id].price * c.earn;
+RTS.dividend = (c) => RTS.defs.companies[c.id].price * RTS.defs.companies[c.id].yield * c.earn;
+function tell(G, text, kind) { for (const t of G.teams) RTS.emit(G, 'notice', { team: t.id, text, kind }); }
+function news(G, text) { const m = G.market; m.news.unshift({ t: G.tick, text }); m.news.length = Math.min(m.news.length, 6); tell(G, text, 'market'); }
+function syncControl(G, c) {
+  let owner = -1; c.shares.forEach((n, i) => { if (n >= RTS.MARKET.control) owner = i; });
+  if (owner === c.owner) return;
+  c.owner = owner; const e = G.byId[c.site], d = RTS.defs.companies[c.id];
+  if (e) { e.team = owner; e.hitAt = 0; }
+  news(G, owner < 0 ? `${d.name} 경영권 해제` : `${G.teams[owner].name}, ${d.name} 인수`);
+  RTS.emit(G, 'takeover', { company: c.id, owner });
+}
+// 체결가를 미리 계산한다. UI 표시와 실제 체결이 같은 식을 쓴다.
+RTS.quote = function (c, qty) {
+  const M = RTS.MARKET; let p = c.price, sum = 0, n = Math.abs(qty);
+  for (let i = 0; i < n; i++) { sum += p; p *= qty > 0 ? 1 + M.impact : 1 - M.impact; }
+  return { total: qty > 0 ? sum : sum * (1 - M.fee), end: p };
+};
+RTS.commands.trade = function (G, team, cmd) {
+  const c = G.market.cos[cmd.company], t = G.teams[team]; if (!c) return;
+  let qty = cmd.qty | 0;
+  if (qty > 0) { qty = Math.min(qty, c.free);
+    while (qty > 0 && RTS.quote(c, qty).total > t.res.ore) qty--;
+    if (qty <= 0) { RTS.emit(G, 'notice', { team, text: c.free ? '광석이 부족합니다' : '시장에 남은 주식이 없습니다', kind: 'warn' }); return; }
+    const q = RTS.quote(c, qty); t.res.ore -= q.total; c.price = q.end; c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) - q.total;
+  } else if (qty < 0) { qty = -Math.min(-qty, c.shares[team]); if (!qty) return;
+    const q = RTS.quote(c, qty); t.res.ore += q.total; c.price = Math.max(1, q.end); c.shares[team] += qty; c.free -= qty; t.stats.trade = (t.stats.trade || 0) + q.total;
+  } else return;
+  syncControl(G, c); RTS.emit(G, 'traded', { team, company: c.id, qty });
+};
+RTS.siteHit = function (G, e, dmg, src) {
+  const c = G.market.cos[e.company], d = RTS.defs.entities[e.def];
+  c.price = Math.max(1, c.price * (1 - Math.min(.02, dmg / d.hp * .5)));
+  if (e.team >= 0) RTS.emit(G, 'attacked', { e, src });
+  if (e.hp > 0) return;
+  e.hp = 1; e.downUntil = G.tick + RTS.MARKET.downSec * RTS.HZ; c.earn *= .75;
+  news(G, RTS.defs.companies[c.id].name + ' 거점 피습, 가동 중단'); RTS.emit(G, 'siteDown', { e });
+};
+RTS.systems.splice(RTS.systems.findIndex(s => s.id === 'cleanup'), 0, { id: 'market', run(G) {
+  if (!G.market) RTS.initMarket(G);
+  const m = G.market, M = RTS.MARKET;
+  if (G.tick % RTS.HZ) return;
+  for (const c of Object.values(m.cos)) {
+    const d = RTS.defs.companies[c.id], e = G.byId[c.site];
+    const g = (RTS.rand(G) + RTS.rand(G) + RTS.rand(G) - 1.5) * 1.15; // 근사 정규분포
+    const fair = RTS.fair(c) * (e && e.downUntil > G.tick ? .6 : 1);
+    c.price = Math.max(1, c.price + (fair - c.price) * .02 + c.price * d.vol * g);
+    c.earn += (1 - c.earn) * .004;
+    if (G.tick % (RTS.HZ * 5) === 0) { c.hist.push(+c.price.toFixed(2)); if (c.hist.length > 72) c.hist.shift(); }
+    if (e) { const was = e.downUntil; const hp = RTS.defs.entities[e.def].hp;
+      if (e.downUntil > G.tick) e.hp = Math.min(hp, e.hp + hp / M.downSec);
+      else { if (was) { e.downUntil = 0; news(G, d.name + ' 거점 가동 재개'); } if (e.hp < hp && G.tick - (e.hitAt || 0) > 100) e.hp = Math.min(hp, e.hp + hp * .01); } }
+  }
+  if (G.tick >= m.nextDiv) { m.nextDiv += M.divSec * RTS.HZ;
+    for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id], e = G.byId[c.site]; if (e && e.downUntil > G.tick) continue;
+      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? M.ctrlBonus : M.minority, t = G.teams[i], pay = n * RTS.dividend(c) * k * (1 + RTS.allyPerk(G, i, 'divBonus'));
+        t.res[d.resource] = (t.res[d.resource] || 0) + pay; t.stats.div = (t.stats.div || 0) + pay; }); }
+    RTS.emit(G, 'dividend', {}); }
+  if (G.tick >= m.nextEvent) { m.nextEvent = G.tick + Math.round((40 + RTS.rand(G) * 40) * RTS.HZ);
+    const list = Object.values(RTS.defs.marketEvents); let r = RTS.rand(G) * list.reduce((s, e) => s + e.w, 0), ev = list[0];
+    for (const x of list) { r -= x.w; if (r <= 0) { ev = x; break; } }
+    for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id]; if (ev.scope === 'all' || ev.scope === d.resource || ev.scope === c.id) { c.earn = Math.max(.3, Math.min(2.5, c.earn * ev.earn)); c.price = Math.max(1, c.price * ev.price); } }
+    news(G, ev.text); }
+} });
+// AI 투자: 저평가 종목을 사고, 과열되면 팔고, 과반이 가까우면 인수까지 밀어붙인다.
+RTS.aiInvest = function (G, t, diff, ready) {
+  const cos = Object.values(G.market.cos), cmd = c => RTS.command(G, t.id, c);
+  for (const c of cos) if (c.shares[t.id] && c.owner !== t.id && c.price > RTS.fair(c) * 1.3) { cmd({ type: 'trade', company: c.id, qty: -5 }); return; }
+  const S = t.aiState; if (!ready || t.res.ore < diff.invest || G.tick < (S.nextInvest || 120 * RTS.HZ)) return;
+  S.nextInvest = G.tick + diff.investEvery * RTS.HZ;
+  const foe = c => c.shares.some((n, i) => i !== t.id && n > 25);
+  const score = c => RTS.dividend(c) / c.price * (RTS.defs.companies[c.id].resource === 'gas' ? 1.5 : 1) + (foe(c) ? .05 : 0); // 에테르 배당은 광석보다 비싸게 친다
+  const chase = cos.find(c => c.owner < 0 && c.shares[t.id] >= 30 && c.free > 0);
+  const pick = chase || cos.filter(c => c.free > 0 && c.owner < 0 && c.price < RTS.fair(c) * 1.1).sort((a, b) => score(b) - score(a))[0];
+  if (pick) cmd({ type: 'trade', company: pick.id, qty: 5 });
+};
+
+// diplomacy.js — 중립 진영 자유상단. 지부 위치는 게임마다 섞이고, 정찰로 찾아야 거래할 수 있다.
+// 동맹 신청은 베팅이다: 동맹금을 걸고 확률 판정을 받으며, 거절되면 동맹금을 잃는다.
+RTS.DIP = { min: 100, full: 600, firstBonus: .15, firstOre: 100, failTrust: .05, cooldown: 45, cap: .9, stakeYield: .06, downSec: 60, spread: .2, allySpread: .1, lot: 50 };
+RTS.initDip = function (G) {
+  const m = G.dip = { list: {}, rate: 2 }, ids = Object.keys(RTS.defs.branches), spots = (G.postSpots || []).slice();
+  for (let i = spots.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [spots[i], spots[j]] = [spots[j], spots[i]]; }
+  ids.forEach((id, i) => { const s = spots[i]; if (!s) return;
+    let tx = Math.round(s.x - 1.5), ty = Math.round(s.y - 1.5), ok = false;
+    for (let r = 0; r < 10 && !ok; r++) for (let dy = -r; dy <= r && !ok; dy++) for (let dx = -r; dx <= r && !ok; dx++) if (RTS.canPlace(G, -1, 'n_post', tx + dx, ty + dy, 1)) { tx += dx; ty += dy; ok = true; }
+    const e = RTS.spawn(G, 'n_post', -1, tx + 1.5, ty + 1.5); e.built = e.buildT; e.hp = RTS.defOf(e).hp; e.branch = id;
+    m.list[id] = { id, site: e.id, ally: -1, stake: 0, finder: -1, found: G.teams.map(() => false), trust: G.teams.map(() => 0), wait: G.teams.map(() => 0), lockUntil: 0, nextCaravan: 0 }; });
+};
+RTS.branchKnown = (G, team, e) => team < 0 || G.nofog || !e.branch || (G.dip.list[e.branch].found[team]);
+RTS.tradeSpread = function (G, team) { const D = RTS.DIP, L = Object.values(G.dip.list).filter(b => b.ally === team); if (!L.length) return D.spread; return Math.min(...L.map(b => RTS.defs.branches[b.id].perk.spread ?? D.allySpread)); };
+RTS.allyPerk = function (G, team, key) { let v = 0; for (const b of Object.values((G.dip || { list: {} }).list)) if (b.ally === team) v += RTS.defs.branches[b.id].perk[key] || 0; return v; };
+RTS.allyChance = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], k = Math.max(0, Math.min(1, (stake - D.min) / (D.full - D.min)));
+  return Math.min(D.cap, d.base + k * .5 + (b.finder === team ? D.firstBonus : 0) + b.trust[team]); };
+RTS.allyBlock = function (G, team, id, stake) { const D = RTS.DIP, b = G.dip.list[id], d = RTS.defs.branches[id], t = G.teams[team];
+  if (!b.found[team]) return '아직 찾지 못한 지부입니다';
+  if (b.ally === team) return '이미 동맹입니다';
+  if (b.ally >= 0) return '상대가 먼저 동맹을 맺었습니다';
+  if (b.lockUntil > G.tick) return '지부 복구 중입니다';
+  if (b.wait[team] > G.tick) return '재신청 대기 ' + Math.ceil((b.wait[team] - G.tick) / RTS.HZ) + '초';
+  if (!d.check(G, t)) return '조건 미달: ' + d.need;
+  if (stake < D.min) return '동맹금은 최소 ' + D.min + '입니다';
+  if (t.res.ore < stake) return '광석이 부족합니다';
+  return null; };
+const dipTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind });
+RTS.commands.ally = function (G, team, c) {
+  const block = RTS.allyBlock(G, team, c.branch, c.stake); if (block) { dipTell(G, team, block, 'warn'); return; }
+  const D = RTS.DIP, b = G.dip.list[c.branch], d = RTS.defs.branches[c.branch], t = G.teams[team], ok = RTS.rand(G) < RTS.allyChance(G, team, c.branch, c.stake);
+  t.res.ore -= c.stake; b.wait[team] = G.tick + D.cooldown * RTS.HZ;
+  if (!ok) { b.trust[team] = Math.min(.25, b.trust[team] + D.failTrust); t.stats.burned = (t.stats.burned || 0) + c.stake; dipTell(G, team, `${d.name}가 거절했습니다. 동맹금 ${c.stake} 손실`, 'warn'); RTS.emit(G, 'allyResult', { team, id: b.id, ok }); return; }
+  b.ally = team; b.stake = c.stake; b.nextCaravan = G.tick + 20 * RTS.HZ; const e = G.byId[b.site]; e.team = team;
+  for (const o of G.teams) dipTell(G, o.id, o.id === team ? `${d.name}와 동맹 성립` : `${t.name}, ${d.name}와 동맹`, o.id === team ? 'ok' : 'market');
+  for (let i = 0; i < (d.perk.mercs || 0); i++) { const p = RTS.nearestFree(G, e.x, e.y + 3); RTS.spawn(G, 'n_merc', team, p.x + (i % 3) * .3, p.y + i * .15); }
+  RTS.emit(G, 'allyResult', { team, id: b.id, ok });
+};
+RTS.commands.fund = function (G, team, c) { const b = G.dip.list[c.branch], t = G.teams[team]; if (!b || b.ally !== team) return; if (t.res.ore < c.amount) { dipTell(G, team, '광석이 부족합니다', 'warn'); return; } t.res.ore -= c.amount; b.stake += c.amount; };
+RTS.commands.barter = function (G, team, c) { // buy: 광석→에테르, 아니면 에테르→광석
+  const D = RTS.DIP, t = G.teams[team], b = G.dip.list[c.branch]; if (!b || !b.found[team] || (b.ally >= 0 && b.ally !== team) || b.lockUntil > G.tick) { dipTell(G, team, '이 지부와는 거래할 수 없습니다', 'warn'); return; }
+  const s = RTS.tradeSpread(G, team), rate = G.dip.rate;
+  if (c.buy) { const cost = Math.ceil(D.lot * rate * (1 + s)); if (t.res.ore < cost) { dipTell(G, team, '광석이 부족합니다', 'warn'); return; } t.res.ore -= cost; t.res.gas += D.lot; }
+  else { if (t.res.gas < D.lot) { dipTell(G, team, '에테르가 부족합니다', 'warn'); return; } t.res.gas -= D.lot; t.res.ore += Math.floor(D.lot * rate * (1 - s)); }
+};
+RTS.branchDown = function (G, e) { const b = G.dip.list[e.branch], d = RTS.defs.branches[e.branch], was = b.ally;
+  if (was >= 0) { for (const o of G.teams) dipTell(G, o.id, `${d.name} 지부 파괴, ${G.teams[was].name}의 동맹 해제`, 'market'); }
+  b.ally = -1; b.stake = 0; b.lockUntil = G.tick + RTS.DIP.downSec * RTS.HZ; e.team = -1; e.hp = RTS.defOf(e).hp; e.hitAt = 0; };
+RTS.orders.caravan = function (G, u, o) { const drop = RTS.nearestDrop(G, u); if (!drop) { RTS.kill(G, u, null, true); return; }
+  if (RTS.edgeDist(u, drop) < .7) { const t = G.teams[u.team]; t.res[o.res] = (t.res[o.res] || 0) + o.amount; t.stats.caravan = (t.stats.caravan || 0) + o.amount; RTS.emit(G, 'caravan', { team: u.team, res: o.res, amount: o.amount }); RTS.kill(G, u, null, true); return; }
+  RTS.goTo(G, u, drop); };
+RTS.addSystem({ id: 'diplomacy', run(G) {
+  if (!G.dip) RTS.initDip(G); if (G.tick % RTS.HZ) return;
+  const m = G.dip, cos = Object.values(G.market.cos), avg = r => { const L = cos.filter(c => RTS.defs.companies[c.id].resource === r); return L.reduce((s, c) => s + c.earn, 0) / L.length; };
+  m.rate = Math.max(1.2, Math.min(3.2, 2 * avg('gas') / avg('ore')));
+  for (const b of Object.values(m.list)) { const e = G.byId[b.site], d = RTS.defs.branches[b.id]; if (!e) continue;
+    G.teams.forEach(t => { if (b.found[t.id]) return; let near = false; RTS.query(G, e.x, e.y, 9, o => { if (o.team === t.id && !o.dead && Math.hypot(o.x - e.x, o.y - e.y) < 9) near = true; }); if (!near) return;
+      b.found[t.id] = true; if (b.finder < 0) { b.finder = t.id; t.res.ore += RTS.DIP.firstOre; dipTell(G, t.id, `${d.name} 최초 발견: 광석 +${RTS.DIP.firstOre}, 수락 확률 +15%`, 'ok'); } else dipTell(G, t.id, d.name + ' 발견', 'ok'); RTS.emit(G, 'found', { team: t.id, id: b.id }); });
+    if (b.ally < 0) continue; const t = G.teams[b.ally];
+    if (d.perk.caravan && G.tick >= b.nextCaravan) { b.nextCaravan = G.tick + d.perk.caravan.every * RTS.HZ; const p = RTS.nearestFree(G, e.x, e.y + 2.5), u = RTS.spawn(G, 'n_caravan', b.ally, p.x, p.y); u.order = { type: 'caravan', res: d.perk.caravan.res, amount: d.perk.caravan.amount }; }
+    if (G.tick % (30 * RTS.HZ) === 0) { const pay = b.stake * RTS.DIP.stakeYield; t.res.ore += pay; t.stats.div = (t.stats.div || 0) + pay; } }
+} }, { before: 'cleanup' });
+// AI: 난이도별 시점에 정찰을 보내고, 조건이 맞으면 동맹금을 건다.
+RTS.aiDiplomacy = function (G, t, diff, units) {
+  const S = t.aiState, m = G.dip, sec = G.tick / RTS.HZ; if (!m || sec < diff.scoutAt || !units.length) return;
+  if (!S.scout || !G.byId[S.scout]) { const open = Object.values(m.list).filter(b => !b.found[t.id] && b.ally < 0).sort((a, b) => { const A = G.byId[a.site], B = G.byId[b.site], H = units[0]; return Math.hypot(A.x - H.x, A.y - H.y) - Math.hypot(B.x - H.x, B.y - H.y); })[0];
+    const u = units.find(x => !RTS.defOf(x).gather && !RTS.defOf(x).uncontrollable && !RTS.defOf(x).heal) || units.find(x => RTS.defOf(x).gather && x.order && x.order.phase === 'go');
+    if (open && u) { S.scout = u.id; S.scoutTo = open.id; const e = G.byId[open.site]; RTS.issue(G, u, { type: 'move', x: e.x, y: e.y + 3 }); } }
+  else if (S.scoutTo && m.list[S.scoutTo].found[t.id]) { S.scout = 0; S.scoutTo = null; }
+  // 신청 가능한 지부가 있으면 병력 생산을 잠시 줄여 동맹금을 모은다
+  const army = units.filter(u => !RTS.defOf(u).gather && !RTS.defOf(u).uncontrollable).length, mine = Object.values(m.list).filter(b => b.ally === t.id).length;
+  // 병력이 먼저다. 교전 중이거나 병력이 적으면 돈을 묶지 않고, AI 동맹은 두 곳까지만 맺는다
+  if (army < diff.allyArmy || mine >= 2 || S.attacking || G.tick - (S.defending || -9999) < 200) { S.saving = false; return; }
+  const target = Object.values(m.list).find(b => { const why = RTS.allyBlock(G, t.id, b.id, diff.stake); return !why || why === '광석이 부족합니다'; });
+  S.saving = !!target && G.tick >= (S.nextAlly || 0);
+  if (!S.saving || t.res.ore < diff.stake) return;
+  S.nextAlly = G.tick + 70 * RTS.HZ; S.saving = false;
+  RTS.command(G, t.id, { type: 'ally', branch: target.id, stake: diff.stake });
+};
+
+// ai.js — 데이터 주도 AI. 진영의 ai 블록(빌드 오더, 병력 비율, 연구 순서)만 읽는다.
+// 현재 AI는 안개를 무시하고 상대 건물 위치를 안다. 난이도별 수입 배율은 difficulties에 있다.
+RTS.aiThink = function (G, t) {
+  const diff = RTS.defs.difficulties[t.ai];
+  if ((G.tick + t.id * 3) % diff.interval) return;
+  const f = RTS.defs.factions[t.faction], P = f.ai, S = t.aiState, D = RTS.defs.entities;
+  const mine = G.ents.filter(e => e.team === t.id && !e.dead);
+  const builds = mine.filter(e => D[e.def].kind === 'building' && !D[e.def].site), units = mine.filter(e => D[e.def].kind === 'unit');
+  const workers = units.filter(e => D[e.def].gather), army = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && e.id !== S.scout);
+  const hqs = builds.filter(e => D[e.def].dropoff && RTS.complete(e));
+  const count = id => builds.filter(b => b.def === id).length;
+  const cmd = c => RTS.command(G, t.id, c);
+  if (!hqs.length && !builds.length) return;
+  const home = hqs[0] || builds[0];
+
+  // 놀고 있는 일꾼 → 채취. 에테르는 추출기당 3명
+  const exts = builds.filter(b => D[b.def].placeOn && RTS.complete(b));
+  for (const x of exts) { const n = workers.filter(w => w.order && w.order.type === 'gather' && w.order.node === x.id).length;
+    if (n < 3) { const w = workers.find(w => w.order && w.order.type === 'gather' && !G.byId[w.order.node]?.vent && !w.cargo); if (w) RTS.issue(G, w, { type: 'gather', node: x.id }); } }
+  for (const w of workers) if (!w.order) { const b = hqs[(w.id) % (hqs.length || 1)] || home, n = RTS.nearestNode(G, b.x, b.y, 'ore', 40); if (n) RTS.issue(G, w, { type: 'gather', node: n.id }); }
+
+  const wantWorkers = Math.min(diff.maxWorkers, 16 * Math.max(1, hqs.length));
+  for (const b of hqs) if (workers.length + b.prod.length < wantWorkers && !b.prod.length && RTS.canPay(t, D[f.worker].cost)) cmd({ type: 'train', building: b.id, unit: f.worker });
+
+  const sites = builds.filter(b => !RTS.complete(b));
+  const builder = () => workers.find(w => w.order && w.order.type === 'gather' && w.order.phase !== 'mine' && !w.cargo) || workers.find(w => !w.order || w.order.type === 'gather');
+  const place = (id, near) => {
+    const w = builder(); if (!w || !RTS.canPay(t, D[id].cost)) return false;
+    const spot = RTS.aiSpot(G, t, id, near || home); if (!spot) return false;
+    cmd({ type: 'place', ids: [w.id], def: id, tx: spot.x, ty: spot.y }); return true;
+  };
+  // 공사 중 건물에 일꾼이 없으면 다시 붙인다 (건설자가 죽은 경우)
+  for (const s of sites) { const has = units.some(u => u.order && u.order.type === 'build' && u.order.site === s.id); if (!has && !s.active) { const w = builder(); if (w) RTS.issue(G, w, { type: 'build', site: s.id }); } }
+
+  // 보급
+  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < 100 && !sites.some(s => s.def === f.supply)) place(f.supply);
+  else {
+    // 빌드 오더: 앞에서부터 처음 미충족 항목 하나만 실행
+    for (const step of P.build) {
+      if (G.tick < (step.after || 0) * RTS.HZ) break;
+      if (count(step.b) >= step.n) continue;
+      if (RTS.techOk(t, D[step.b])) place(step.b);
+      break;
+    }
+  }
+  // 확장
+  const mineral = G.ents.filter(e => e.def === 'ore_node').length;
+  if (G.tick > diff.expandAt * RTS.HZ && !sites.some(s => s.def === f.hq) && count(f.hq) < 3 && t.res.ore > D[f.hq].cost.ore && mineral) {
+    const free = G.bases.filter(b => !G.ents.some(e => D[e.def].kind === 'building' && !e.dead && Math.hypot(e.x - b.x, e.y - b.y) < 7) && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
+    free.sort((a, b) => Math.hypot(a.x - home.x, a.y - home.y) - Math.hypot(b.x - home.x, b.y - home.y));
+    if (free[0]) { const w = builder(), d = D[f.hq]; if (w) cmd({ type: 'place', ids: [w.id], def: f.hq, tx: Math.round(free[0].x - d.size[0] / 2), ty: Math.round(free[0].y - d.size[1] / 2) }); }
+  }
+  RTS.aiDiplomacy(G, t, diff, units);
+  // 투자는 생산보다 먼저 판단해 병력에 자금이 전부 묶이지 않게 한다
+  RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14));
+  // 생산
+  for (const b of builds) {
+    const d = D[b.def]; if (S.saving || !RTS.complete(b) || b.prod.length || !d.trains || d.dropoff) continue;
+    const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost));
+    if (!opts.length) continue;
+    let total = opts.reduce((s, o) => s + o.w, 0), r = RTS.rand(G) * total, pick = opts[0];
+    for (const o of opts) { r -= o.w; if (r <= 0) { pick = o; break; } }
+    if (t.sup + (D[pick.u].supply || 0) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
+  }
+  // 연구
+  for (const id of P.research) {
+    if (t.upgrades[id] || t.research[id]) continue;
+    const u = RTS.defs.upgrades[id], lab = builds.find(b => (D[b.def].researches || []).includes(id) && RTS.complete(b) && !b.prod.length);
+    if (lab && RTS.techOk(t, u) && RTS.canPay(t, u.cost) && t.res.ore > u.cost.ore + 100) cmd({ type: 'research', building: lab.id, upgrade: id });
+    break;
+  }
+  // 교전 판단
+  for (const u of army) for (const id of D[u.def].abilities || []) { const ab = RTS.defs.abilities[id]; if (ab.ai && RTS.abilityReady(G, u, ab)) ab.ai(G, u); }
+  let threat = null;
+  for (const b of builds) { RTS.query(G, b.x, b.y, 9, o => { if (!threat && !o.dead && o.team !== t.id && o.team >= 0 && D[o.def].kind === 'unit') threat = o; }); if (threat) break; }
+  const ids = army.map(u => u.id);
+  S.wave = S.wave || diff.waveSize;
+  if (threat && !S.attacking) { cmd({ type: 'order', ids: ids.filter(i => { const o = G.byId[i].order; return !o || o.type !== 'amove' || Math.hypot(o.x - threat.x, o.y - threat.y) > 6; }), order: { type: 'amove', x: threat.x, y: threat.y } }); S.defending = G.tick; return; }
+  if (G.tick - (S.defending || -999) > 100 && !S.attacking && !threat) { // 집결
+    const r = S.rally || (S.rally = (() => { const e = G.teams.find(o => o.id !== t.id), c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
+    const idle = army.filter(u => !u.order && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
+    if (idle.length) cmd({ type: 'order', ids: idle, order: { type: 'amove', x: r.x, y: r.y } });
+  }
+  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow); }
+  if (S.attacking) {
+    if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; return; }
+    let goal = null, bd = 1e12;
+    for (const e of G.ents) { if (e.dead || e.team === t.id || e.team < 0 || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
+    if (goal) { const go = army.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - goal.x, u.order.y - goal.y) > 3).map(u => u.id);
+      if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: goal.x, y: goal.y } }); }
+  }
+};
+RTS.aiSpot = function (G, t, id, near) {
+  const d = RTS.defs.entities[id];
+  if (d.placeOn) { let best = null, bd = 1e9; for (const e of G.ents) { if (e.def !== d.placeOn || e.ext || e.dead) continue; const q = Math.hypot(e.x - near.x, e.y - near.y); if (q < bd && q < 14) { bd = q; best = { x: Math.round(e.x - 1), y: Math.round(e.y - 1) }; } } return best; }
+  const cx = near.x | 0, cy = near.y | 0, c = { x: G.w / 2, y: G.h / 2 };
+  const dir = Math.atan2(c.y - cy, c.x - cx);
+  for (let r = 5; r < 16; r += 1) for (let k = 0; k < 12; k++) {
+    const a = dir + ((k % 2 ? 1 : -1) * Math.ceil(k / 2)) * .42, x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r);
+    if (!RTS.canPlace(G, t.id, id, x, y, 1)) continue;
+    if (RTS.nearestNode(G, x + 1, y + 1, 'ore', 3.5) || RTS.nearestNode(G, x + 1, y + 1, 'gas', 3.5)) continue;
+    return { x, y };
+  }
+  return null;
+};
+
+// content.js — 모든 게임 콘텐츠. 새 유닛/건물/업그레이드/맵은 대개 이 파일만 고치면 된다.
+// 스탯 기준: 사거리·시야·속도는 타일 단위, 쿨다운·시간은 초 단위.
+RTS.mod({
+  difficulties: {
+    easy:   { name: '쉬움',   income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
+    normal: { name: '보통',   income: 1,   interval: 20, maxWorkers: 26, waveSize: 9,  waveGrow: 5, firstAttack: 270, expandAt: 330, invest: 280, investEvery: 16, scoutAt: 170, stake: 200, allyArmy: 8 },
+    hard:   { name: '어려움', income: 1.3, interval: 10, maxWorkers: 34, waveSize: 12, waveGrow: 6, firstAttack: 220, expandAt: 240, invest: 260, investEvery: 12, scoutAt: 90, stake: 250, allyArmy: 8 },
+  },
+  terrain: {
+    ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' },
+  },
+  abilities: {
+    stim: { short: '충전', name: '과충전', key: 'Q', target: 'self', cooldown: 12, requires: 'p_stim', desc: '체력 10을 써서 8초간 속도 +50%, 공격 간격 -33%',
+      use(G, u) { if (u.hp <= 12) return false; u.hp -= 10; RTS.addBuff(G, u, 'stim', 8, { speed: 1.5, cooldown: .67 }); },
+      ai(G, u) { if (u.hp > 30 && u.order && u.order.type === 'amove' && RTS.scan(G, u, RTS.weapon(u), 6)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'stim' }); } },
+    siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
+      use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
+      ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
+    shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
+      use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
+      ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
+  },
+  entities: {
+    // ── 중립 자원 ──
+    ore_node: { kind: 'resource', name: '광석 광맥', resource: 'ore', amount: 900, size: [2, 1], desc: '일꾼이 캐는 기본 자원' },
+    vent:     { kind: 'resource', name: '에테르 분출구', resource: 'gas', amount: 2500, size: [2, 2], desc: '추출기를 지어야 채취할 수 있다' },
+
+    // ── 회사 거점: 파괴되지 않고 가동 중단된다 ──
+    co_site_ore: { kind: 'building', site: true, name: '광석 회사 거점', art: 'site_ore', size: [3, 3], hp: 900, armor: 1, sight: 7 },
+    co_site_gas: { kind: 'building', site: true, name: '에테르 회사 거점', art: 'site_gas', size: [3, 3], hp: 900, armor: 1, sight: 7 },
+
+    // ── 자유상단: 중립 지부와 동맹 시 나오는 유닛 ──
+    n_post:    { kind: 'building', site: true, name: '자유상단 지부', art: 'site_post', size: [3, 3], hp: 700, armor: 1, sight: 8 },
+    n_caravan: { kind: 'unit', name: '상단 수레', abbr: '수', art: 'caravan', uncontrollable: true, passive: true, r: .5, hp: 90, speed: 2.6, sight: 5, tags: ['mech'], desc: '도착하면 자원을 내려놓는다. 파괴되면 화물을 잃는다' },
+    n_merc:    { kind: 'unit', name: '유랑 용병', abbr: '용', art: 'trooper', tint: 1, r: .42, hp: 110, armor: 1, speed: 2.8, sight: 8, tags: ['bio'], weapon: { damage: 12, range: 5, cooldown: .9, speed: 24, art: 'tracer' }, desc: '용병단이 보낸 정예 병력. 보급을 쓰지 않는다' },
+
+    // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
+    p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], desc: '자원 채취와 건설' },
+    p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
+      weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
+    p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
+      weapon: { damage: 14, range: 5.5, cooldown: 1.6, splash: 1, air: false, speed: 11, art: 'shell' }, desc: '범위 피해. 지상만 공격' },
+    p_medic:   { kind: 'unit', name: '의무병', abbr: '의', key: 'E', art: 'trooper', tint: 2, r: .38, hp: 55, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 40 }, time: 16, tags: ['bio'], requires: ['p_lab'], passive: false,
+      heal: { amount: 6, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 보병을 자동 치료' },
+    p_tank:    { kind: 'unit', name: '포격전차', abbr: '포', key: 'T', art: 'tank', r: .72, hp: 170, armor: 1, speed: 2.3, sight: 10, supply: 3, cost: { ore: 150, gas: 100 }, time: 28, tags: ['mech'], abilities: ['siege'],
+      weapon: { damage: 20, range: 7, cooldown: 1.4, air: false, speed: 20, art: 'shell' }, siegeWeapon: { damage: 42, range: 11, cooldown: 2.6, splash: 1.3, air: false, speed: 18, art: 'shell' }, desc: '포격 모드로 원거리 범위 공격' },
+    p_gunship: { kind: 'unit', name: '강습기', abbr: '강', key: 'F', art: 'flyer', air: true, r: .6, hp: 130, speed: 3.8, sight: 10, supply: 3, cost: { ore: 125, gas: 75 }, time: 24, tags: ['mech'],
+      weapon: { damage: 9, range: 5, cooldown: .9, speed: 24, art: 'tracer' }, desc: '지형을 무시하는 공중 화력' },
+
+    p_hq:       { kind: 'building', name: '사령부', abbr: '사', key: 'C', art: 'hq', size: [4, 3], hp: 1400, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['p_worker'], desc: '일꾼 생산, 자원 반납' },
+    p_depot:    { kind: 'building', name: '보급고', abbr: '보', key: 'D', art: 'depot', size: [2, 2], hp: 400, sight: 7, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
+    p_extractor:{ kind: 'building', name: '추출기', abbr: '추', key: 'E', art: 'extractor', size: [2, 2], hp: 500, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
+    p_barracks: { kind: 'building', name: '병영', abbr: '병', key: 'B', art: 'barracks', size: [3, 3], hp: 900, sight: 8, cost: { ore: 150 }, time: 34, requires: ['p_hq'], trains: ['p_rifle', 'p_gren', 'p_medic'], desc: '보병 생산' },
+    p_lab:      { kind: 'building', name: '연구소', abbr: '연', key: 'L', art: 'lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['p_barracks'], researches: ['p_stim', 'p_wpn1', 'p_arm1', 'p_mech1'], desc: '강화 연구, 상위 보병 해금' },
+    p_factory:  { kind: 'building', name: '공창', abbr: '창', key: 'V', art: 'factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['p_lab'], trains: ['p_tank', 'p_gunship'], desc: '기계 유닛 생산' },
+    p_turret:   { kind: 'building', name: '방어포탑', abbr: '탑', key: 'T', art: 'turret', size: [2, 2], hp: 450, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['p_barracks'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
+
+    // ── 철갑회: 일꾼이 터만 잡으면 건물이 스스로 올라간다(selfBuild) ──
+    i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'worker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작' },
+    i_blade:   { kind: 'unit', name: '칼날봇', abbr: '칼', key: 'B', art: 'bot', r: .42, hp: 75, armor: 1, speed: 3.2, sight: 7, supply: 1, cost: { ore: 75 }, time: 15, tags: ['mech'],
+      weapon: { damage: 11, range: .4, cooldown: .9, air: false }, desc: '빠른 근접 돌격병. 지상만 공격' },
+    i_striker: { kind: 'unit', name: '사수봇', abbr: '사', key: 'R', art: 'bot', tint: 1, r: .44, hp: 80, speed: 2.7, sight: 8, supply: 2, cost: { ore: 100, gas: 25 }, time: 20, tags: ['mech'],
+      weapon: { damage: 11, range: 6, cooldown: 1.1, speed: 22, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
+    i_mender:  { kind: 'unit', name: '정비봇', abbr: '정', key: 'E', art: 'bot', tint: 2, r: .4, hp: 60, speed: 3, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 18, tags: ['mech'], requires: ['i_core'], passive: false,
+      heal: { amount: 7, range: 3.5, cooldown: .9, tag: 'mech' }, desc: '주변 기계를 자동 수리' },
+    i_colossus:{ kind: 'unit', name: '중장봇', abbr: '중', key: 'T', art: 'walker', r: .85, hp: 300, armor: 2, speed: 1.9, sight: 10, supply: 4, cost: { ore: 250, gas: 125 }, time: 36, tags: ['mech'], abilities: ['shock'],
+      weapon: { damage: 26, range: 6, cooldown: 1.7, splash: .9, air: false, speed: 14, art: 'shell' }, desc: '고체력 범위 화력, 충격파' },
+    i_wasp:    { kind: 'unit', name: '말벌기', abbr: '말', key: 'F', art: 'flyer', tint: 1, air: true, r: .5, hp: 95, speed: 4.3, sight: 9, supply: 2, cost: { ore: 100, gas: 75 }, time: 20, tags: ['mech'],
+      weapon: { damage: 7, range: 4, cooldown: .6, speed: 26, art: 'tracer' }, desc: '빠른 공중 요격기' },
+
+    i_hq:       { kind: 'building', name: '중추', abbr: '중', key: 'C', art: 'hq', size: [4, 3], hp: 1300, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['i_worker'], desc: '수집봇 생산, 자원 반납' },
+    i_relay:    { kind: 'building', name: '중계탑', abbr: '계', key: 'D', art: 'depot', size: [2, 2], hp: 350, sight: 8, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
+    i_extractor:{ kind: 'building', name: '추출 코일', abbr: '코', key: 'E', art: 'extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
+    i_forge:    { kind: 'building', name: '조립로', abbr: '조', key: 'B', art: 'barracks', size: [3, 3], hp: 850, sight: 8, cost: { ore: 150 }, time: 34, requires: ['i_hq'], trains: ['i_blade', 'i_striker', 'i_mender'], desc: '경량 기계 생산' },
+    i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
+    i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
+    i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
+  },
+  upgrades: {
+    p_stim:  { short: '충전', name: '과충전 주입기', key: 'Q', cost: { ore: 100, gas: 100 }, time: 40, desc: '소총병 과충전 사용 가능' },
+    p_wpn1:  { short: '무기', name: '보병 무기 1', key: 'W', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'bio', stat: 'damage', add: 2 }], desc: '보병 공격력 +2' },
+    p_arm1:  { short: '방탄', name: '보병 방탄 1', key: 'A', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'bio', stat: 'armor', add: 1 }], desc: '보병 방어력 +1' },
+    p_mech1: { short: '장갑', name: '차체 장갑 1', key: 'R', cost: { ore: 150, gas: 150 }, time: 50, requires: ['p_factory'], effects: [{ tag: 'mech', stat: 'armor', add: 1 }, { tag: 'mech', stat: 'hp', add: 20 }], desc: '기계 방어력 +1, 체력 +20' },
+    i_wpn1:  { short: '절삭', name: '절삭 날 1', key: 'W', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'mech', stat: 'damage', add: 2 }], desc: '전 유닛 공격력 +2' },
+    i_arm1:  { short: '외피', name: '복합 외피 1', key: 'A', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'mech', stat: 'armor', add: 1 }], desc: '전 유닛 방어력 +1' },
+    i_servo: { short: '서보', name: '고속 서보', key: 'Q', cost: { ore: 100, gas: 75 }, time: 40, effects: [{ id: 'i_blade', stat: 'speed', mul: 1.25 }], desc: '칼날봇 속도 +25%' },
+    i_heavy1:{ short: '조준', name: '장거리 조준', key: 'R', cost: { ore: 150, gas: 150 }, time: 50, requires: ['i_foundry'], effects: [{ id: 'i_striker', stat: 'range', add: 1 }, { id: 'i_colossus', stat: 'range', add: 1 }], desc: '사수봇·중장봇 사거리 +1' },
+  },
+  // 회사: price 상장가(광석), yield 30초당 상장가 대비 배당률, vol 1초 변동성
+  companies: {
+    daeryuk: { name: '대륙광업', short: '대륙', resource: 'ore', price: 20, yield: .13, vol: .004, site: 'co_site_ore', blurb: '안정적인 배당' },
+    ethgae:  { name: '에테르개발', short: '에개', resource: 'gas', price: 30, yield: .08, vol: .004, site: 'co_site_gas', blurb: '안정적인 에테르 배당' },
+    simcheung: { name: '심층광산', short: '심층', resource: 'ore', price: 12, yield: .16, vol: .012, site: 'co_site_ore', blurb: '배당 높음, 주가 급변' },
+    seongun: { name: '성운추출', short: '성운', resource: 'gas', price: 18, yield: .10, vol: .012, site: 'co_site_gas', blurb: '에테르 배당 높음, 주가 급변' },
+  },
+  // 시장 사건: scope = 'all' | 'ore' | 'gas' | 회사 id. earn은 실적 배수, price는 주가 즉시 배수
+  marketEvents: {
+    boom:     { text: '호황: 전 종목 실적 개선', scope: 'all', earn: 1.15, price: 1.06, w: 2 },
+    rates:    { text: '금리 인상: 전 종목 주가 하락', scope: 'all', earn: 1, price: .9, w: 2 },
+    crash:    { text: '증시 급락: 전 종목 -18%', scope: 'all', earn: .9, price: .82, w: 1 },
+    orePeak:  { text: '광석 수요 급증: 광석 회사 실적 개선', scope: 'ore', earn: 1.3, price: 1.1, w: 3 },
+    oreGlut:  { text: '광석 공급 과잉: 광석 회사 실적 악화', scope: 'ore', earn: .75, price: .9, w: 3 },
+    gasPeak:  { text: '에테르 품귀: 에테르 회사 실적 개선', scope: 'gas', earn: 1.3, price: 1.1, w: 3 },
+    gasLeak:  { text: '에테르 규제 강화: 에테르 회사 실적 악화', scope: 'gas', earn: .75, price: .9, w: 3 },
+    deepVein: { text: '심층광산 대형 광맥 발견', scope: 'simcheung', earn: 1.6, price: 1.25, w: 1 },
+    collapse: { text: '심층광산 갱도 붕괴', scope: 'simcheung', earn: .55, price: .72, w: 1 },
+    nebula:   { text: '성운추출 신공법 성공', scope: 'seongun', earn: 1.6, price: 1.25, w: 1 },
+    blowout:  { text: '성운추출 분출 사고', scope: 'seongun', earn: .55, price: .72, w: 1 },
+  },
+  // 자유상단 지부. check 조건을 채워야 신청 가능하고, base는 최소 동맹금일 때의 수락 확률이다.
+  branches: {
+    namhae: { name: '남풍상회', base: .3, need: '광석 800 이상 채취', perkText: '90초마다 광석 180 수레, 거래 수수료 2%', check: (G, t) => t.stats.ore >= 800, perk: { caravan: { res: 'ore', amount: 180, every: 90 }, spread: .02 } },
+    silver: { name: '은빛금고', base: .25, need: '보유 주식 평가액 300 이상', perkText: '모든 주식 배당 +30%', check: (G, t) => Object.values(G.market.cos).reduce((s, c) => s + c.shares[t.id] * c.price, 0) >= 300, perk: { divBonus: .3 } },
+    rail:   { name: '철로조합', base: .35, need: '완공 건물 5개 이상', perkText: '보급 +12, 90초마다 에테르 80 수레', check: (G, t) => Object.values(t.have).reduce((s, n) => s + n, 0) >= 5, perk: { supply: 12, caravan: { res: 'gas', amount: 80, every: 90 } } },
+    roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
+  },
+  factions: {
+    pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
+      ai: { build: [{ b: 'p_barracks', n: 1 }, { b: 'p_extractor', n: 1 }, { b: 'p_barracks', n: 2, after: 120 }, { b: 'p_lab', n: 1 }, { b: 'p_factory', n: 1 }, { b: 'p_extractor', n: 2 }, { b: 'p_turret', n: 1 }, { b: 'p_barracks', n: 3, after: 420 }, { b: 'p_factory', n: 2, after: 540 }],
+        army: [{ u: 'p_rifle', w: 5 }, { u: 'p_gren', w: 3 }, { u: 'p_medic', w: 1 }, { u: 'p_tank', w: 3 }, { u: 'p_gunship', w: 2 }], research: ['p_wpn1', 'p_stim', 'p_arm1', 'p_mech1'] } },
+    ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
+      ai: { build: [{ b: 'i_forge', n: 1 }, { b: 'i_extractor', n: 1 }, { b: 'i_forge', n: 2, after: 120 }, { b: 'i_core', n: 1 }, { b: 'i_foundry', n: 1 }, { b: 'i_extractor', n: 2 }, { b: 'i_turret', n: 1 }, { b: 'i_forge', n: 3, after: 420 }, { b: 'i_foundry', n: 2, after: 540 }],
+        army: [{ u: 'i_blade', w: 5 }, { u: 'i_striker', w: 4 }, { u: 'i_mender', w: 1 }, { u: 'i_colossus', w: 2 }, { u: 'i_wasp', w: 2 }], research: ['i_wpn1', 'i_servo', 'i_arm1', 'i_heavy1'] } },
+  },
+  maps: {
+    ridge: { name: '쌍둥이 능선', gen: 'symmetric', w: 72, h: 72, theme: 'dusk', desc: '72×72 · 기지 4 · 중앙이 트인 대각 대치',
+      bases: [{ x: 11, y: 11, start: 0, dir: 3.93 }, { x: 13, y: 36, dir: 3.14, ore: 6, oneVent: true }, { x: 58, y: 14, dir: 5.5, ore: 6, oneVent: true }],
+      sites: [[27, 42], [46, 17]], posts: [[36, 5], [5, 48]], rocks: [[26, 20, 4], [20, 26, 4], [36, 24, 3], [30, 12, 3], [44, 8, 3], [24, 46, 3.5], [10, 52, 4], [36, 36, 2.5], [46, 26, 3]],
+      sand: [[36, 36, 14], [24, 30, 8], [52, 20, 9]],
+      lanes: [[11, 11, 23, 23, 3], [23, 23, 36, 36, 4], [13, 36, 28, 36, 3], [58, 14, 44, 28, 3], [23, 23, 13, 36, 2.5]] },
+    canyon: { name: '협곡 회랑', gen: 'symmetric', w: 96, h: 48, theme: 'ochre', desc: '96×48 · 기지 4 · 좁은 관문 세 곳',
+      bases: [{ x: 11, y: 24, start: 0, dir: 3.14 }, { x: 34, y: 10, dir: 4.71, ore: 6, oneVent: true }, { x: 34, y: 38, dir: 1.57, ore: 6, oneVent: true }],
+      sites: [[42, 15], [57, 33]], posts: [[14, 6], [36, 25]], walls: [[24, 0, 24, 15, 1.4], [24, 33, 24, 48, 1.4], [48, 0, 48, 10, 1.6], [48, 19, 48, 29, 1.6], [48, 38, 48, 48, 1.6]],
+      rocks: [[40, 24, 3.5]], sand: [[48, 14, 7], [48, 34, 7], [24, 24, 8]],
+      lanes: [[11, 24, 40, 24, 2.5], [34, 10, 62, 10, 2.5], [34, 38, 62, 38, 2.5]] },
+  },
+});
+
+// render.js — Canvas 2D 렌더러. 게임 상태를 읽기만 하고 바꾸지 않는다.
+// 새 유닛 그림은 RTS.art.units.이름, 건물은 RTS.art.buildings.이름 함수 하나만 추가한다.
+RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
+RTS.THEMES = {
+  dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
+  ochre: { ground: ['#6f5238', '#664a32', '#785a3e'], sand: ['#a07c4e', '#957145', '#aa8656'], rock: ['#33222a', '#46303a', '#6f4d52'] },
+};
+const cx3 = w => w / 2;
+const NEUTRAL = { main: '#b9c2cf', dark: '#566274', light: '#eef2f7' };
+const TS = 32, TAU = Math.PI * 2;
+function shade(ctx, x, y, w, h, c, r = 3) { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
+function circ(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
+const STEEL = ['#8795a8', '#59677b', '#39455a', '#232c3d'], MECH = ['#a0937c', '#6f6655', '#4a4338', '#2e2a24'];
+
+RTS.art = {
+  units: {
+    worker(c, p, s) { const m = s.faction === 'ironclad' ? MECH : STEEL;
+      shade(c, -9, -8, 18, 16, m[2], 5); shade(c, -7, -6, 14, 12, p.main, 4); circ(c, 2, 0, 4.2, p.light);
+      c.strokeStyle = m[0]; c.lineWidth = 2.6; c.beginPath(); c.moveTo(6, 4); c.lineTo(13, 6 + Math.sin(s.t * .5) * 2); c.stroke(); c.beginPath(); c.moveTo(6, -4); c.lineTo(12, -6); c.stroke();
+      if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
+    trooper(c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0);
+      circ(c, -2 + w, 5, 3.4, STEEL[2]); circ(c, -2 - w, -5, 3.4, STEEL[2]);
+      c.fillStyle = s.tint === 1 ? '#3a6a58' : s.tint === 2 ? '#d7dde6' : p.dark; c.beginPath(); c.ellipse(0, 0, 7, 10, 0, 0, TAU); c.fill();
+      circ(c, 0.5, 0, 5.4, p.main); circ(c, 2, 0, 2.6, p.light);
+      if (s.tint === 2) { c.fillStyle = '#e7495a'; c.fillRect(-1, -6, 2, 5); c.fillRect(-3, -4.5, 6, 2); }
+      else { c.fillStyle = '#1c2230'; c.fillRect(3, 3.5, s.tint === 1 ? 11 : 13, s.tint === 1 ? 5 : 2.6); } },
+    bot(c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 3 : 0; c.strokeStyle = MECH[3]; c.lineWidth = 3;
+      for (const [a, b] of [[-1, 1], [1, -1]]) { c.beginPath(); c.moveTo(-3 * a, 6 * b); c.lineTo(-7 * a + k * b, 11 * b); c.stroke(); }
+      c.fillStyle = MECH[1]; c.beginPath(); for (let i = 0; i < 6; i++) c.lineTo(Math.cos(i * TAU / 6) * 10, Math.sin(i * TAU / 6) * 9); c.fill();
+      circ(c, 0, 0, 6, p.dark); circ(c, 3, 0, 3.2, p.main);
+      if (s.tint === 2) { c.fillStyle = '#7fe0b0'; c.fillRect(-4, -1.5, 8, 3); c.fillRect(-1.5, -4, 3, 8); }
+      else if (s.tint === 1) { c.fillStyle = '#20242c'; c.fillRect(6, -6, 11, 3); c.fillRect(6, 3, 11, 3); }
+      else { c.fillStyle = '#d6dde5'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(4, 8 * b); c.lineTo(17, 3 * b); c.lineTo(6, 3 * b); c.fill(); } } },
+    tank(c, p, s) { shade(c, -20, -15, 40, 7, '#1c222e', 2); shade(c, -20, 8, 40, 7, '#1c222e', 2);
+      shade(c, -18, -11, 36, 22, STEEL[1], 3); shade(c, -14, -8, 24, 16, p.dark, 2);
+      if (s.sieged) { c.strokeStyle = STEEL[2]; c.lineWidth = 4; for (const [a, b] of [[-14, -20], [14, -20], [-14, 20], [14, 20]]) { c.beginPath(); c.moveTo(a * .6, b * .5); c.lineTo(a, b); c.stroke(); } }
+      circ(c, -1, 0, 8.5, p.main); c.fillStyle = STEEL[3]; c.fillRect(4, -2.4, s.sieged ? 28 : 19, 4.8); c.fillStyle = p.light; c.fillRect(-3, -2, 5, 4); },
+    walker(c, p, s) { const k = s.moving ? Math.sin(s.t * .3) * 5 : 0; c.fillStyle = MECH[3];
+      c.fillRect(-10 + k, -23, 18, 9); c.fillRect(-10 - k, 14, 18, 9);
+      c.fillStyle = MECH[1]; c.beginPath(); c.moveTo(-17, -15); c.lineTo(12, -17); c.lineTo(20, 0); c.lineTo(12, 17); c.lineTo(-17, 15); c.closePath(); c.fill();
+      c.fillStyle = p.dark; c.beginPath(); c.moveTo(-11, -9); c.lineTo(8, -10); c.lineTo(14, 0); c.lineTo(8, 10); c.lineTo(-11, 9); c.closePath(); c.fill();
+      circ(c, 1, 0, 6.5, p.main); circ(c, 3, 0, 3, p.light); c.fillStyle = '#20242c'; c.fillRect(10, -14, 19, 6); c.fillRect(10, 8, 19, 6); },
+    caravan(c, p, s) { shade(c, -15, -10, 30, 20, '#7a5a34', 3); shade(c, -12, -8, 18, 16, '#d2b06a', 2); shade(c, 7, -7, 10, 14, p.main, 2); c.fillStyle = '#1c222e'; for (const [x, y] of [[-10, -12], [8, -12], [-10, 10], [8, 10]]) c.fillRect(x, y, 8, 3); },
+    flyer(c, p, s) { const f = s.tint === 1;
+      c.fillStyle = f ? MECH[1] : STEEL[1]; c.beginPath(); c.moveTo(f ? 18 : 20, 0); c.lineTo(-12, f ? -16 : -19); c.lineTo(-7, 0); c.lineTo(-12, f ? 16 : 19); c.closePath(); c.fill();
+      c.fillStyle = p.dark; c.beginPath(); c.moveTo(12, 0); c.lineTo(-8, -8); c.lineTo(-5, 0); c.lineTo(-8, 8); c.closePath(); c.fill();
+      circ(c, 5, 0, 3.8, p.main); circ(c, -11, -7, 2.6 + (s.t % 4 < 2 ? 1 : 0), '#ffd27a'); circ(c, -11, 7, 2.6 + (s.t % 4 < 2 ? 1 : 0), '#ffd27a'); },
+  },
+  // 건물은 (ctx, w, h, 팔레트, 상태) 로 그린다. 원점은 왼쪽 위, 단위는 px.
+  buildings: {
+    hq(c, w, h, p, s) { plate(c, w, h, s); shade(c, 14, 12, w - 28, h - 26, p.dark, 6); circ(c, w / 2, h / 2 - 4, 19, s.m[3]); circ(c, w / 2, h / 2 - 4, 14, p.main); circ(c, w / 2, h / 2 - 4, 7, p.light);
+      c.fillStyle = s.m[0]; for (let i = 0; i < 4; i++) c.fillRect(10 + i * (w - 28) / 3, h - 12, 8, 6); },
+    depot(c, w, h, p, s) { plate(c, w, h, s); for (const [x, y] of [[9, 9], [33, 9], [9, 32], [33, 32]]) { shade(c, x, y, 21, 20, s.m[2], 2); c.fillStyle = p.main; c.fillRect(x + 3, y + 8, 15, 4); } },
+    extractor(c, w, h, p, s) { plate(c, w, h, s); circ(c, w / 2, h / 2, 20, s.m[3]); circ(c, w / 2, h / 2, 14, '#7c3478'); circ(c, w / 2, h / 2, 7 + Math.sin(s.t * .1) * 2, '#f08ae6'); c.fillStyle = p.main; c.fillRect(4, h / 2 - 3, 10, 6); c.fillRect(w - 14, h / 2 - 3, 10, 6); },
+    barracks(c, w, h, p, s) { plate(c, w, h, s); shade(c, 10, 10, w - 20, 34, s.m[2], 3); c.fillStyle = p.main; for (let i = 0; i < 5; i++) c.fillRect(16 + i * 15, 18, 9, 18); shade(c, w / 2 - 15, h - 34, 30, 28, '#141a24', 2); c.fillStyle = p.light; c.fillRect(w / 2 - 15, h - 36, 30, 3); },
+    lab(c, w, h, p, s) { plate(c, w, h, s); circ(c, 28, h / 2, 17, s.m[3]); circ(c, 28, h / 2, 12, '#9fd8ff'); c.save(); c.translate(28, h / 2); c.rotate(s.t * .02); c.fillStyle = p.dark; c.fillRect(-12, -1.5, 24, 3); c.restore(); c.fillStyle = p.main; for (let i = 0; i < 3; i++) c.fillRect(52 + i * 13, 14, 8, h - 28); },
+    factory(c, w, h, p, s) { plate(c, w, h, s); c.fillStyle = s.m[3]; c.fillRect(8, 12, w - 16, h - 24); c.fillStyle = '#d9a23b'; for (let i = 0; i < 6; i++) c.fillRect(12 + i * 13, h - 18, 7, 4); shade(c, 18, 22, w - 36, 28, p.dark, 3); c.fillStyle = p.main; c.fillRect(18, 18 + (s.t * .3 % 30), w - 36, 3); },
+    site_ore(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ffc247'); },
+    site_gas(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ea7be0'); },
+    site_post(c, w, h, p, s) { plate(c, w, h, s); shade(c, 12, 16, w - 24, h - 30, p.dark, 3); c.fillStyle = p.main; c.beginPath(); c.moveTo(cx3(w) - 30, 18); c.lineTo(cx3(w), 2); c.lineTo(cx3(w) + 30, 18); c.fill();
+      c.fillStyle = '#e8c15e'; c.fillRect(cx3(w) - 2, 24, 4, 30); c.beginPath(); c.moveTo(cx3(w) + 2, 24); c.lineTo(cx3(w) + 22, 31); c.lineTo(cx3(w) + 2, 38); c.fill(); c.fillStyle = s.m[3]; c.fillRect(16, h - 22, w - 32, 8); },
+    turret(c, w, h, p, s) { plate(c, w, h, s); circ(c, w / 2, h / 2, 21, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); shade(c, -11, -11, 22, 22, p.dark, 5); c.fillStyle = s.m[3]; c.fillRect(6, -6, 22, 4); c.fillRect(6, 2, 22, 4); circ(c, 0, 0, 6, p.main); c.restore(); },
+  },
+};
+function siteBase(c, w, h, p, s, col) { plate(c, w, h, s); shade(c, 12, 12, w - 24, h - 24, p.dark, 3); // 채굴탑
+  const cx = w / 2, cy = h / 2; c.strokeStyle = p.light; c.lineWidth = 3; c.beginPath(); c.moveTo(cx - 20, cy + 20); c.lineTo(cx, cy - 24); c.lineTo(cx + 20, cy + 20); c.moveTo(cx - 12, cy + 2); c.lineTo(cx + 12, cy + 2); c.stroke();
+  circ(c, cx, cy + 13, 9, s.m[3]); circ(c, cx, cy + 13, 5 + (s.down ? 0 : Math.sin(s.t * .12)), s.down ? '#55606e' : col); }
+function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서리. 철갑회는 모서리를 더 깎는다.
+  const q = s.faction === 'ironclad' ? 15 : k;
+  const path = (i) => { c.beginPath(); c.moveTo(q + i, i); c.lineTo(w - q - i, i); c.lineTo(w - i, q + i); c.lineTo(w - i, h - q - i); c.lineTo(w - q - i, h - i); c.lineTo(q + i, h - i); c.lineTo(i, h - q - i); c.lineTo(i, q + i); c.closePath(); };
+  c.fillStyle = m[3]; path(1); c.fill(); c.fillStyle = m[1]; path(3); c.fill(); c.strokeStyle = m[0]; c.lineWidth = 1.5; path(4); c.stroke();
+}
+
+RTS.Renderer = function (canvas, app) {
+  const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], ghosts: {}, pings: [] };
+  let bake = null, bakeFor = null; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
+  const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: e.team >= 0 && app.G.teams[e.team]?.faction === 'ironclad' ? MECH : STEEL, facing: e.facing });
+
+  function bakeTerrain(G) {
+    const th = RTS.THEMES[RTS.defs.maps[G.mapId].theme] || RTS.THEMES.dusk;
+    const c = document.createElement('canvas'); c.width = G.w * TS; c.height = G.h * TS; const x = c.getContext('2d');
+    const r = (s => () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296)(G.seed * 7 + 3);
+    for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx++) {
+      const t = G.tiles[ty * G.w + tx], pal = t === 1 ? th.rock : th.ground;
+      x.fillStyle = pal[0]; x.fillRect(tx * TS, ty * TS, TS, TS);
+    }
+    x.fillStyle = th.sand[0]; // 모래는 원을 겹쳐 찍어 경계를 둥글게 만든다
+    for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx++) if (G.tiles[ty * G.w + tx] === 2) { x.beginPath(); x.arc((tx + .5) * TS, (ty + .5) * TS, 27, 0, TAU); x.fill(); }
+    x.globalAlpha = .28; // 얼룩
+    for (let i = 0; i < G.w * G.h * 1.2; i++) { const px = r() * c.width, py = r() * c.height, t = G.tiles[(py / TS | 0) * G.w + (px / TS | 0)]; const pal = t === 2 ? th.sand : t === 1 ? th.rock : th.ground;
+      x.fillStyle = pal[(r() * 3) | 0]; x.beginPath(); x.ellipse(px, py, 8 + r() * 30, 5 + r() * 16, r() * 3, 0, TAU); x.fill(); }
+    x.globalAlpha = .5; x.fillStyle = 'rgba(255,255,255,.08)'; for (let i = 0; i < G.w * G.h * 2; i++) x.fillRect(r() * c.width, r() * c.height, 2, 1);
+    x.globalAlpha = 1;
+    for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx++) { // 암벽 모서리
+      if (G.tiles[ty * G.w + tx] !== 1) continue;
+      const open = (dx, dy) => RTS.tile(G, tx + dx, ty + dy) !== 1 && tx + dx >= 0 && ty + dy >= 0 && tx + dx < G.w && ty + dy < G.h, X = tx * TS, Y = ty * TS;
+      if (open(0, 1)) { x.fillStyle = 'rgba(0,0,0,.45)'; x.fillRect(X - 2, Y + TS, TS + 4, 12); x.fillStyle = th.rock[0]; x.fillRect(X, Y + TS - 12, TS, 12); x.fillStyle = th.rock[2]; x.fillRect(X, Y + TS - 13, TS, 2); }
+      if (open(0, -1)) { x.fillStyle = th.rock[2]; x.fillRect(X, Y, TS, 3); }
+      if (open(1, 0)) { x.fillStyle = 'rgba(0,0,0,.3)'; x.fillRect(X + TS, Y, 7, TS); x.fillStyle = th.rock[2]; x.fillRect(X + TS - 3, Y, 3, TS); }
+      if (open(-1, 0)) { x.fillStyle = th.rock[2]; x.fillRect(X, Y, 3, TS); }
+      for (let i = 0; i < 3; i++) { x.fillStyle = th.rock[1 + (r() * 2 | 0)]; x.globalAlpha = .5; x.fillRect(X + r() * 24, Y + r() * 22, 3 + r() * 9, 2 + r() * 5); x.globalAlpha = 1; }
+    }
+    bake = c; bakeFor = G;
+    fog.width = G.w; fog.height = G.h; fogImg = fogC.createImageData(G.w, G.h); R.decals = []; R.fx = []; R.ghosts = {};
+  }
+  R.terrain = () => bake;
+
+  R.attach = function (G) {
+    RTS.on(G, 'shot', ({ e, t, w }) => { if (!R.onScreen(e.x, e.y)) return; const a = e.facing, rr = (RTS.defOf(e).r || 1) + .25; R.fx.push({ k: 'flash', x: e.x + Math.cos(a) * rr, y: e.y + Math.sin(a) * rr, life: 3, max: 3, s: w.splash ? 9 : 5, air: RTS.defOf(e).air }); app.sfx(w.splash ? 'thump' : w.speed ? 'shot' : 'slash', e); });
+    RTS.on(G, 'impact', ({ x, y, w }) => { if (w.splash) { R.fx.push({ k: 'blast', x, y, life: 12, max: 12, s: w.splash }); R.fx.push({ k: 'smoke', x, y, life: 28, max: 28, s: 12 }); app.sfx('boom', { x, y }); } else R.fx.push({ k: 'spark', x, y, life: 5, max: 5, s: 3 }); });
+    RTS.on(G, 'heal', ({ e, t }) => R.fx.push({ k: 'beam', x: e.x, y: e.y, x2: t.x, y2: t.y, life: 6, max: 6 }));
+    RTS.on(G, 'ability', ({ e }) => R.fx.push({ k: 'ring', x: e.x, y: e.y, life: 14, max: 14, s: 1.4 }));
+    RTS.on(G, 'death', ({ e }) => { const d = RTS.defOf(e), big = d.size ? Math.max(...d.size) * .7 : (d.r || .4) * 1.6;
+      R.fx.push({ k: 'blast', x: e.x, y: e.y, life: d.size ? 26 : 14, max: d.size ? 26 : 14, s: big }); for (let i = 0; i < (d.size ? 10 : 4); i++) { const a = Math.random() * TAU, v = .03 + Math.random() * .07; R.fx.push({ k: 'chip', x: e.x, y: e.y, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: 22, max: 22, c: (RTS.TEAM[e.team] || RTS.TEAM[0]).main }); }
+      R.decals.push({ x: e.x, y: e.y, s: big * 24 }); if (R.decals.length > 90) R.decals.shift(); app.sfx(d.size ? 'bigboom' : 'boom', e); });
+  };
+  R.onScreen = (x, y) => { const c = R.cam, w = canvas.width / c.z, h = canvas.height / c.z, px = x * TS, py = y * TS; return px > c.x - 64 && py > c.y - 64 && px < c.x + w + 64 && py < c.y + h + 64; };
+
+  function updateFog(G, team) {
+    const t = G.teams[team], d = fogImg.data, N = G.w * G.h;
+    for (let i = 0; i < N; i++) { d[i * 4] = 8; d[i * 4 + 1] = 12; d[i * 4 + 2] = 22; d[i * 4 + 3] = t.vis[i] ? 0 : t.seen[i] ? 135 : 245; }
+    fogC.putImageData(fogImg, 0, 0);
+  }
+
+  function drawBuilding(c, G, e, d, a, ghost) {
+    const r = RTS.rectOf(e), P = RTS.TEAM[e.team] || NEUTRAL, w = d.size[0] * TS, h = d.size[1] * TS, st = stateOf(d, e, app.frame); st.down = e.downUntil > G.tick;
+    c.save(); c.translate(r.x0 * TS, r.y0 * TS);
+    if (ghost) c.globalAlpha = .55;
+    c.fillStyle = 'rgba(0,0,0,.32)'; c.fillRect(4, 8, w, h);
+    const prog = e.buildT ? Math.min(1, e.built / e.buildT) : 1;
+    if (prog < 1) { c.globalAlpha = .5; }
+    (RTS.art.buildings[d.art] || plate)(c, w, h, P, st);
+    if (prog < 1) { c.globalAlpha = 1; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); (RTS.art.buildings[d.art] || plate)(c, w, h, P, st); c.restore();
+      c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]);
+      c.fillStyle = '#ffcb5c'; c.fillRect(0, h * (1 - prog) - 1.5, w, 3); }
+    if (e.branch && !ghost) { c.font = '600 12px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(8,12,22,.78)'; c.fillRect(w / 2 - 44, h + 3, 88, 17); c.fillStyle = '#ffe6b0'; c.fillText(RTS.defs.branches[e.branch].name, w / 2, h + 16); c.textAlign = 'start'; }
+    if (e.company && !ghost) { const co = G.market.cos[e.company]; c.font = '600 12px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; const label = RTS.defs.companies[e.company].name + ' ' + co.price.toFixed(1); c.fillStyle = 'rgba(8,12,22,.78)'; c.fillRect(w / 2 - 50, h + 3, 100, 17); c.fillStyle = st.down ? '#ff8a7a' : '#fff'; c.fillText(st.down ? '가동 중단' : label, w / 2, h + 16); c.textAlign = 'start'; }
+    if (e.hp < d.hp * .45 && prog >= 1 && app.frame % 7 === 0 && !ghost) R.fx.push({ k: 'smoke', x: e.x + (Math.random() - .5) * d.size[0] * .6, y: e.y + (Math.random() - .5) * d.size[1] * .6, life: 24, max: 24, s: 8 });
+    c.restore();
+  }
+  function drawNode(c, G, e, d) {
+    if (d.resource === 'ore') { const X = (e.x - 1) * TS, Y = (e.y - .5) * TS, k = Math.max(.45, e.amount / d.amount), seedA = e.id * 37 % 7;
+      c.fillStyle = 'rgba(0,0,0,.35)'; c.fillRect(X + 3, Y + 18, 58, 12);
+      for (let i = 0; i < 6; i++) { const cx = X + 7 + i * 10, h = (13 + ((i + seedA) * 5 % 11)) * k, wd = 7;
+        c.fillStyle = '#b36f1c'; c.beginPath(); c.moveTo(cx - wd, Y + 28); c.lineTo(cx, Y + 28 - h - 6); c.lineTo(cx + 1, Y + 28); c.fill();
+        c.fillStyle = '#ffc247'; c.beginPath(); c.moveTo(cx + 1, Y + 28); c.lineTo(cx, Y + 28 - h - 6); c.lineTo(cx + wd, Y + 28); c.fill();
+        c.fillStyle = '#fff0b8'; c.fillRect(cx - 1, Y + 28 - h - 2, 2, 5); }
+    } else { const X = e.x * TS, Y = e.y * TS; if (e.ext) return;
+      circ(c, X, Y, 27, '#2a1a30'); circ(c, X, Y, 19, '#5b2358'); circ(c, X, Y, 10 + Math.sin(app.frame * .08 + e.id) * 3, '#ea7be0');
+      if (app.frame % 11 === e.id % 11) R.fx.push({ k: 'steam', x: e.x, y: e.y, life: 30, max: 30, s: 7 }); }
+  }
+
+  R.draw = function (alpha) {
+    const G = app.G, me = app.team; if (!G) return;
+    if (bakeFor !== G) bakeTerrain(G);
+    const c = ctx, cam = R.cam, W = canvas.width, H = canvas.height, t = app.frame;
+    c.setTransform(1, 0, 0, 1, 0, 0); c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H);
+    c.setTransform(cam.z, 0, 0, cam.z, -cam.x * cam.z, -cam.y * cam.z);
+    c.imageSmoothingEnabled = true;
+    const vw = W / cam.z, vh = H / cam.z, sx = Math.max(0, cam.x), sy = Math.max(0, cam.y), sw = Math.min(bake.width - sx, vw), sh = Math.min(bake.height - sy, vh);
+    if (sw > 0 && sh > 0) c.drawImage(bake, sx, sy, sw, sh, sx, sy, sw, sh);
+    for (const d of R.decals) if (R.onScreen(d.x, d.y)) { c.fillStyle = 'rgba(10,8,8,.34)'; c.beginPath(); c.ellipse(d.x * TS, d.y * TS, d.s, d.s * .75, 0, 0, TAU); c.fill(); }
+
+    const sel = new Set(app.sel), vis = e => e.team === me || me < 0 || (e.team < 0 ? RTS.branchKnown(G, me, e) : RTS.visibleTo(G, me, e.x, e.y));
+    // 기억된 적 건물
+    if (me >= 0 && !G.nofog) { for (const e of G.ents) if (e.team >= 0 && e.team !== me && RTS.defOf(e).size && vis(e)) R.ghosts[e.id] = { def: e.def, team: e.team, x: e.x, y: e.y, built: e.built, buildT: e.buildT };
+      for (const id of Object.keys(R.ghosts)) { const g = R.ghosts[id]; if (RTS.visibleTo(G, me, g.x, g.y)) { if (!G.byId[id]) delete R.ghosts[id]; } else if (R.onScreen(g.x, g.y) && G.teams[me].seen[(g.y | 0) * G.w + (g.x | 0)]) drawBuilding(c, G, g, RTS.defs.entities[g.def], alpha, true); } }
+
+    const list = [];
+    for (const e of G.ents) { if (e.dead || !R.onScreen(e.x, e.y)) continue; const d = RTS.defOf(e);
+      if (d.kind === 'resource') { if (me < 0 || G.nofog || G.teams[me].seen[(e.y | 0) * G.w + (e.x | 0)]) drawNode(c, G, e, d); continue; }
+      if (vis(e)) list.push(e); }
+    const bl = list.filter(e => RTS.defOf(e).kind === 'building');
+    for (const e of bl) { const d = RTS.defOf(e); if (sel.has(e.id)) selBox(c, e, d); drawBuilding(c, G, e, d, alpha);
+      if (e.rally && sel.has(e.id)) { c.strokeStyle = 'rgba(120,255,190,.75)'; c.setLineDash([6, 6]); c.lineWidth = 1.5; c.beginPath(); c.moveTo(e.x * TS, e.y * TS); c.lineTo(e.rally.x * TS, e.rally.y * TS); c.stroke(); c.setLineDash([]); circ(c, e.rally.x * TS, e.rally.y * TS, 4, '#78ffbe'); } }
+    const us = list.filter(e => RTS.defOf(e).kind === 'unit');
+    const pos = e => [(e.px + (e.x - e.px) * alpha) * TS, (e.py + (e.y - e.py) * alpha) * TS];
+    for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 : 0; // 그림자 + 선택 링
+      c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(x + 2 + lift * .3, y + 3 + lift * .2, d.r * TS * (d.air ? .8 : 1), d.r * TS * .72, 0, 0, TAU); c.fill();
+      if (sel.has(e.id)) { c.strokeStyle = e.team === me ? '#7dffa8' : e.team < 0 ? '#ffe27a' : '#ff6a5a'; c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
+    us.sort((a, b) => (RTS.defOf(a).air ? 1 : 0) - (RTS.defOf(b).air ? 1 : 0) || a.y - b.y);
+    for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
+      c.save(); c.translate(x, y - lift); c.rotate(e.facing);
+      if (e.hitAt && G.tick - e.hitAt < 2) c.filter = 'brightness(1.8)';
+      (RTS.art.units[d.art] || RTS.art.units.trooper)(c, RTS.TEAM[e.team], stateOf(d, e, t + e.id * 3)); c.restore();
+      if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
+      if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); } }
+    // 투사체
+    for (const p of G.projectiles) { const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS;
+      if (p.art === 'shell') { circ(c, X, Y, 3.4, '#ffd27a'); circ(c, X, Y, 1.6, '#fff'); }
+      else { c.strokeStyle = (RTS.TEAM[p.team] || RTS.TEAM[0]).light; c.lineWidth = 2; c.beginPath(); c.moveTo(X, Y); c.lineTo(X - Math.cos(a) * 11, Y - Math.sin(a) * 11); c.stroke(); } }
+    drawFx(c);
+    // 체력 바
+    for (const e of list) { const d = RTS.defOf(e), max = RTS.stat(G, e, 'hp'); if (!sel.has(e.id) && e.hp >= max) continue;
+      const w = d.size ? d.size[0] * TS - 10 : Math.max(22, d.r * TS * 2), x = e.x * TS - w / 2, y = (d.size ? e.y - d.size[1] / 2 : e.y) * TS - (d.size ? 8 : d.r * TS + (d.air ? 28 : 8)), k = Math.max(0, e.hp / max);
+      c.fillStyle = 'rgba(0,0,0,.65)'; c.fillRect(x - 1, y - 1, w + 2, 5); c.fillStyle = k > .55 ? '#58e08a' : k > .28 ? '#f2c14e' : '#ee5545'; c.fillRect(x, y, w * k, 3); }
+    // 안개
+    if (me >= 0 && !G.nofog) { if (t % 6 === 0 || !R.fogReady) { updateFog(G, me); R.fogReady = true; } c.imageSmoothingEnabled = true; c.drawImage(fog, 0, 0, G.w * TS, G.h * TS); }
+    // 건설 미리보기 & 드래그 박스
+    const m = app.mode;
+    if (m && m.type === 'place' && app.mouse.inside) { const d = RTS.defs.entities[m.def], [tx, ty] = app.placeTile(m.def), ok = RTS.canPlace(G, me, m.def, tx, ty), s = { x: tx + d.size[0] / 2, y: ty + d.size[1] / 2, team: me, def: m.def, built: 1, buildT: 1, facing: 0 };
+      c.globalAlpha = .55; drawBuilding(c, G, s, d, alpha); c.globalAlpha = 1; c.fillStyle = ok ? 'rgba(90,255,150,.28)' : 'rgba(255,70,60,.35)'; c.fillRect(tx * TS, ty * TS, d.size[0] * TS, d.size[1] * TS); }
+    if (m && m.type === 'target' && m.radius && app.mouse.inside) { c.strokeStyle = '#ffd27a'; c.lineWidth = 2; c.beginPath(); c.arc(app.mouse.wx * TS, app.mouse.wy * TS, m.radius * TS, 0, TAU); c.stroke(); }
+    R.pings = R.pings.filter(p => { p.life--; const k = p.life / p.max; c.strokeStyle = p.c; c.lineWidth = 2; c.globalAlpha = k; c.beginPath(); c.arc(p.x * TS, p.y * TS, (1 - k) * 22 + 4, 0, TAU); c.stroke(); c.globalAlpha = 1; return p.life > 0; });
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    if (app.box) { const b = app.box; c.strokeStyle = '#7dffa8'; c.lineWidth = 1.5; c.fillStyle = 'rgba(125,255,168,.1)'; c.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); c.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
+  };
+  function selBox(c, e, d) { const r = RTS.rectOf(e); c.strokeStyle = e.team === app.team ? '#7dffa8' : e.team < 0 ? '#ffe27a' : '#ff6a5a'; c.lineWidth = 2; c.strokeRect(r.x0 * TS - 2, r.y0 * TS - 2, r.w * TS + 4, r.h * TS + 4); }
+  function drawFx(c) {
+    R.fx = R.fx.filter(f => { const k = f.life / f.max, X = f.x * TS, Y = f.y * TS; f.life--;
+      if (f.k === 'flash') { circ(c, X, Y - (f.air ? 20 : 0), f.s * k + 1, '#fff2c0'); }
+      else if (f.k === 'spark') { circ(c, X, Y, 3 * k + .5, '#ffe9a8'); }
+      else if (f.k === 'blast') { const r = f.s * TS * (1.15 - k * .75); c.globalAlpha = k * .9; circ(c, X, Y, r, '#ff9a3c'); circ(c, X, Y, r * .62, '#ffe18a'); c.globalAlpha = k * .5; c.strokeStyle = '#fff'; c.lineWidth = 2; c.beginPath(); c.arc(X, Y, r * 1.15, 0, TAU); c.stroke(); c.globalAlpha = 1; }
+      else if (f.k === 'smoke' || f.k === 'steam') { c.globalAlpha = k * (f.k === 'steam' ? .35 : .4); circ(c, X, Y - (1 - k) * 26, f.s * (1.6 - k), f.k === 'steam' ? '#f3c0f0' : '#2b2b30'); c.globalAlpha = 1; }
+      else if (f.k === 'chip') { f.x += f.vx; f.y += f.vy; c.fillStyle = f.c; c.fillRect(X, Y, 3, 3); }
+      else if (f.k === 'beam') { c.strokeStyle = '#8affc4'; c.globalAlpha = k; c.lineWidth = 2; c.beginPath(); c.moveTo(X, Y); c.lineTo(f.x2 * TS, f.y2 * TS); c.stroke(); c.globalAlpha = 1; }
+      else if (f.k === 'ring') { c.strokeStyle = '#ffd27a'; c.globalAlpha = k; c.lineWidth = 2; c.beginPath(); c.arc(X, Y, (1 - k) * f.s * TS + 8, 0, TAU); c.stroke(); c.globalAlpha = 1; }
+      return f.life > 0; });
+    if (R.fx.length > 500) R.fx.splice(0, R.fx.length - 500);
+  }
+  // 아이콘: 실제 그림 함수를 작은 캔버스에 그린다. 새 유닛도 자동으로 아이콘이 생긴다.
+  const icons = {};
+  R.icon = function (defId, team, faction) {
+    const k = defId + team; if (icons[k]) return icons[k];
+    const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = faction === 'ironclad' ? MECH : STEEL;
+    if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
+    else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }
+    return (icons[k] = cv.toDataURL());
+  };
+  return R;
+};
+
+// app.js — DOM UI, 입력, 사운드, 게임 루프. RTS.mount(el, opts) 하나로 어디에든 붙는다.
+// 월드 연동: const g = RTS.mount(div, {onEnd: r => {...}}); g.start({faction,map,difficulty}); g.destroy();
+const HTML = `
+<div class="k-game">
+  <header class="k-top" id="k-top">
+    <div class="k-res"><span class="k-chip ore" title="광석"><i></i><b id="k-ore">0</b></span><span class="k-chip gas" title="에테르"><i></i><b id="k-gas">0</b></span><span class="k-chip sup" title="보급"><i></i><b id="k-sup">0/0</b></span></div>
+    <div class="k-clock" id="k-clock">00:00</div>
+    <div class="k-tools">
+      <button id="k-exbtn" class="k-ex-open" title="거래소 (M)">거래소</button>
+      <button id="k-dipbtn" class="k-ex-open" title="자유상단 (N)">상단</button>
+      <button id="k-idle" title="쉬는 일꾼 선택 (.)">쉬는 일꾼 <b id="k-idlen">0</b></button>
+      <button id="k-boxbtn" class="k-touch" title="터치 범위 선택">범위 선택</button>
+      <button id="k-speed" title="게임 속도">1배속</button>
+      <button id="k-pause" title="일시정지 (F2)">정지</button>
+      <button id="k-mute" title="소리">소리 끔</button>
+      <button id="k-menu">메뉴</button>
+    </div>
+  </header>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <footer class="k-bottom" id="k-bottom">
+    <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
+    <div class="k-info" id="k-info"></div>
+    <div class="k-card" id="k-card"></div>
+  </footer>
+  <div class="k-tip" id="k-tip" hidden></div>
+  <section class="k-overlay k-start" id="k-start">
+    <div class="k-panel">
+      <h1>광맥전선</h1>
+      <p class="k-sub">광석과 에테르를 캐고, 채취회사에 투자해 자금을 불리세요. 상대의 건물을 전부 무너뜨리면 이깁니다.</p>
+      <h2>진영</h2><div class="k-opts" id="k-fac"></div>
+      <h2>전장</h2><div class="k-opts" id="k-map"></div>
+      <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button></div>
+      <details class="k-help"><summary>조작법</summary><dl>
+        <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
+        <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
+        <dt>A · S · H · P</dt><dd>공격 이동 · 정지 · 위치 고수 · 순찰</dd>
+        <dt>B</dt><dd>일꾼 건설 메뉴. 명령 카드의 글자가 단축키입니다</dd>
+        <dt>Ctrl 또는 Alt + 숫자</dt><dd>부대 지정. 숫자로 호출, 두 번 누르면 이동. Shift + 숫자는 추가</dd>
+        <dt>방향키·화면 가장자리·휠</dt><dd>카메라 이동과 확대. F2 일시정지, Esc 취소</dd>
+        <dt>M</dt><dd>거래소. 회사당 100주, 30초마다 배당. 51주면 인수해 거점을 차지합니다</dd>
+        <dt>N</dt><dd>자유상단. 맵에 숨은 지부를 찾아 조건을 채우고 동맹금을 걸어 신청합니다. 거절되면 동맹금을 잃습니다</dd>
+        <dt>회사 거점 공격</dt><dd>우클릭으로 공격하면 주가가 내리고, 무너지면 40초간 가동이 멈추며 배당도 끊깁니다</dd>
+        <dt>터치</dt><dd>한 손가락은 지도 이동, 탭은 선택 또는 명령. 범위 선택 버튼을 켜면 드래그로 묶습니다</dd>
+      </dl></details>
+    </div>
+  </section>
+  <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
+</div>`;
+
+RTS.mount = function (root, opts = {}) {
+  root.innerHTML = HTML;
+  const $ = id => root.querySelector('#' + id), view = $('k-view'), mini = $('k-mini'), TS = 32;
+  const store = { get(k) { try { return localStorage.getItem('kjh-rts:' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('kjh-rts:' + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem('kjh-rts:' + k); } catch (e) {} } };
+  const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' } };
+  const R = app.R = RTS.Renderer(view, app), cam = R.cam;
+
+  // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
+  let ac = null, muted = store.get('mute') === '1'; const last = {};
+  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); };
+  function tone(f, f2, dur, type, vol) { const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
+  app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
+    ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
+
+  // ── 메뉴 ──────────────────────────────────────────────
+  function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
+  function renderMenu() { const d = RTS.defs; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
+
+  function bind(G) { app.G = G; R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
+    RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
+    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
+    RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
+    RTS.on(G, 'gameover', o => { if (!app.demo) finish(o); else setTimeout(demo, 2500); });
+  }
+  function centerOn(x, y) { cam.x = x * TS - view.width / cam.z / 2; cam.y = y * TS - view.height / cam.z / 2; clampCam(); }
+  function clampCam() { const G = app.G; if (!G) return; const vw = view.width / cam.z, vh = view.height / cam.z, W = G.w * TS, H = G.h * TS;
+    cam.x = vw >= W ? (W - vw) / 2 : Math.max(0, Math.min(W - vw, cam.x)); cam.y = vh >= H ? (H - vh) / 2 : Math.max(0, Math.min(H - vh, cam.y)); }
+  function demo() { app.demo = true; app.team = -1; const fs = Object.keys(RTS.defs.factions);
+    const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
+    for (let i = 0; i < 20 * 100; i++) RTS.step(G); // 메뉴 뒤 배경이 이미 진행 중인 기지가 되도록 미리 돌린다
+    bind(G); cam.z = 1; root.querySelector('.k-game').classList.add('demo'); layout(); const base = G.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff) || { x: G.w / 2, y: G.h / 2 }; centerOn(base.x - (view.width > 900 ? 5 : 0), base.y); }
+  app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions), foe = f.find(x => x !== app.cfg.faction); app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
+    const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
+    showGame(G); };
+  function showGame(G) { bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
+    cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
+  app.toMenu = () => { if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
+  app.saveState = () => (app.G && !app.demo ? RTS.serialize(app.G) : null);
+  app.loadState = json => { app.demo = false; app.team = 0; const G = RTS.deserialize(json); showGame(G); };
+  function finish(o) { const G = app.G, win = o.winner === app.team, a = G.teams[app.team], b = G.teams.find(t => t.id !== app.team), m = Math.floor(G.tick / 1200), s = Math.floor(G.tick / 20) % 60;
+    store.del('save'); $('k-endt').textContent = win ? '승리' : '패배'; $('k-ends').textContent = `${m}분 ${s}초 · ${b.name} AI ${RTS.defs.difficulties[b.ai].name}`;
+    const row = (l, x, y) => `<tr><th scope="row">${l}</th><td>${x}</td><td>${y}</td></tr>`;
+    $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
+    $('k-end').hidden = false; if (opts.onEnd) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
+
+  // ── 메시지와 HUD ──────────────────────────────────────
+  function notice(text, kind) { const box = $('k-msgs'), d = document.createElement('div'); if (box.lastChild && box.lastChild.textContent === text) return; d.textContent = text; d.className = 'k-msg ' + (kind || ''); box.appendChild(d); while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => d.remove(), 3800); if (kind === 'warn') app.sfx('warn'); }
+  const cost = c => Object.keys(c || {}).map(k => `<span class="c-${k}">${k === 'ore' ? '광석' : '에테르'} ${c[k]}</span>`).join(' ');
+  function selected() { return app.sel.map(i => app.G.byId[i]).filter(e => e && !e.dead); }
+  function leader(list) { const own = list.filter(e => e.team === app.team); if (!own.length) return null; return own.slice().sort((a, b) => cardRank(b) - cardRank(a))[0]; }
+  const cardRank = e => { const d = RTS.defOf(e); return (d.abilities ? 3 : 0) + (d.gather ? 2 : 0) + (d.kind === 'unit' ? 1 : 0); };
+
+  function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
+    if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
+    if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 3%)`, ok: true, run: () => trade(id, qty) });
+      tr(5, 'Q', '+5', '5주 매수'); tr(20, 'W', '+20', '20주 매수'); tr(-5, 'E', '-5', '5주 매도'); tr(-100, 'R', '전량', '보유 주식 전량 매도'); return items; }
+    if (!L) return items;
+    const d = RTS.defOf(L), f = t.faction, ids = list.filter(e => e.def === L.def).map(e => e.id), allIds = list.filter(e => RTS.defOf(e).kind === 'unit').map(e => e.id);
+    const ent = (id, act) => { const u = RTS.defs.entities[id], tech = RTS.techOk(t, u); return { key: u.key, img: R.icon(id, app.team, f), name: u.name, desc: u.desc, cost: u.cost, sub: u.supply ? '보급 ' + u.supply : '', ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name || RTS.defs.upgrades[r]?.name).join(', '), run: act }; };
+    if (!RTS.complete(L)) { items.push({ key: 'X', text: '취소', name: '건설 취소', desc: '비용의 75%를 돌려받습니다', ok: true, run: () => RTS.command(G, app.team, { type: 'cancel', building: L.id }) }); return items; }
+    if (app.menu === 'build' && d.builds) { for (const id of d.builds) items.push(ent(id, () => { app.mode = { type: 'place', def: id }; app.menu = 'main'; })); items.push({ key: 'Escape', label: 'Esc', text: '뒤로', name: '뒤로', ok: true, run: () => { app.menu = 'main'; } }); return items; }
+    if (d.kind === 'unit') {
+      const tgt = (order, text, key, name, desc) => ({ key, text, name, desc, ok: true, run: () => setMode({ type: 'target', order }) });
+      items.push(tgt('amove', '공격', 'A', '공격 이동', '이동하면서 만나는 적을 공격합니다'));
+      items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => RTS.command(G, app.team, { type: 'order', ids: allIds, order: null, stop: true }) });
+      items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => RTS.command(G, app.team, { type: 'order', ids: allIds, order: { type: 'hold' } }) });
+      items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
+      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
+        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : RTS.command(G, app.team, { type: 'ability', ids, ability: id }) }); }
+      if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
+    } else {
+      for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; RTS.command(G, app.team, { type: 'train', building: q.id, unit: id }); }));
+      for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => RTS.command(G, app.team, { type: 'research', building: L.id, upgrade: id }) }); }
+      if (L.prod.length) items.push({ key: 'X', text: '취소', name: '마지막 대기 취소', desc: '비용을 돌려받습니다', ok: true, run: () => RTS.command(G, app.team, { type: 'cancel', building: L.id }) });
+    }
+    return items; }
+  function setMode(m) { app.mode = m; }
+  function trade(company, qty) { RTS.command(app.G, app.team, { type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
+  // ── 거래소 패널: 행은 한 번 만들고 값만 갱신해 클릭이 끊기지 않게 한다 ──
+  function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span></div><div id="x-rows"></div><div class="x-news" id="x-news"></div>`;
+    const rows = $('x-rows'); app.exRows = {};
+    for (const c of Object.values(G.market.cos)) { const d = RTS.defs.companies[c.id], r = document.createElement('div'); r.className = 'x-row ' + d.resource;
+      r.innerHTML = `<div class="x-top"><button class="x-name" title="거점으로 이동"><b>${d.name}</b><small>${d.blurb}</small></button><svg viewBox="0 0 90 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg><div class="x-price"><b></b><small></small></div></div><div class="x-stake" title="51주 이상이면 경영권"><i class="me"></i><i class="foe"></i><s></s></div><div class="x-meta"><span class="x-own"></span><span class="x-pay"></span></div><div class="x-btn"><button data-q="5">+5</button><button data-q="20">+20</button><button data-q="-5">-5</button><button data-q="-100">전량 매도</button></div>`;
+      r.querySelectorAll('.x-btn button').forEach(b => { b.onclick = () => { unlock(); trade(c.id, +b.dataset.q); updateExchange(); }; });
+      r.querySelector('.x-name').onclick = () => { const e = G.byId[c.site]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
+      rows.appendChild(r); app.exRows[c.id] = r; }
+    $('x-close').onclick = toggleExchange; }
+  function updateExchange() { const G = app.G; if (!app.exRows) buildExchange(); const t = G.teams[app.team], foe = G.teams.find(x => x.id !== app.team); let value = 0;
+    for (const c of Object.values(G.market.cos)) { const r = app.exRows[c.id], mine = c.shares[app.team], theirs = c.shares[foe.id], h = c.hist, ref = h[Math.max(0, h.length - 13)], ch = (c.price / ref - 1) * 100, e = G.byId[c.site], down = e && e.downUntil > G.tick, min = Math.min(...h, c.price), max = Math.max(...h, c.price), span = Math.max(.01, max - min); value += mine * c.price;
+      const pts = [...h, c.price].map((v, i, a) => `${(i / Math.max(1, a.length - 1) * 90).toFixed(1)},${(26 - (v - min) / span * 24).toFixed(1)}`).join(' '), line = r.querySelector('polyline'); line.setAttribute('points', pts); line.setAttribute('stroke', ch >= 0 ? '#ff6a5a' : '#5aa8ff');
+      r.querySelector('.x-price b').textContent = c.price.toFixed(1); const sm = r.querySelector('.x-price small'); sm.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'; sm.className = ch >= 0 ? 'up' : 'dn';
+      r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
+      const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.MARKET.ctrlBonus : RTS.MARKET.minority, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
+      r.querySelector('.x-own').textContent = `내 ${mine}주 · 상대 ${theirs}주 · 시장 ${c.free}주` + (c.owner === app.team ? ' · 내 경영권' : c.owner >= 0 ? ' · 상대 경영권' : '');
+      r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
+      r.querySelectorAll('.x-btn button').forEach(b => { const q = +b.dataset.q; b.disabled = q > 0 ? !c.free || t.res.ore < c.price : !mine; }); }
+    $('x-value').textContent = Math.round(value); $('x-div').textContent = Math.round(t.stats.div || 0); $('x-next').textContent = '다음 배당 ' + Math.max(0, Math.ceil((G.market.nextDiv - G.tick) / 20)) + '초';
+    const sig = G.market.news.map(n => n.t).join(); if (sig !== app.newsSig) { app.newsSig = sig; $('x-news').innerHTML = G.market.news.map(n => `<p><time>${String(Math.floor(n.t / 1200)).padStart(2, '0')}:${String(Math.floor(n.t / 20) % 60).padStart(2, '0')}</time>${n.text}</p>`).join('') || '<p>아직 시장 소식이 없습니다.</p>'; } }
+  // ── 자유상단 패널: 상태가 바뀔 때만 다시 만들어 슬라이더가 끊기지 않게 한다 ──
+  function toggleDip() { app.dipOpen = !app.dipOpen; if (app.dipOpen && app.exOpen) toggleExchange(); $('k-dip').hidden = !app.dipOpen; $('k-dipbtn').classList.toggle('on', app.dipOpen); if (app.dipOpen) { app.dipSig = ''; updateDip(); } }
+  function updateDip() { const G = app.G, D = RTS.DIP, el = $('k-dip'), me = app.team, list = Object.values(G.dip.list);
+    const sig = list.map(b => [b.found[me], b.ally].join()).join('|');
+    if (sig !== app.dipSig) { app.dipSig = sig; el.innerHTML = `<div class="x-head"><h2>자유상단</h2><span id="d-rate"></span><button id="d-close" aria-label="자유상단 닫기">닫기</button></div><p class="d-help">지부 위치는 게임마다 바뀝니다. 유닛을 보내 찾아야 거래와 동맹이 열리고, 먼저 찾으면 수락 확률이 15% 오릅니다.</p><div id="d-rows"></div>`;
+      const rows = $('d-rows'); list.forEach(b => { const d = RTS.defs.branches[b.id], r = document.createElement('div'); r.className = 'd-row'; r.id = 'd-' + b.id; const mineA = b.ally === me;
+        if (!b.found[me]) r.innerHTML = `<b>미발견 지부</b><small>맵 어딘가에 있습니다. 유닛을 보내 찾으세요.</small>`;
+        else { r.innerHTML = `<div class="d-top"><button class="x-name d-go"><b>${d.name}</b></button><em class="d-state"></em></div><small>혜택: ${d.perkText}</small><small class="d-need"></small>` +
+          (mineA ? `<div class="d-line"><span class="d-stake"></span><button class="d-fund">출자 +100</button></div>` : b.ally >= 0 ? '' : `<label class="d-slide" for="d-stake-${b.id}"><span class="d-amt"></span><input type="range" id="d-stake-${b.id}" min="${D.min}" max="${D.full}" step="50"><span class="d-pct"></span></label><button class="d-apply"></button>`) +
+          (b.ally >= 0 && !mineA ? '' : `<div class="d-line d-barter"><button class="d-buy"></button><button class="d-sell"></button></div>`);
+          r.querySelector('.d-go').onclick = () => { const e = G.byId[b.site]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
+          const sl = r.querySelector('input'); if (sl) { sl.value = app.stakes[b.id] || 200; sl.oninput = () => { app.stakes[b.id] = +sl.value; updateDip(); }; }
+          const ap = r.querySelector('.d-apply'); if (ap) ap.onclick = () => { unlock(); RTS.command(G, me, { type: 'ally', branch: b.id, stake: +sl.value }); app.sfx('click'); };
+          const fu = r.querySelector('.d-fund'); if (fu) fu.onclick = () => RTS.command(G, me, { type: 'fund', branch: b.id, amount: 100 });
+          const bu = r.querySelector('.d-buy'), se = r.querySelector('.d-sell'); if (bu) { bu.onclick = () => RTS.command(G, me, { type: 'barter', branch: b.id, buy: true }); se.onclick = () => RTS.command(G, me, { type: 'barter', branch: b.id, buy: false }); } }
+        rows.appendChild(r); }); $('d-close').onclick = toggleDip; }
+    const sp = RTS.tradeSpread(G, me), rate = G.dip.rate, t = G.teams[me]; const rt = $('d-rate'); if (rt) rt.textContent = `시세 에테르 1 = 광석 ${rate.toFixed(2)}`;
+    for (const b of list) { const r = $('d-' + b.id), d = RTS.defs.branches[b.id]; if (!r || !b.found[me]) continue;
+      const st = r.querySelector('.d-state'); st.textContent = b.ally === me ? '내 동맹' : b.ally >= 0 ? '상대 동맹' : b.lockUntil > G.tick ? '복구 중' : '중립'; st.className = 'd-state ' + (b.ally === me ? 'ok' : b.ally >= 0 ? 'bad' : '');
+      const nd = r.querySelector('.d-need'), ok = d.check(G, t); nd.textContent = `조건: ${d.need} ${ok ? '(충족)' : '(미달)'}`; nd.classList.toggle('bad', !ok);
+      const sl = r.querySelector('input'); if (sl) { const s = +sl.value; r.querySelector('.d-amt').textContent = '동맹금 ' + s; r.querySelector('.d-pct').textContent = '수락 ' + Math.round(RTS.allyChance(G, me, b.id, s) * 100) + '%'; const block = RTS.allyBlock(G, me, b.id, s), ap = r.querySelector('.d-apply'); ap.disabled = !!block; ap.textContent = block || `동맹 신청 (거절 시 ${s} 손실)`; }
+      const ds = r.querySelector('.d-stake'); if (ds) ds.textContent = `출자금 ${b.stake} · 30초당 광석 ${(b.stake * D.stakeYield).toFixed(0)}`;
+      const bu = r.querySelector('.d-buy'); if (bu) { bu.textContent = `광석 ${Math.ceil(D.lot * rate * (1 + sp))} → 에테르 ${D.lot}`; r.querySelector('.d-sell').textContent = `에테르 ${D.lot} → 광석 ${Math.floor(D.lot * rate * (1 - sp))}`; } } }
+  function toggleExchange() { app.exOpen = !app.exOpen; if (app.exOpen && app.dipOpen) toggleDip(); $('k-ex').hidden = !app.exOpen; $('k-exbtn').classList.toggle('on', app.exOpen); if (app.exOpen) updateExchange(); }
+  function renderCard() { const G = app.G, el = $('k-card'), items = app.card = cardItems(), t = G.teams[app.team];
+    const sig = items.map(i => i.key + i.name + i.ok + (i.cool || 0) + (i.cost ? RTS.canPay(t, i.cost) : '')).join('|');
+    if (sig === app.cardSig) return; app.cardSig = sig; el.innerHTML = '';
+    items.forEach((it, i) => { const b = document.createElement('button'); b.id = 'k-cmd-' + i; b.className = 'k-cmd' + (it.ok ? '' : ' off') + (it.cost && !RTS.canPay(t, it.cost) ? ' poor' : ''); b.innerHTML = (it.img ? `<img src="${it.img}" alt="">` : `<em>${it.text}</em>`) + `<kbd>${it.label || it.key}</kbd>` + (it.cool ? `<u>${it.cool}</u>` : '');
+      b.setAttribute('aria-label', it.name); b.onclick = () => { unlock(); useItem(it); }; b.onmouseenter = () => tip(b, it); b.onmouseleave = () => { $('k-tip').hidden = true; }; el.appendChild(b); }); }
+  function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; $('k-tip').hidden = true; }
+  function tip(b, it) { const T = $('k-tip'), r = b.getBoundingClientRect(), rr = root.getBoundingClientRect(); T.innerHTML = `<b>${it.name}</b>${it.cost ? `<p>${cost(it.cost)} ${it.sub || ''}</p>` : ''}${it.desc ? `<p>${it.desc}</p>` : ''}${it.why ? `<p class="why">${it.why}</p>` : ''}`; T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; }
+  function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
+    let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
+    const e = list[0], d = RTS.defOf(e), f = e.team >= 0 ? G.teams[e.team].faction : 'pioneers';
+    if (list.length === 1 && e.branch) { const b = G.dip.list[e.branch], d2 = RTS.defs.branches[e.branch]; h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${d2.name}</h3><p class="k-st">${b.ally < 0 ? '중립 지부' : b.ally === app.team ? '내 동맹' : '상대 동맹'} · ${d2.perkText}</p></div></div>`;
+    } else if (list.length === 1 && e.company) { const c = G.market.cos[e.company], co = RTS.defs.companies[e.company], hp = d.hp, dn = e.downUntil > G.tick;
+      h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${co.name}</h3><p class="k-hp">${Math.ceil(e.hp)} / ${hp}${dn ? ' · 가동 중단' : ''}</p><p class="k-st">주가 ${c.price.toFixed(1)} · 내 지분 ${c.shares[app.team]}주 · ${c.owner < 0 ? '경영권 없음' : c.owner === app.team ? '내 경영권' : '상대 경영권'}</p></div></div>`;
+    } else if (list.length === 1) { const max = e.team >= 0 ? RTS.stat(G, e, 'hp') : 0, w = RTS.weapon(e), stats = [];
+      if (d.resource) stats.push(`남은 양 ${e.amount}`);
+      if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
+      if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
+      let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
+      else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
+      h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
+    } else { const sum = {}; h = '<div class="k-many">' + list.slice(0, 32).map(u => { const k = Math.max(0, u.hp / RTS.stat(G, u, 'hp')); return `<button data-id="${u.id}" title="${RTS.defOf(u).name}"><img src="${R.icon(u.def, u.team, f)}" alt=""><i style="width:${Math.round(k * 100)}%;background:${k > .55 ? 'var(--ok)' : k > .28 ? 'var(--warn)' : 'var(--bad)'}"></i></button>`; }).join('') + '</div>'; }
+    if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(b => { b.onclick = () => { app.sel = [+b.dataset.id]; }; }); } }
+  function renderHud() { const G = app.G, t = G.teams[app.team]; if (!t) return; if (app.exOpen) updateExchange(); if (app.dipOpen) updateDip();
+    $('k-ore').textContent = Math.floor(t.res.ore); $('k-gas').textContent = Math.floor(t.res.gas); $('k-sup').textContent = t.sup + '/' + t.cap; $('k-sup').parentNode.classList.toggle('full', t.sup >= t.cap);
+    const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
+    const idle = G.ents.filter(e => e.team === app.team && RTS.defOf(e).gather && !e.order); $('k-idlen').textContent = idle.length; app.idle = idle;
+    renderInfo(); renderCard(); const m = app.mode, mb = $('k-modebar');
+    if (m) { mb.hidden = false; const txt = m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요' : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 이동 지점을 고르세요' : '순찰 지점을 고르세요'; if (mb.textContent !== txt + ' · Esc 취소') mb.textContent = txt + ' · Esc 취소'; } else mb.hidden = true; }
+  function renderMini() { const G = app.G, c = mini.getContext('2d'), W = mini.width, H = mini.height, sc = Math.min(W / G.w, H / G.h), ox = (W - G.w * sc) / 2, oy = (H - G.h * sc) / 2; app.miniT = { sc, ox, oy };
+    c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
+    const t = G.teams[app.team], fogged = t && !G.nofog;
+    for (const e of G.ents) { const d = RTS.defOf(e), x = ox + e.x * sc, y = oy + e.y * sc; if (e.branch && !RTS.branchKnown(G, app.team, e)) continue;
+      if (fogged && !d.site && e.team !== app.team && !(e.team < 0 ? t.seen[(e.y | 0) * G.w + (e.x | 0)] : RTS.visibleTo(G, app.team, e.x, e.y))) continue;
+      c.fillStyle = d.site && e.team < 0 ? '#eef2f7' : e.team < 0 ? (d.resource === 'ore' ? '#ffc247' : '#ea7be0') : RTS.TEAM[e.team].main; const s = d.site ? 5 : d.size && e.team >= 0 ? 4 : 2.4; c.fillRect(x - s / 2, y - s / 2, s, s); }
+    if (fogged) { c.fillStyle = 'rgba(8,12,22,.72)'; const step = 2; for (let y = 0; y < G.h; y += step) for (let x = 0; x < G.w; x += step) { if (!t.vis[y * G.w + x]) { c.globalAlpha = t.seen[y * G.w + x] ? .45 : 1; c.fillRect(ox + x * sc, oy + y * sc, sc * step + .6, sc * step + .6); } } c.globalAlpha = 1;
+      for (const id of Object.keys(R.ghosts)) { const g = R.ghosts[id]; c.fillStyle = RTS.TEAM[g.team].main; c.fillRect(ox + g.x * sc - 2, oy + g.y * sc - 2, 4, 4); } }
+    c.strokeStyle = '#fff'; c.lineWidth = 1; c.strokeRect(ox + cam.x / TS * sc, oy + cam.y / TS * sc, view.width / cam.z / TS * sc, view.height / cam.z / TS * sc); }
+
+  // ── 입력 ──────────────────────────────────────────────
+  const toWorld = (sx, sy) => [(sx / cam.z + cam.x) / TS, (sy / cam.z + cam.y) / TS];
+  function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
+  app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
+  const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
+  function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
+    for (const e of G.ents) { if (e.dead || !canSee(e)) continue; const d = RTS.defOf(e);
+      if (d.size) { const r = RTS.rectOf(e); if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; } }
+      else { const y = d.air ? wy + .6 : wy, q = Math.hypot(e.x - wx, e.y - y); if (q < d.r + .28 && q < bd) { bd = q; best = e; } } }
+    return best; }
+  function selectBox(b, add) { const G = app.G, [x0, y0] = toWorld(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1)), [x1, y1] = toWorld(Math.max(b.x0, b.x1), Math.max(b.y0, b.y1));
+    const inBox = G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).uncontrollable && e.x >= x0 && e.x <= x1 && e.y >= y0 && e.y <= y1); const army = inBox.filter(e => !RTS.defOf(e).gather), chosen = army.length ? army : inBox;
+    if (!chosen.length && !add) return; app.sel = add ? [...new Set([...app.sel, ...chosen.map(e => e.id)])] : chosen.map(e => e.id); app.menu = 'main'; app.mode = null; }
+  function spread(ids, x, y) { const n = ids.length, cols = Math.ceil(Math.sqrt(n)), out = {}; const s = .95; ids.forEach((id, i) => { const row = (i / cols) | 0, col = i % cols; out[id] = { x: x + (col - (cols - 1) / 2) * s, y: y + (row - (cols - 1) / 2) * s }; }); return out; }
+  function context(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
+    const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
+    if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); RTS.command(G, app.team, { type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+    if (!units.length) return false;
+    if (t && t.team !== app.team && (t.team >= 0 || t.company)) { RTS.command(G, app.team, { type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
+    const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
+    const gas = t && t.team === app.team && RTS.defOf(t).placeOn && RTS.complete(t), ore = t && RTS.defOf(t).resource === 'ore';
+    if (t && (gas || ore) && workers.length) { RTS.command(G, app.team, { type: 'order', ids: workers, order: { type: 'gather', node: t.id }, queue }); if (rest.length) RTS.command(G, app.team, { type: 'order', ids: rest, order: { type: 'move', x: wx, y: wy }, spread: spread(rest, wx, wy), queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ffc247' }); return true; }
+    if (t && t.team === app.team && !RTS.complete(t) && workers.length) { RTS.command(G, app.team, { type: 'order', ids: workers, order: { type: 'build', site: t.id }, queue }); return true; }
+    RTS.command(G, app.team, { type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+  function execMode(wx, wy, shift) { const G = app.G, m = app.mode, ids = selected().filter(e => e.team === app.team && RTS.defOf(e).kind === 'unit').map(e => e.id);
+    if (m.type === 'place') { const [tx, ty] = app.placeTile(m.def), w = selected().filter(e => RTS.defOf(e).gather).sort((a, b) => (a.order && a.order.type === 'build' ? 1 : 0) - (b.order && b.order.type === 'build' ? 1 : 0)); RTS.command(G, app.team, { type: 'place', ids: w.map(e => e.id), def: m.def, tx, ty, queue: shift }); if (!shift) app.mode = null; return; }
+    if (m.ability) RTS.command(G, app.team, { type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
+    else RTS.command(G, app.team, { type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
+    R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
+  const drag = {};
+  view.addEventListener('contextmenu', e => e.preventDefault());
+  view.addEventListener('pointerenter', () => { app.mouse.inside = true; });
+  view.addEventListener('pointerleave', () => { app.mouse.inside = false; });
+  view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
+    app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
+    Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
+  view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) return; const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) drag.moved = true;
+    if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
+  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+    if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
+    if (drag.moved && drag.touch) return;
+    if (app.mode) { execMode(wx, wy, drag.shift); return; }
+    const t = pick(wx, wy);
+    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && !RTS.complete(t))) && context(wx, wy, false)) return;
+    if (!t) { app.sel = []; app.menu = 'main'; return; }
+    app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;
+    if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
+    if (drag.shift && t.team === app.team && RTS.defOf(t).kind === 'unit') { app.sel = app.sel.includes(t.id) ? app.sel.filter(i => i !== t.id) : [...app.sel, t.id]; return; }
+    app.sel = [t.id]; });
+  view.addEventListener('wheel', e => { e.preventDefault(); if (app.demo) return; setMouse(e); const [wx, wy] = [app.mouse.wx, app.mouse.wy], z = Math.max(.55, Math.min(1.6, cam.z * (e.deltaY < 0 ? 1.1 : .91))); cam.z = z; cam.x = wx * TS - app.mouse.x / z; cam.y = wy * TS - app.mouse.y / z; clampCam(); }, { passive: false });
+  const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
+  mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
+  mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
+  mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });
+  mini.addEventListener('pointerup', () => { app.miniDrag = false; });
+  const keys = {}; let lastDigit = 0, lastDigitT = 0;
+  const onKey = e => { const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+    if (k.startsWith('Arrow')) { e.preventDefault(); return; }
+    if (k === 'F2') { e.preventDefault(); togglePause(); return; }
+    if (/^[0-9]$/.test(k)) { e.preventDefault(); const list = selected().filter(u => u.team === app.team).map(u => u.id);
+      if (e.ctrlKey || e.metaKey || e.altKey) { app.groups[k] = list; notice(`${k}번 부대 지정`, 'ok'); }
+      else if (e.shiftKey) app.groups[k] = [...new Set([...(app.groups[k] || []), ...list])];
+      else { const g = (app.groups[k] || []).filter(i => app.G.byId[i]); if (!g.length) return; app.sel = g; app.menu = 'main'; const n = performance.now(); if (lastDigit === k && n - lastDigitT < 320) { const u = app.G.byId[g[0]]; centerOn(u.x, u.y); } lastDigit = k; lastDigitT = n; } return; }
+    if (k === 'Escape' && app.mode) { app.mode = null; return; }
+    if (k === '.') { if (app.idle && app.idle.length) { const u = app.idle[0]; app.sel = [u.id]; centerOn(u.x, u.y); } return; }
+    if (k === ' ' ) { e.preventDefault(); if (app.alarmAt) centerOn(app.alarmAt.x, app.alarmAt.y); return; }
+    if (e.ctrlKey || e.metaKey) return;
+    if (k === 'M') { e.preventDefault(); toggleExchange(); return; }
+    if (k === 'N') { e.preventDefault(); toggleDip(); return; }
+    const it = (app.card || []).find(i => i.key === k); if (it) { e.preventDefault(); useItem(it); } };
+  const offKey = e => { keys[e.key] = false; };
+  window.addEventListener('keydown', onKey); window.addEventListener('keyup', offKey);
+  function togglePause() { app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
+  function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
+  $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
+  $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); };
+  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => app.toMenu(); $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
+  $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
+  $('k-idle').onclick = () => { if (app.idle && app.idle.length) { app.sel = app.idle.map(e => e.id); const u = app.idle[0]; centerOn(u.x, u.y); } };
+  $('k-boxbtn').onclick = () => { app.boxTouch = !app.boxTouch; $('k-boxbtn').classList.toggle('on', app.boxTouch); };
+
+  // ── 루프 ──────────────────────────────────────────────
+  function layout() { const r = $('k-stage').getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)); if (view.width !== W || view.height !== H) { view.width = W; view.height = H; clampCam(); } }
+  const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
+  let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
+    if (!app.paused && !G.over) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
+    if (app.demo) { if (!reduce) { const fight = G.ents.find(e => e.firedAt > G.tick - 20 && RTS.defOf(e).kind === 'unit'); if (fight) { const tx = fight.x * TS - view.width / 2, ty = fight.y * TS - view.height / 2; cam.x += (tx - cam.x) * .006; cam.y += (ty - cam.y) * .006; clampCam(); } } }
+    else { const m = app.mouse, sp = 14 / cam.z, e = 12; let dx = 0, dy = 0; if (keys.ArrowLeft) dx = -sp; if (keys.ArrowRight) dx = sp; if (keys.ArrowUp) dy = -sp; if (keys.ArrowDown) dy = sp;
+      if (m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
+      if (dx || dy) { cam.x += dx; cam.y += dy; clampCam(); [m.wx, m.wy] = toWorld(m.x, m.y); }
+      view.style.cursor = app.mode ? 'crosshair' : 'default';
+      if (app.frame % 12 === 0) renderHud(); }
+    if (app.frame % 15 === 0 && !app.demo) renderMini();
+    R.draw(Math.min(1, acc / (1000 / RTS.HZ))); }
+  renderMenu(); layout(); demo(); raf = requestAnimationFrame(loop);
+  if (opts.autostart) app.start(opts.autostart);
+  app.destroy = () => { alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
+  return app;
+};
+</script>
+<script>
+function boot(data){
+  const app=RTS.mount(document.getElementById('kr-app'));
+  if(data&&data.save)app.loadState(data.save);
+  window.claude?.hot?.snapshot?.(()=>({save:app.saveState()}));
+  window.__rts=app;
+}
+window.claude?.hot?.ready?window.claude.hot.ready(boot):boot(window.claude?.hot?.data??{});
+</script>
+
+</body>
+</html>
