@@ -1,6 +1,8 @@
 // render.js — Canvas 2D 렌더러. 게임 상태를 읽기만 하고 바꾸지 않는다.
 // 새 유닛 그림은 RTS.art.units.이름, 건물은 RTS.art.buildings.이름 함수 하나만 추가한다.
 RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
+// 진영 색. 어느 팀 슬롯이든 진영이 같으면 같은 색으로 그린다.
+RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
   ochre: { ground: ['#6f5238', '#664a32', '#785a3e'], sand: ['#a07c4e', '#957145', '#aa8656'], rock: ['#33222a', '#46303a', '#6f4d52'] },
@@ -40,6 +42,9 @@ RTS.art = {
       c.fillStyle = MECH[1]; c.beginPath(); c.moveTo(-17, -15); c.lineTo(12, -17); c.lineTo(20, 0); c.lineTo(12, 17); c.lineTo(-17, 15); c.closePath(); c.fill();
       c.fillStyle = p.dark; c.beginPath(); c.moveTo(-11, -9); c.lineTo(8, -10); c.lineTo(14, 0); c.lineTo(8, 10); c.lineTo(-11, 9); c.closePath(); c.fill();
       circ(c, 1, 0, 6.5, p.main); circ(c, 3, 0, 3, p.light); c.fillStyle = '#20242c'; c.fillRect(10, -14, 19, 6); c.fillRect(10, 8, 19, 6); },
+    iworker(c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 2 : 0; c.strokeStyle = MECH[3]; c.lineWidth = 2.6; for (const a of [-1, 1]) for (const x of [-5, 1]) { c.beginPath(); c.moveTo(x, 5 * a); c.lineTo(x - 2 + k * a, 11 * a); c.stroke(); }
+      circ(c, 0, 0, 8.5, MECH[1]); circ(c, 0, 0, 5.5, p.dark); circ(c, 2, 0, 3, p.main); c.strokeStyle = MECH[0]; c.lineWidth = 2.4; for (const a of [-1, 1]) { c.beginPath(); c.moveTo(6, 4 * a); c.lineTo(12, 7 * a); c.lineTo(14, 2 * a); c.stroke(); }
+      if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
     caravan(c, p, s) { shade(c, -15, -10, 30, 20, '#7a5a34', 3); shade(c, -12, -8, 18, 16, '#d2b06a', 2); shade(c, 7, -7, 10, 14, p.main, 2); c.fillStyle = '#1c222e'; for (const [x, y] of [[-10, -12], [8, -12], [-10, 10], [8, 10]]) c.fillRect(x, y, 8, 3); },
     flyer(c, p, s) { const f = s.tint === 1;
       c.fillStyle = f ? MECH[1] : STEEL[1]; c.beginPath(); c.moveTo(f ? 18 : 20, 0); c.lineTo(-12, f ? -16 : -19); c.lineTo(-7, 0); c.lineTo(-12, f ? 16 : 19); c.closePath(); c.fill();
@@ -55,6 +60,14 @@ RTS.art = {
     barracks(c, w, h, p, s) { plate(c, w, h, s); shade(c, 10, 10, w - 20, 34, s.m[2], 3); c.fillStyle = p.main; for (let i = 0; i < 5; i++) c.fillRect(16 + i * 15, 18, 9, 18); shade(c, w / 2 - 15, h - 34, 30, 28, '#141a24', 2); c.fillStyle = p.light; c.fillRect(w / 2 - 15, h - 36, 30, 3); },
     lab(c, w, h, p, s) { plate(c, w, h, s); circ(c, 28, h / 2, 17, s.m[3]); circ(c, 28, h / 2, 12, '#9fd8ff'); c.save(); c.translate(28, h / 2); c.rotate(s.t * .02); c.fillStyle = p.dark; c.fillRect(-12, -1.5, 24, 3); c.restore(); c.fillStyle = p.main; for (let i = 0; i < 3; i++) c.fillRect(52 + i * 13, 14, 8, h - 28); },
     factory(c, w, h, p, s) { plate(c, w, h, s); c.fillStyle = s.m[3]; c.fillRect(8, 12, w - 16, h - 24); c.fillStyle = '#d9a23b'; for (let i = 0; i < 6; i++) c.fillRect(12 + i * 13, h - 18, 7, 4); shade(c, 18, 22, w - 36, 28, p.dark, 3); c.fillStyle = p.main; c.fillRect(18, 18 + (s.t * .3 % 30), w - 36, 3); },
+    // 철갑회 건물: 육각 코어와 배기 핀 위주. 개척단의 사각 판 구조와 실루엣이 다르다.
+    i_hq(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 40, s.m[2]); hex(c, x, y, 31, p.dark); hex(c, x, y, 21, s.m[3]); circ(c, x, y, 13 + Math.sin(s.t * .07), p.main); circ(c, x, y, 6, p.light); c.save(); c.translate(x, y); c.rotate(s.t * .012); c.fillStyle = s.m[0]; for (let i = 0; i < 3; i++) { c.rotate(TAU / 3); c.fillRect(24, -3, 12, 6); } c.restore(); fins(c, w, h, s); },
+    i_depot(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 25, s.m[2]); c.strokeStyle = p.main; c.lineWidth = 3; for (const r of [8, 15]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); } circ(c, x, y, 4, p.light); },
+    i_extractor(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 24, s.m[3]); c.strokeStyle = '#e06bd8'; c.lineWidth = 3; c.beginPath(); for (let a = 0; a < 15; a += .3) { const r = a * 1.25; c.lineTo(x + Math.cos(a + s.t * .05) * r, y + Math.sin(a + s.t * .05) * r); } c.stroke(); },
+    i_barracks(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2; hex(c, x, h / 2 - 4, 32, s.m[2]); c.fillStyle = p.dark; c.fillRect(x - 21, 28, 42, 28); c.fillStyle = '#ffb347'; c.fillRect(x - 17, 38 + Math.sin(s.t * .1) * 6, 34, 3); c.fillStyle = p.main; for (const a of [-1, 1]) { c.beginPath(); c.moveTo(x + 21 * a, 26); c.lineTo(x + 35 * a, 12); c.lineTo(x + 35 * a, 44); c.fill(); } fins(c, w, h, s); },
+    i_lab(c, w, h, p, s) { hexPad(c, w, h, s); for (const [x, r] of [[26, 17], [48, 13], [70, 17]]) { hex(c, x, h / 2, r, s.m[2]); circ(c, x, h / 2, r * .55, p.main); } c.strokeStyle = p.light; c.lineWidth = 2; c.beginPath(); c.moveTo(26, h / 2); c.lineTo(70, h / 2); c.stroke(); },
+    i_factory(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; c.fillStyle = s.m[3]; c.beginPath(); c.moveTo(14, y); c.lineTo(x, 12); c.lineTo(w - 14, y); c.lineTo(x, h - 12); c.closePath(); c.fill(); hex(c, x, y, 21, p.dark); c.save(); c.translate(x, y); c.rotate(s.t * .03); c.fillStyle = p.main; for (let i = 0; i < 4; i++) { c.rotate(TAU / 4); c.fillRect(3, -3, 16, 6); } c.restore(); circ(c, x, y, 5, p.light); },
+    i_turret(c, w, h, p, s) { hexPad(c, w, h, s); hex(c, w / 2, h / 2, 22, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); hex(c, 0, 0, 12, p.dark); c.fillStyle = s.m[3]; c.fillRect(4, -2.5, 27, 5); circ(c, 0, 0, 5, p.main); c.restore(); },
     site_ore(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ffc247'); },
     site_gas(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ea7be0'); },
     site_post(c, w, h, p, s) { plate(c, w, h, s); shade(c, 12, 16, w - 24, h - 30, p.dark, 3); c.fillStyle = p.main; c.beginPath(); c.moveTo(cx3(w) - 30, 18); c.lineTo(cx3(w), 2); c.lineTo(cx3(w) + 30, 18); c.fill();
@@ -62,6 +75,9 @@ RTS.art = {
     turret(c, w, h, p, s) { plate(c, w, h, s); circ(c, w / 2, h / 2, 21, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); shade(c, -11, -11, 22, 22, p.dark, 5); c.fillStyle = s.m[3]; c.fillRect(6, -6, 22, 4); c.fillRect(6, 2, 22, 4); circ(c, 0, 0, 6, p.main); c.restore(); },
   },
 };
+function hex(c, x, y, r, col) { c.fillStyle = col; c.beginPath(); for (let i = 0; i < 6; i++) c.lineTo(x + Math.cos(i * TAU / 6) * r, y + Math.sin(i * TAU / 6) * r); c.closePath(); c.fill(); }
+function hexPad(c, w, h, s) { c.fillStyle = s.m[3]; c.beginPath(); const q = 16; c.moveTo(q, 3); c.lineTo(w - q, 3); c.lineTo(w - 3, h / 2); c.lineTo(w - q, h - 3); c.lineTo(q, h - 3); c.lineTo(3, h / 2); c.closePath(); c.fill(); c.strokeStyle = s.m[1]; c.lineWidth = 2; c.stroke(); }
+function fins(c, w, h, s) { c.fillStyle = s.m[0]; for (let i = 0; i < 3; i++) { c.fillRect(12 + i * 7, h - 15, 4, 8); c.fillRect(w - 26 + i * 7, h - 15, 4, 8); } }
 function siteBase(c, w, h, p, s, col) { plate(c, w, h, s); shade(c, 12, 12, w - 24, h - 24, p.dark, 3); // 채굴탑
   const cx = w / 2, cy = h / 2; c.strokeStyle = p.light; c.lineWidth = 3; c.beginPath(); c.moveTo(cx - 20, cy + 20); c.lineTo(cx, cy - 24); c.lineTo(cx + 20, cy + 20); c.moveTo(cx - 12, cy + 2); c.lineTo(cx + 12, cy + 2); c.stroke();
   circ(c, cx, cy + 13, 9, s.m[3]); circ(c, cx, cy + 13, 5 + (s.down ? 0 : Math.sin(s.t * .12)), s.down ? '#55606e' : col); }
@@ -221,7 +237,7 @@ RTS.Renderer = function (canvas, app) {
   // 아이콘: 실제 그림 함수를 작은 캔버스에 그린다. 새 유닛도 자동으로 아이콘이 생긴다.
   const icons = {};
   R.icon = function (defId, team, faction) {
-    const k = defId + team; if (icons[k]) return icons[k];
+    const k = defId + team + faction; if (icons[k]) return icons[k];
     const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = faction === 'ironclad' ? MECH : STEEL;
     if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
     else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }

@@ -68,7 +68,7 @@ RTS.mount = function (root, opts = {}) {
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
+  function bind(G) { app.G = G; G.teams.forEach((t, i) => { RTS.TEAM[i] = RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
     RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
@@ -141,7 +141,7 @@ RTS.mount = function (root, opts = {}) {
     for (const c of Object.values(G.market.cos)) { const r = app.exRows[c.id], mine = c.shares[app.team], theirs = c.shares[foe.id], h = c.hist, ref = h[Math.max(0, h.length - 13)], ch = (c.price / ref - 1) * 100, e = G.byId[c.site], down = e && e.downUntil > G.tick, min = Math.min(...h, c.price), max = Math.max(...h, c.price), span = Math.max(.01, max - min); value += mine * c.price;
       const pts = [...h, c.price].map((v, i, a) => `${(i / Math.max(1, a.length - 1) * 90).toFixed(1)},${(26 - (v - min) / span * 24).toFixed(1)}`).join(' '), line = r.querySelector('polyline'); line.setAttribute('points', pts); line.setAttribute('stroke', ch >= 0 ? '#ff6a5a' : '#5aa8ff');
       r.querySelector('.x-price b').textContent = c.price.toFixed(1); const sm = r.querySelector('.x-price small'); sm.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'; sm.className = ch >= 0 ? 'up' : 'dn';
-      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
+      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.background = RTS.TEAM[app.team].main; r.querySelector('.foe').style.background = RTS.TEAM[foe.id].main; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
       const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.cfg(G).ctrlBonus / 100 : RTS.cfg(G).minority / 100, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
       r.querySelector('.x-own').textContent = `내 ${mine}주 · 상대 ${theirs}주 · 시장 ${c.free}주` + (c.owner === app.team ? ' · 내 경영권' : c.owner >= 0 ? ' · 상대 경영권' : '');
       r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
@@ -180,7 +180,7 @@ RTS.mount = function (root, opts = {}) {
     if (sig === app.cardSig) return; app.cardSig = sig; el.innerHTML = '';
     items.forEach((it, i) => { const b = document.createElement('button'); b.id = 'k-cmd-' + i; b.className = 'k-cmd' + (it.ok ? '' : ' off') + (it.cost && !RTS.canPay(t, it.cost) ? ' poor' : ''); b.innerHTML = (it.img ? `<img src="${it.img}" alt="">` : `<em>${it.text}</em>`) + `<kbd>${it.label || it.key}</kbd>` + (it.cool ? `<u>${it.cool}</u>` : '');
       b.setAttribute('aria-label', it.name); b.onclick = () => { unlock(); useItem(it); }; b.onmouseenter = () => tip(b, it); b.onmouseleave = () => { $('k-tip').hidden = true; }; el.appendChild(b); }); }
-  function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; $('k-tip').hidden = true; }
+  function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; renderCard(); $('k-tip').hidden = true; }
   function tip(b, it) { const T = $('k-tip'), r = b.getBoundingClientRect(), rr = root.getBoundingClientRect(); T.innerHTML = `<b>${it.name}</b>${it.cost ? `<p>${cost(it.cost)} ${it.sub || ''}</p>` : ''}${it.desc ? `<p>${it.desc}</p>` : ''}${it.why ? `<p class="why">${it.why}</p>` : ''}`; T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; }
   function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
     let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
@@ -219,7 +219,7 @@ RTS.mount = function (root, opts = {}) {
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
   const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
   function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
-    for (const e of G.ents) { if (e.dead || !canSee(e)) continue; const d = RTS.defOf(e);
+    for (const e of G.ents) { if (e.dead || e.ext || !canSee(e)) continue; const d = RTS.defOf(e); // 추출기가 선 분출구는 건너뛴다
       if (d.size) { const r = RTS.rectOf(e); if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; } }
       else { const y = d.air ? wy + .6 : wy, q = Math.hypot(e.x - wx, e.y - y); if (q < d.r + .28 && q < bd) { bd = q; best = e; } } }
     return best; }

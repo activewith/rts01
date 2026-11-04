@@ -57,7 +57,7 @@ RTS.mod({
     p_turret:   { kind: 'building', name: '방어포탑', abbr: '탑', key: 'T', art: 'turret', size: [2, 2], hp: 450, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['p_barracks'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
 
     // ── 철갑회: 일꾼이 터만 잡으면 건물이 스스로 올라간다(selfBuild) ──
-    i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'worker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
+    i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'iworker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
       weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작' },
     i_blade:   { kind: 'unit', name: '칼날봇', abbr: '칼', key: 'B', art: 'bot', r: .42, hp: 75, armor: 1, speed: 3.2, sight: 7, supply: 1, cost: { ore: 75 }, time: 15, tags: ['mech'],
       weapon: { damage: 11, range: .4, cooldown: .9, air: false }, desc: '빠른 근접 돌격병. 지상만 공격' },
@@ -70,13 +70,13 @@ RTS.mod({
     i_wasp:    { kind: 'unit', name: '말벌기', abbr: '말', key: 'F', art: 'flyer', tint: 1, air: true, r: .5, hp: 95, speed: 4.3, sight: 9, supply: 2, cost: { ore: 100, gas: 75 }, time: 20, tags: ['mech'],
       weapon: { damage: 7, range: 4, cooldown: .6, speed: 26, art: 'tracer' }, desc: '빠른 공중 요격기' },
 
-    i_hq:       { kind: 'building', name: '중추', abbr: '중', key: 'C', art: 'hq', size: [4, 3], hp: 1300, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['i_worker'], desc: '수집봇 생산, 자원 반납' },
-    i_relay:    { kind: 'building', name: '중계탑', abbr: '계', key: 'D', art: 'depot', size: [2, 2], hp: 350, sight: 8, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
-    i_extractor:{ kind: 'building', name: '추출 코일', abbr: '코', key: 'E', art: 'extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
-    i_forge:    { kind: 'building', name: '조립로', abbr: '조', key: 'B', art: 'barracks', size: [3, 3], hp: 850, sight: 8, cost: { ore: 150 }, time: 34, requires: ['i_hq'], trains: ['i_blade', 'i_striker', 'i_mender'], desc: '경량 기계 생산' },
-    i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
-    i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
-    i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
+    i_hq:       { kind: 'building', name: '중추', abbr: '중', key: 'C', art: 'i_hq', size: [4, 3], hp: 1300, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['i_worker'], desc: '수집봇 생산, 자원 반납' },
+    i_relay:    { kind: 'building', name: '중계탑', abbr: '계', key: 'D', art: 'i_depot', size: [2, 2], hp: 350, sight: 8, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
+    i_extractor:{ kind: 'building', name: '추출 코일', abbr: '코', key: 'E', art: 'i_extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
+    i_forge:    { kind: 'building', name: '조립로', abbr: '조', key: 'B', art: 'i_barracks', size: [3, 3], hp: 850, sight: 8, cost: { ore: 150 }, time: 34, requires: ['i_hq'], trains: ['i_blade', 'i_striker', 'i_mender'], desc: '경량 기계 생산' },
+    i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'i_lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
+    i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'i_factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
+    i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'i_turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
   },
   upgrades: {
     p_stim:  { short: '충전', name: '과충전 주입기', key: 'Q', cost: { ore: 100, gas: 100 }, time: 40, desc: '소총병 과충전 사용 가능' },

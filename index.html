@@ -637,6 +637,7 @@ Object.assign(RTS.orders, {
   gather(G, u, o) {
     const d = defOf(u); let n = G.byId[o.node];
     const stuff = n && !n.dead && (n.amount > 0 || (n.vent && RTS.complete(n) && G.byId[n.vent].amount > 0));
+    if (n && !n.dead && n.vent && !RTS.complete(n)) { moveToEnt(G, u, n); return; } // 공사 중 추출기는 곁에서 기다린다
     if (!stuff && (o.phase || 'go') === 'go') { const prev = n || u; const r = RTS.nearestNode(G, prev.x, prev.y, 'ore', 14, n && n.vent ? 0 : 0); if (!r) { nextOrder(G, u); return; } o.node = r.id; return; }
     o.phase = o.phase || (u.cargo >= d.carry ? 'back' : 'go');
     if (o.phase === 'go') {
@@ -671,7 +672,7 @@ Object.assign(RTS.orders, {
       nextOrder(G, u); if (!u.order && !G.teams[u.team].ai) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } return; }
     moveToEnt(G, u, s);
     if (RTS.edgeDist(u, s) < .7) { stopMove(u);
-      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
+      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; if (defOf(s).placeOn) { RTS.issue(G, u, { type: 'gather', node: s.id }); return; } nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
       else { s.builder = G.tick; u.building = G.tick; }
     } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
   },
@@ -690,13 +691,25 @@ RTS.nearestDrop = function (G, u) {
   return best;
 };
 
+// 추출 건물이 완공되면 가까운 광석 일꾼 3명을 자동 배치한다. 공사를 맡던 일꾼도 3명에 포함된다.
+function assignGas(G, b) {
+  const crew = G.ents.filter(u => u.team === b.team && !u.dead && defOf(u).gather), busy = crew.filter(u => u.order && (u.order.site === b.id || u.order.node === b.id)).length;
+  const free = crew.filter(u => u.order && u.order.type === 'gather' && !G.byId[u.order.node]?.vent && !u.cargo).sort((x, y) => dist(x, b) - dist(y, b));
+  for (const u of free.slice(0, Math.max(0, 3 - busy))) RTS.issue(G, u, { type: 'gather', node: b.id });
+}
+
+// 추출기가 완공되면 가까운 일꾼을 3명까지 자동 배치한다
+function staffExtractor(G, x) {
+  const near = G.ents.filter(u => u.team === x.team && !u.dead && defOf(u).gather), on = near.filter(u => u.order && (u.order.node === x.id || u.order.site === x.id)).length;
+  near.filter(u => u.order && u.order.type === 'gather' && G.byId[u.order.node] && !G.byId[u.order.node].vent).sort((a, b) => dist(a, x) - dist(b, x)).slice(0, Math.max(0, 3 - on)).forEach(u => RTS.issue(G, u, { type: 'gather', node: x.id }));
+}
 // ── 건물 틱 ────────────────────────────────────────────────
 function runBuilding(G, b) {
   const d = defOf(b), t = G.teams[b.team];
   if (b.built < b.buildT) {
     const on = RTS.defs.factions[t.faction].selfBuild ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
     if (on) { b.built++; b.hp = Math.min(RTS.stat(G, b, 'hp'), b.hp + d.hp * .9 / b.buildT);
-      if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); say(G, b.team, d.name + ' 건설 완료', 'ok'); } }
+      if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); if (d.placeOn && !t.ai) staffExtractor(G, b); say(G, b.team, d.name + ' 건설 완료', 'ok'); if (d.placeOn) assignGas(G, b); } }
     return;
   }
   if (d.weapon) { if (b.cd > 0) b.cd--; const w = d.weapon, tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, w, 'range') && b.cd <= 0) fire(G, b, w, tg); }
@@ -1225,7 +1238,7 @@ RTS.mod({
     p_turret:   { kind: 'building', name: '방어포탑', abbr: '탑', key: 'T', art: 'turret', size: [2, 2], hp: 450, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['p_barracks'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
 
     // ── 철갑회: 일꾼이 터만 잡으면 건물이 스스로 올라간다(selfBuild) ──
-    i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'worker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
+    i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'iworker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
       weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작' },
     i_blade:   { kind: 'unit', name: '칼날봇', abbr: '칼', key: 'B', art: 'bot', r: .42, hp: 75, armor: 1, speed: 3.2, sight: 7, supply: 1, cost: { ore: 75 }, time: 15, tags: ['mech'],
       weapon: { damage: 11, range: .4, cooldown: .9, air: false }, desc: '빠른 근접 돌격병. 지상만 공격' },
@@ -1238,13 +1251,13 @@ RTS.mod({
     i_wasp:    { kind: 'unit', name: '말벌기', abbr: '말', key: 'F', art: 'flyer', tint: 1, air: true, r: .5, hp: 95, speed: 4.3, sight: 9, supply: 2, cost: { ore: 100, gas: 75 }, time: 20, tags: ['mech'],
       weapon: { damage: 7, range: 4, cooldown: .6, speed: 26, art: 'tracer' }, desc: '빠른 공중 요격기' },
 
-    i_hq:       { kind: 'building', name: '중추', abbr: '중', key: 'C', art: 'hq', size: [4, 3], hp: 1300, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['i_worker'], desc: '수집봇 생산, 자원 반납' },
-    i_relay:    { kind: 'building', name: '중계탑', abbr: '계', key: 'D', art: 'depot', size: [2, 2], hp: 350, sight: 8, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
-    i_extractor:{ kind: 'building', name: '추출 코일', abbr: '코', key: 'E', art: 'extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
-    i_forge:    { kind: 'building', name: '조립로', abbr: '조', key: 'B', art: 'barracks', size: [3, 3], hp: 850, sight: 8, cost: { ore: 150 }, time: 34, requires: ['i_hq'], trains: ['i_blade', 'i_striker', 'i_mender'], desc: '경량 기계 생산' },
-    i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
-    i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
-    i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
+    i_hq:       { kind: 'building', name: '중추', abbr: '중', key: 'C', art: 'i_hq', size: [4, 3], hp: 1300, armor: 1, sight: 11, cost: { ore: 400 }, time: 60, provides: 12, dropoff: true, trains: ['i_worker'], desc: '수집봇 생산, 자원 반납' },
+    i_relay:    { kind: 'building', name: '중계탑', abbr: '계', key: 'D', art: 'i_depot', size: [2, 2], hp: 350, sight: 8, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
+    i_extractor:{ kind: 'building', name: '추출 코일', abbr: '코', key: 'E', art: 'i_extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 75 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 건설' },
+    i_forge:    { kind: 'building', name: '조립로', abbr: '조', key: 'B', art: 'i_barracks', size: [3, 3], hp: 850, sight: 8, cost: { ore: 150 }, time: 34, requires: ['i_hq'], trains: ['i_blade', 'i_striker', 'i_mender'], desc: '경량 기계 생산' },
+    i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'i_lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
+    i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'i_factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
+    i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'i_turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
   },
   upgrades: {
     p_stim:  { short: '충전', name: '과충전 주입기', key: 'Q', cost: { ore: 100, gas: 100 }, time: 40, desc: '소총병 과충전 사용 가능' },
@@ -1372,6 +1385,8 @@ RTS.defaultSettings = () => { const o = {}; for (const g of RTS.SETTINGS) for (c
 // render.js — Canvas 2D 렌더러. 게임 상태를 읽기만 하고 바꾸지 않는다.
 // 새 유닛 그림은 RTS.art.units.이름, 건물은 RTS.art.buildings.이름 함수 하나만 추가한다.
 RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
+// 진영 색. 어느 팀 슬롯이든 진영이 같으면 같은 색으로 그린다.
+RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
   ochre: { ground: ['#6f5238', '#664a32', '#785a3e'], sand: ['#a07c4e', '#957145', '#aa8656'], rock: ['#33222a', '#46303a', '#6f4d52'] },
@@ -1411,6 +1426,9 @@ RTS.art = {
       c.fillStyle = MECH[1]; c.beginPath(); c.moveTo(-17, -15); c.lineTo(12, -17); c.lineTo(20, 0); c.lineTo(12, 17); c.lineTo(-17, 15); c.closePath(); c.fill();
       c.fillStyle = p.dark; c.beginPath(); c.moveTo(-11, -9); c.lineTo(8, -10); c.lineTo(14, 0); c.lineTo(8, 10); c.lineTo(-11, 9); c.closePath(); c.fill();
       circ(c, 1, 0, 6.5, p.main); circ(c, 3, 0, 3, p.light); c.fillStyle = '#20242c'; c.fillRect(10, -14, 19, 6); c.fillRect(10, 8, 19, 6); },
+    iworker(c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 2 : 0; c.strokeStyle = MECH[3]; c.lineWidth = 2.6; for (const a of [-1, 1]) for (const x of [-5, 1]) { c.beginPath(); c.moveTo(x, 5 * a); c.lineTo(x - 2 + k * a, 11 * a); c.stroke(); }
+      circ(c, 0, 0, 8.5, MECH[1]); circ(c, 0, 0, 5.5, p.dark); circ(c, 2, 0, 3, p.main); c.strokeStyle = MECH[0]; c.lineWidth = 2.4; for (const a of [-1, 1]) { c.beginPath(); c.moveTo(6, 4 * a); c.lineTo(12, 7 * a); c.lineTo(14, 2 * a); c.stroke(); }
+      if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
     caravan(c, p, s) { shade(c, -15, -10, 30, 20, '#7a5a34', 3); shade(c, -12, -8, 18, 16, '#d2b06a', 2); shade(c, 7, -7, 10, 14, p.main, 2); c.fillStyle = '#1c222e'; for (const [x, y] of [[-10, -12], [8, -12], [-10, 10], [8, 10]]) c.fillRect(x, y, 8, 3); },
     flyer(c, p, s) { const f = s.tint === 1;
       c.fillStyle = f ? MECH[1] : STEEL[1]; c.beginPath(); c.moveTo(f ? 18 : 20, 0); c.lineTo(-12, f ? -16 : -19); c.lineTo(-7, 0); c.lineTo(-12, f ? 16 : 19); c.closePath(); c.fill();
@@ -1426,6 +1444,14 @@ RTS.art = {
     barracks(c, w, h, p, s) { plate(c, w, h, s); shade(c, 10, 10, w - 20, 34, s.m[2], 3); c.fillStyle = p.main; for (let i = 0; i < 5; i++) c.fillRect(16 + i * 15, 18, 9, 18); shade(c, w / 2 - 15, h - 34, 30, 28, '#141a24', 2); c.fillStyle = p.light; c.fillRect(w / 2 - 15, h - 36, 30, 3); },
     lab(c, w, h, p, s) { plate(c, w, h, s); circ(c, 28, h / 2, 17, s.m[3]); circ(c, 28, h / 2, 12, '#9fd8ff'); c.save(); c.translate(28, h / 2); c.rotate(s.t * .02); c.fillStyle = p.dark; c.fillRect(-12, -1.5, 24, 3); c.restore(); c.fillStyle = p.main; for (let i = 0; i < 3; i++) c.fillRect(52 + i * 13, 14, 8, h - 28); },
     factory(c, w, h, p, s) { plate(c, w, h, s); c.fillStyle = s.m[3]; c.fillRect(8, 12, w - 16, h - 24); c.fillStyle = '#d9a23b'; for (let i = 0; i < 6; i++) c.fillRect(12 + i * 13, h - 18, 7, 4); shade(c, 18, 22, w - 36, 28, p.dark, 3); c.fillStyle = p.main; c.fillRect(18, 18 + (s.t * .3 % 30), w - 36, 3); },
+    // 철갑회 건물: 육각 코어와 배기 핀 위주. 개척단의 사각 판 구조와 실루엣이 다르다.
+    i_hq(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 40, s.m[2]); hex(c, x, y, 31, p.dark); hex(c, x, y, 21, s.m[3]); circ(c, x, y, 13 + Math.sin(s.t * .07), p.main); circ(c, x, y, 6, p.light); c.save(); c.translate(x, y); c.rotate(s.t * .012); c.fillStyle = s.m[0]; for (let i = 0; i < 3; i++) { c.rotate(TAU / 3); c.fillRect(24, -3, 12, 6); } c.restore(); fins(c, w, h, s); },
+    i_depot(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 25, s.m[2]); c.strokeStyle = p.main; c.lineWidth = 3; for (const r of [8, 15]) { c.beginPath(); c.arc(x, y, r, 0, TAU); c.stroke(); } circ(c, x, y, 4, p.light); },
+    i_extractor(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; hex(c, x, y, 24, s.m[3]); c.strokeStyle = '#e06bd8'; c.lineWidth = 3; c.beginPath(); for (let a = 0; a < 15; a += .3) { const r = a * 1.25; c.lineTo(x + Math.cos(a + s.t * .05) * r, y + Math.sin(a + s.t * .05) * r); } c.stroke(); },
+    i_barracks(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2; hex(c, x, h / 2 - 4, 32, s.m[2]); c.fillStyle = p.dark; c.fillRect(x - 21, 28, 42, 28); c.fillStyle = '#ffb347'; c.fillRect(x - 17, 38 + Math.sin(s.t * .1) * 6, 34, 3); c.fillStyle = p.main; for (const a of [-1, 1]) { c.beginPath(); c.moveTo(x + 21 * a, 26); c.lineTo(x + 35 * a, 12); c.lineTo(x + 35 * a, 44); c.fill(); } fins(c, w, h, s); },
+    i_lab(c, w, h, p, s) { hexPad(c, w, h, s); for (const [x, r] of [[26, 17], [48, 13], [70, 17]]) { hex(c, x, h / 2, r, s.m[2]); circ(c, x, h / 2, r * .55, p.main); } c.strokeStyle = p.light; c.lineWidth = 2; c.beginPath(); c.moveTo(26, h / 2); c.lineTo(70, h / 2); c.stroke(); },
+    i_factory(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; c.fillStyle = s.m[3]; c.beginPath(); c.moveTo(14, y); c.lineTo(x, 12); c.lineTo(w - 14, y); c.lineTo(x, h - 12); c.closePath(); c.fill(); hex(c, x, y, 21, p.dark); c.save(); c.translate(x, y); c.rotate(s.t * .03); c.fillStyle = p.main; for (let i = 0; i < 4; i++) { c.rotate(TAU / 4); c.fillRect(3, -3, 16, 6); } c.restore(); circ(c, x, y, 5, p.light); },
+    i_turret(c, w, h, p, s) { hexPad(c, w, h, s); hex(c, w / 2, h / 2, 22, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); hex(c, 0, 0, 12, p.dark); c.fillStyle = s.m[3]; c.fillRect(4, -2.5, 27, 5); circ(c, 0, 0, 5, p.main); c.restore(); },
     site_ore(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ffc247'); },
     site_gas(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ea7be0'); },
     site_post(c, w, h, p, s) { plate(c, w, h, s); shade(c, 12, 16, w - 24, h - 30, p.dark, 3); c.fillStyle = p.main; c.beginPath(); c.moveTo(cx3(w) - 30, 18); c.lineTo(cx3(w), 2); c.lineTo(cx3(w) + 30, 18); c.fill();
@@ -1433,6 +1459,9 @@ RTS.art = {
     turret(c, w, h, p, s) { plate(c, w, h, s); circ(c, w / 2, h / 2, 21, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); shade(c, -11, -11, 22, 22, p.dark, 5); c.fillStyle = s.m[3]; c.fillRect(6, -6, 22, 4); c.fillRect(6, 2, 22, 4); circ(c, 0, 0, 6, p.main); c.restore(); },
   },
 };
+function hex(c, x, y, r, col) { c.fillStyle = col; c.beginPath(); for (let i = 0; i < 6; i++) c.lineTo(x + Math.cos(i * TAU / 6) * r, y + Math.sin(i * TAU / 6) * r); c.closePath(); c.fill(); }
+function hexPad(c, w, h, s) { c.fillStyle = s.m[3]; c.beginPath(); const q = 16; c.moveTo(q, 3); c.lineTo(w - q, 3); c.lineTo(w - 3, h / 2); c.lineTo(w - q, h - 3); c.lineTo(q, h - 3); c.lineTo(3, h / 2); c.closePath(); c.fill(); c.strokeStyle = s.m[1]; c.lineWidth = 2; c.stroke(); }
+function fins(c, w, h, s) { c.fillStyle = s.m[0]; for (let i = 0; i < 3; i++) { c.fillRect(12 + i * 7, h - 15, 4, 8); c.fillRect(w - 26 + i * 7, h - 15, 4, 8); } }
 function siteBase(c, w, h, p, s, col) { plate(c, w, h, s); shade(c, 12, 12, w - 24, h - 24, p.dark, 3); // 채굴탑
   const cx = w / 2, cy = h / 2; c.strokeStyle = p.light; c.lineWidth = 3; c.beginPath(); c.moveTo(cx - 20, cy + 20); c.lineTo(cx, cy - 24); c.lineTo(cx + 20, cy + 20); c.moveTo(cx - 12, cy + 2); c.lineTo(cx + 12, cy + 2); c.stroke();
   circ(c, cx, cy + 13, 9, s.m[3]); circ(c, cx, cy + 13, 5 + (s.down ? 0 : Math.sin(s.t * .12)), s.down ? '#55606e' : col); }
@@ -1592,7 +1621,7 @@ RTS.Renderer = function (canvas, app) {
   // 아이콘: 실제 그림 함수를 작은 캔버스에 그린다. 새 유닛도 자동으로 아이콘이 생긴다.
   const icons = {};
   R.icon = function (defId, team, faction) {
-    const k = defId + team; if (icons[k]) return icons[k];
+    const k = defId + team + faction; if (icons[k]) return icons[k];
     const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = faction === 'ironclad' ? MECH : STEEL;
     if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
     else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }
@@ -1671,7 +1700,7 @@ RTS.mount = function (root, opts = {}) {
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
+  function bind(G) { app.G = G; G.teams.forEach((t, i) => { RTS.TEAM[i] = RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
     RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
@@ -1744,7 +1773,7 @@ RTS.mount = function (root, opts = {}) {
     for (const c of Object.values(G.market.cos)) { const r = app.exRows[c.id], mine = c.shares[app.team], theirs = c.shares[foe.id], h = c.hist, ref = h[Math.max(0, h.length - 13)], ch = (c.price / ref - 1) * 100, e = G.byId[c.site], down = e && e.downUntil > G.tick, min = Math.min(...h, c.price), max = Math.max(...h, c.price), span = Math.max(.01, max - min); value += mine * c.price;
       const pts = [...h, c.price].map((v, i, a) => `${(i / Math.max(1, a.length - 1) * 90).toFixed(1)},${(26 - (v - min) / span * 24).toFixed(1)}`).join(' '), line = r.querySelector('polyline'); line.setAttribute('points', pts); line.setAttribute('stroke', ch >= 0 ? '#ff6a5a' : '#5aa8ff');
       r.querySelector('.x-price b').textContent = c.price.toFixed(1); const sm = r.querySelector('.x-price small'); sm.textContent = (ch >= 0 ? '+' : '') + ch.toFixed(1) + '%'; sm.className = ch >= 0 ? 'up' : 'dn';
-      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
+      r.querySelector('.x-stake s').style.left = RTS.cfg(G).control + '%'; r.querySelector('.me').style.background = RTS.TEAM[app.team].main; r.querySelector('.foe').style.background = RTS.TEAM[foe.id].main; r.querySelector('.me').style.width = mine + '%'; r.querySelector('.foe').style.width = theirs + '%';
       const k = c.owner < 0 ? 1 : c.owner === app.team ? RTS.cfg(G).ctrlBonus / 100 : RTS.cfg(G).minority / 100, unit = RTS.defs.companies[c.id].resource === 'ore' ? '광석' : '에테르';
       r.querySelector('.x-own').textContent = `내 ${mine}주 · 상대 ${theirs}주 · 시장 ${c.free}주` + (c.owner === app.team ? ' · 내 경영권' : c.owner >= 0 ? ' · 상대 경영권' : '');
       r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
@@ -1783,7 +1812,7 @@ RTS.mount = function (root, opts = {}) {
     if (sig === app.cardSig) return; app.cardSig = sig; el.innerHTML = '';
     items.forEach((it, i) => { const b = document.createElement('button'); b.id = 'k-cmd-' + i; b.className = 'k-cmd' + (it.ok ? '' : ' off') + (it.cost && !RTS.canPay(t, it.cost) ? ' poor' : ''); b.innerHTML = (it.img ? `<img src="${it.img}" alt="">` : `<em>${it.text}</em>`) + `<kbd>${it.label || it.key}</kbd>` + (it.cool ? `<u>${it.cool}</u>` : '');
       b.setAttribute('aria-label', it.name); b.onclick = () => { unlock(); useItem(it); }; b.onmouseenter = () => tip(b, it); b.onmouseleave = () => { $('k-tip').hidden = true; }; el.appendChild(b); }); }
-  function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; $('k-tip').hidden = true; }
+  function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; renderCard(); $('k-tip').hidden = true; }
   function tip(b, it) { const T = $('k-tip'), r = b.getBoundingClientRect(), rr = root.getBoundingClientRect(); T.innerHTML = `<b>${it.name}</b>${it.cost ? `<p>${cost(it.cost)} ${it.sub || ''}</p>` : ''}${it.desc ? `<p>${it.desc}</p>` : ''}${it.why ? `<p class="why">${it.why}</p>` : ''}`; T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; }
   function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
     let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
@@ -1822,7 +1851,7 @@ RTS.mount = function (root, opts = {}) {
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
   const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
   function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
-    for (const e of G.ents) { if (e.dead || !canSee(e)) continue; const d = RTS.defOf(e);
+    for (const e of G.ents) { if (e.dead || e.ext || !canSee(e)) continue; const d = RTS.defOf(e); // 추출기가 선 분출구는 건너뛴다
       if (d.size) { const r = RTS.rectOf(e); if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; } }
       else { const y = d.air ? wy + .6 : wy, q = Math.hypot(e.x - wx, e.y - y); if (q < d.r + .28 && q < bd) { bd = q; best = e; } } }
     return best; }

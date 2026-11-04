@@ -245,6 +245,7 @@ Object.assign(RTS.orders, {
   gather(G, u, o) {
     const d = defOf(u); let n = G.byId[o.node];
     const stuff = n && !n.dead && (n.amount > 0 || (n.vent && RTS.complete(n) && G.byId[n.vent].amount > 0));
+    if (n && !n.dead && n.vent && !RTS.complete(n)) { moveToEnt(G, u, n); return; } // 공사 중 추출기는 곁에서 기다린다
     if (!stuff && (o.phase || 'go') === 'go') { const prev = n || u; const r = RTS.nearestNode(G, prev.x, prev.y, 'ore', 14, n && n.vent ? 0 : 0); if (!r) { nextOrder(G, u); return; } o.node = r.id; return; }
     o.phase = o.phase || (u.cargo >= d.carry ? 'back' : 'go');
     if (o.phase === 'go') {
@@ -279,7 +280,7 @@ Object.assign(RTS.orders, {
       nextOrder(G, u); if (!u.order && !G.teams[u.team].ai) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } return; }
     moveToEnt(G, u, s);
     if (RTS.edgeDist(u, s) < .7) { stopMove(u);
-      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
+      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; if (defOf(s).placeOn) { RTS.issue(G, u, { type: 'gather', node: s.id }); return; } nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
       else { s.builder = G.tick; u.building = G.tick; }
     } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
   },
@@ -298,13 +299,25 @@ RTS.nearestDrop = function (G, u) {
   return best;
 };
 
+// 추출 건물이 완공되면 가까운 광석 일꾼 3명을 자동 배치한다. 공사를 맡던 일꾼도 3명에 포함된다.
+function assignGas(G, b) {
+  const crew = G.ents.filter(u => u.team === b.team && !u.dead && defOf(u).gather), busy = crew.filter(u => u.order && (u.order.site === b.id || u.order.node === b.id)).length;
+  const free = crew.filter(u => u.order && u.order.type === 'gather' && !G.byId[u.order.node]?.vent && !u.cargo).sort((x, y) => dist(x, b) - dist(y, b));
+  for (const u of free.slice(0, Math.max(0, 3 - busy))) RTS.issue(G, u, { type: 'gather', node: b.id });
+}
+
+// 추출기가 완공되면 가까운 일꾼을 3명까지 자동 배치한다
+function staffExtractor(G, x) {
+  const near = G.ents.filter(u => u.team === x.team && !u.dead && defOf(u).gather), on = near.filter(u => u.order && (u.order.node === x.id || u.order.site === x.id)).length;
+  near.filter(u => u.order && u.order.type === 'gather' && G.byId[u.order.node] && !G.byId[u.order.node].vent).sort((a, b) => dist(a, x) - dist(b, x)).slice(0, Math.max(0, 3 - on)).forEach(u => RTS.issue(G, u, { type: 'gather', node: x.id }));
+}
 // ── 건물 틱 ────────────────────────────────────────────────
 function runBuilding(G, b) {
   const d = defOf(b), t = G.teams[b.team];
   if (b.built < b.buildT) {
     const on = RTS.defs.factions[t.faction].selfBuild ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
     if (on) { b.built++; b.hp = Math.min(RTS.stat(G, b, 'hp'), b.hp + d.hp * .9 / b.buildT);
-      if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); say(G, b.team, d.name + ' 건설 완료', 'ok'); } }
+      if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); if (d.placeOn && !t.ai) staffExtractor(G, b); say(G, b.team, d.name + ' 건설 완료', 'ok'); if (d.placeOn) assignGas(G, b); } }
     return;
   }
   if (d.weapon) { if (b.cd > 0) b.cd--; const w = d.weapon, tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, w, 'range') && b.cd <= 0) fire(G, b, w, tg); }
