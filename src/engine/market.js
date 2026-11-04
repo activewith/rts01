@@ -14,6 +14,7 @@ RTS.initMarket = function (G) {
 RTS.fair = (c) => RTS.defs.companies[c.id].price * c.earn;
 RTS.dividend = (G, c) => RTS.defs.companies[c.id].price * RTS.defs.companies[c.id].yield * c.earn * RTS.cfg(G).divRate / 100;
 function tell(G, text, kind) { for (const t of G.teams) RTS.emit(G, 'notice', { team: t.id, text, kind }); }
+RTS.warNews = (G, text) => news(G, text);
 function news(G, text) { const m = G.market; m.news.unshift({ t: G.tick, text }); m.news.length = Math.min(m.news.length, 6); tell(G, text, 'market'); }
 function syncControl(G, c) {
   let owner = -1; c.shares.forEach((n, i) => { if (n >= RTS.cfg(G).control) owner = i; });
@@ -77,7 +78,7 @@ RTS.systems.splice(RTS.systems.findIndex(s => s.id === 'cleanup'), 0, { id: 'mar
   }
   if (G.tick >= m.nextDiv) { m.nextDiv += C.divSec * RTS.HZ;
     for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id], e = G.byId[c.site]; if (e && e.downUntil > G.tick) continue;
-      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? C.ctrlBonus / 100 : C.minority / 100, t = G.teams[i], pay = n * RTS.dividend(G, c) * k * (1 + RTS.allyPerk(G, i, 'divBonus'));
+      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? C.ctrlBonus / 100 : C.minority / 100, t = G.teams[i], pay = n * RTS.dividend(G, c) * k * (1 + RTS.allyPerk(G, i, 'divBonus')) * (t.credit ?? 1);
         t.res[d.resource] = (t.res[d.resource] || 0) + pay; t.stats.div = (t.stats.div || 0) + pay; }); }
     RTS.emit(G, 'dividend', {}); }
   if (C.newsEvery > 0 && G.tick >= m.nextEvent) { m.nextEvent = G.tick + Math.round(C.newsEvery * (.67 + RTS.rand(G) * .66) * RTS.HZ); const pow = C.newsImpact / 100;

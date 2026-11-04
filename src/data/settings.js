@@ -23,7 +23,18 @@ RTS.SETTINGS = [
     { id: 'ctrlBonus', label: '지배 주주 배당', min: 100, max: 300, step: 10, def: 150, unit: '%' },
     { id: 'minority', label: '소수 주주 배당', min: 0, max: 100, step: 10, def: 50, unit: '%' },
   ] },
-  { group: '전쟁과 시장', note: '한 진영의 사령부가 모두 파괴되면 발동합니다. 남은 건물까지 전멸하면 게임이 끝나므로, 이 효과는 패전 직전 단계와 재건 경쟁에 작용합니다.', items: [
+  { group: '기지 전투 피해', note: '기지의 건물과 일꾼이 맞을 때마다 피해액을 계산합니다. 피해액은 잃은 가치에 기지 등급과 자원 가중을 곱한 값입니다.', items: [
+    { id: 'warMain', label: '본진 피해 배수', min: 0, max: 300, step: 10, def: 150, unit: '%' },
+    { id: 'warSat', label: '위성 기지 피해 배수', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warRes', label: '자원 많은 기지 가중', desc: '주변 자원이 풍부할수록 피해액 증가', min: 0, max: 200, step: 10, def: 50, unit: '%' },
+    { id: 'warEff', label: '채취 효율 손실', desc: '피해 기지의 자원 수입 감소폭', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warRecover', label: '효율 1% 회복 시간', desc: '교전 10초 후부터 회복', min: 1, max: 10, step: 1, def: 1, unit: '초' },
+    { id: 'warCredit', label: '신용 하락', desc: '진영 신용만큼 내 배당이 줄어듭니다', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warMarket', label: '증시 반응', desc: '피해액에 비례해 전 종목 하락', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warSupply', label: '공급 차질 특수', desc: '자원 기지가 맞으면 해당 자원 회사 실적 상승', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warLoot', label: '공격자 약탈', desc: '입힌 피해액 중 광석으로 얻는 비율', min: 0, max: 50, step: 5, def: 10, unit: '%' },
+  ] },
+  { group: '사령부 전부 상실', note: '남은 사령부가 하나도 없게 될 때 한 번 발동합니다. 다른 건물이 남아 있으면 게임은 계속됩니다.', items: [
     { id: 'warCrash', label: '본진 함락 시 증시 하락', desc: '전 종목에 즉시 적용', min: 0, max: 60, step: 5, def: 15, unit: '%' },
     { id: 'warSell', label: '패전 진영 지분 강제 매각', desc: '보유 주식 중 시장에 풀리는 비율', min: 0, max: 100, step: 10, def: 50, unit: '%' },
     { id: 'warHaircut', label: '강제 매각 할인', desc: '시세에서 깎이고 남은 금액만 받습니다', min: 0, max: 100, step: 10, def: 40, unit: '%' },
@@ -44,8 +55,8 @@ RTS.SETTINGS = [
 ];
 RTS.PRESETS = {
   기본: {},
-  안정: { newsEvery: 120, newsImpact: 50, volatility: 50, warCrash: 5, warSell: 20, warHaircut: 10 },
+  안정: { newsEvery: 120, newsImpact: 50, volatility: 50, warCrash: 5, warSell: 20, warHaircut: 10, warEff: 50, warCredit: 50, warMarket: 30, warLoot: 5 },
   투기장: { newsEvery: 30, newsImpact: 200, volatility: 250, impact: 1.5, divRate: 150 },
-  총력전: { warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
+  총력전: { warMain: 200, warEff: 200, warCredit: 200, warMarket: 200, warLoot: 25, warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
 };
 RTS.defaultSettings = () => { const o = {}; for (const g of RTS.SETTINGS) for (const s of g.items) o[s.id] = s.def; return o; };

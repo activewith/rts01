@@ -56,6 +56,8 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .x-stake{position:relative;height:7px;background:var(--panel2);display:flex;justify-content:space-between}.x-stake i{display:block;height:100%}.x-stake .me{background:#46c4ff}.x-stake .foe{background:#ff7350}.x-stake s{position:absolute;left:51%;top:-2px;bottom:-2px;width:2px;background:var(--text)}
 .x-meta{display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;font-size:12.5px;color:var(--dim)}.x-pay.bad{color:#ff8a7a}
 .x-btn{display:grid;grid-template-columns:1fr 1fr 1fr 1.6fr;gap:4px}.k-game .x-btn button{padding:4px 0;font-size:13px}.k-game .x-btn button:disabled{opacity:.38;cursor:default}
+.x-war h3{margin:0 0 3px;font-size:12px;letter-spacing:.14em;color:var(--brass);font-weight:600}.x-war p{margin:3px 0 0;font-size:12.5px;color:var(--dim)}
+.x-base{display:flex;flex-wrap:wrap;gap:2px 10px;font-size:12.5px;color:var(--dim);background:var(--panel);padding:5px 8px;margin-bottom:3px;border-left:3px solid var(--line)}.x-base b{color:var(--text)}.x-base.hot{border-left-color:var(--bad)}.x-base .low{color:#ff9d90}
 .x-news{font-size:13px;color:var(--dim)}.x-news p{margin:0;padding:2px 0}.x-news time{font-family:var(--num);color:var(--brass);margin-right:6px}
 .d-help{margin:0;font-size:13px;line-height:1.5;color:var(--dim)}
 #d-rows{display:grid;gap:7px}
@@ -212,7 +214,7 @@ RTS.createGame = function (opts) {
       RTS.issue(G, w, { type: 'gather', node: ore.id });
     }
   });
-  RTS.initMarket(G); RTS.initDip(G); RTS.census(G); RTS.updateFog(G, true);
+  RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
 };
 
@@ -553,10 +555,10 @@ RTS.hit = function (G, t, x, y, dmg, w, src) {
 };
 RTS.damage = function (G, t, dmg, src) {
   if (t.dead) return;
-  t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
+  const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
-  if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src });
+  if (t.team >= 0) { RTS.emit(G, 'attacked', { e: t, src }); RTS.warDamage(G, t, hpBefore - Math.max(0, t.hp), src); }
   if (src && !src.dead && defOf(t).kind === 'unit' && !t.order && RTS.weapon(t) && !defOf(t).passive) t.order = { type: 'amove', x: t.x, y: t.y };
   if (t.hp <= 0) RTS.kill(G, t, src);
 };
@@ -657,7 +659,7 @@ Object.assign(RTS.orders, {
       if (!drop) { return; }
       moveToEnt(G, u, drop);
       if (RTS.edgeDist(u, drop) < .55) {
-        stopMove(u); const t = G.teams[u.team], amt = u.cargo * t.inc;
+        stopMove(u); const t = G.teams[u.team], amt = u.cargo * t.inc * RTS.baseEff(G, drop);
         t.res[u.cargoType] = (t.res[u.cargoType] || 0) + amt; t.stats[u.cargoType] += u.cargo; u.cargo = 0; o.phase = 'go';
       } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
     }
@@ -851,6 +853,7 @@ RTS.initMarket = function (G) {
 RTS.fair = (c) => RTS.defs.companies[c.id].price * c.earn;
 RTS.dividend = (G, c) => RTS.defs.companies[c.id].price * RTS.defs.companies[c.id].yield * c.earn * RTS.cfg(G).divRate / 100;
 function tell(G, text, kind) { for (const t of G.teams) RTS.emit(G, 'notice', { team: t.id, text, kind }); }
+RTS.warNews = (G, text) => news(G, text);
 function news(G, text) { const m = G.market; m.news.unshift({ t: G.tick, text }); m.news.length = Math.min(m.news.length, 6); tell(G, text, 'market'); }
 function syncControl(G, c) {
   let owner = -1; c.shares.forEach((n, i) => { if (n >= RTS.cfg(G).control) owner = i; });
@@ -914,7 +917,7 @@ RTS.systems.splice(RTS.systems.findIndex(s => s.id === 'cleanup'), 0, { id: 'mar
   }
   if (G.tick >= m.nextDiv) { m.nextDiv += C.divSec * RTS.HZ;
     for (const c of Object.values(m.cos)) { const d = RTS.defs.companies[c.id], e = G.byId[c.site]; if (e && e.downUntil > G.tick) continue;
-      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? C.ctrlBonus / 100 : C.minority / 100, t = G.teams[i], pay = n * RTS.dividend(G, c) * k * (1 + RTS.allyPerk(G, i, 'divBonus'));
+      c.shares.forEach((n, i) => { if (!n) return; const k = c.owner < 0 ? 1 : c.owner === i ? C.ctrlBonus / 100 : C.minority / 100, t = G.teams[i], pay = n * RTS.dividend(G, c) * k * (1 + RTS.allyPerk(G, i, 'divBonus')) * (t.credit ?? 1);
         t.res[d.resource] = (t.res[d.resource] || 0) + pay; t.stats.div = (t.stats.div || 0) + pay; }); }
     RTS.emit(G, 'dividend', {}); }
   if (C.newsEvery > 0 && G.tick >= m.nextEvent) { m.nextEvent = G.tick + Math.round(C.newsEvery * (.67 + RTS.rand(G) * .66) * RTS.HZ); const pow = C.newsImpact / 100;
@@ -935,6 +938,47 @@ RTS.aiInvest = function (G, t, diff, ready) {
   const pick = chase || cos.filter(c => c.free > 0 && c.owner < 0 && c.price < RTS.fair(c) * 1.1).sort((a, b) => score(b) - score(a))[0];
   if (pick) cmd({ type: 'trade', company: pick.id, qty: 5 });
 };
+
+// war.js — 기지 전투의 경제 효과. 사령부 반경 안의 건물과 일꾼이 맞으면 피해액을 계산한다.
+// 피해액 = 잃은 건물·일꾼 가치 × 기지 등급(본진/위성) × 자원 가중.
+// 결과: 그 기지 채취 효율 하락, 진영 신용 하락(배당 감소), 증시 하락, 공급 차질 특수, 공격자 약탈.
+RTS.WAR = { radius: 14, richFull: 6000, workerValue: 50, newsMin: 150 };
+const costValue = d => { const c = d.cost || {}; return (c.ore || 0) + (c.gas || 0) * 2; };
+RTS.initWar = G => { G.war = { bases: {}, pending: {}, supply: { ore: 0, gas: 0 }, newsAt: {} }; for (const t of G.teams) { t.credit = 1; t.stats.warLoss = 0; t.stats.loot = 0; } };
+RTS.baseOf = function (G, e) { // e가 속한 기지(가장 가까운 사령부). 반경 밖이면 null
+  if (!G.war) RTS.initWar(G); let best = null, bd = RTS.WAR.radius;
+  for (const id of Object.keys(G.war.bases)) { const b = G.war.bases[id], h = G.byId[id]; if (!h || h.team !== e.team) continue; const q = Math.hypot(h.x - e.x, h.y - e.y); if (q < bd) { bd = q; best = b; } }
+  return best;
+};
+RTS.baseGrade = function (G, b) { const C = RTS.cfg(G); return (b.main ? C.warMain : C.warSat) / 100 * (1 + C.warRes / 100 * Math.min(1, b.res / RTS.WAR.richFull)); };
+RTS.baseEff = function (G, drop) { const b = G.war && G.war.bases[drop.id]; return b ? b.eff : 1; };
+RTS.warDamage = function (G, t, lost, src) {
+  if (!src || src.team === t.team || src.team < 0 || lost <= 0) return; const d = RTS.defOf(t);
+  const base = d.kind === 'building' ? costValue(d) : d.gather ? RTS.WAR.workerValue : 0; if (!base) return;
+  if (!G.war) RTS.initWar(G);
+  const b = RTS.baseOf(G, t), C = RTS.cfg(G), grade = b ? RTS.baseGrade(G, b) : C.warSat / 100, loss = base * Math.min(1, lost / d.hp) * grade, team = G.teams[t.team];
+  team.stats.warLoss = (team.stats.warLoss || 0) + loss; G.war.pending[t.team] = (G.war.pending[t.team] || 0) + loss;
+  const att = G.teams[src.team], loot = loss * C.warLoot / 100; att.res.ore += loot; att.stats.loot = (att.stats.loot || 0) + loot;
+  if (b) { b.lost += loss; b.lastHit = G.tick; b.eff = Math.max(.3, b.eff - loss * .35 * C.warEff / 100 / Math.max(500, b.value));
+    G.war.supply.ore += loss * Math.min(1, b.res / RTS.WAR.richFull); if (b.gas) G.war.supply.gas += loss * .5; }
+  team.credit = Math.max(.4, (team.credit ?? 1) - loss * .3 * C.warCredit / 100 / Math.max(1500, G.war.total?.[t.team] || 1500));
+};
+RTS.systems.splice(RTS.systems.findIndex(s => s.id === 'market'), 0, { id: 'war', run(G) {
+  if (!G.war) RTS.initWar(G); if (G.tick % RTS.HZ) return;
+  const W = G.war, C = RTS.cfg(G), D = RTS.defs.entities, hqs = G.ents.filter(e => !e.dead && e.team >= 0 && D[e.def].dropoff && RTS.complete(e)), next = {}; W.total = {};
+  const mainId = {}; for (const h of hqs) if (!mainId[h.team] || h.id < mainId[h.team]) mainId[h.team] = h.id;
+  for (const h of hqs) { const o = W.bases[h.id] || { eff: 1, lost: 0, lastHit: -9999 }; o.team = h.team; o.main = mainId[h.team] === h.id; o.value = 0; o.res = 0; o.gas = 0; o.n = 0; next[h.id] = o; }
+  for (const e of G.ents) { if (e.dead) continue; const d = D[e.def]; if (d.kind === 'unit' && !d.gather) continue; if (d.site) continue;
+    let best = null, bd = RTS.WAR.radius; for (const h of hqs) { if (e.team >= 0 && h.team !== e.team) continue; const q = Math.hypot(h.x - e.x, h.y - e.y); if (q < bd) { bd = q; best = h; } } if (!best) continue;
+    const o = next[best.id]; if (d.resource) { o.res += e.amount || 0; continue; } o.value += d.gather ? RTS.WAR.workerValue : costValue(d); if (d.kind === 'building') o.n++; if (d.placeOn) o.gas = 1; }
+  W.bases = next;
+  for (const id of Object.keys(next)) { const o = next[id]; W.total[o.team] = (W.total[o.team] || 0) + o.value; if (G.tick - o.lastHit > 10 * RTS.HZ) o.eff = Math.min(1, o.eff + 1 / Math.max(1, C.warRecover)); }
+  const cos = Object.values(G.market.cos);
+  for (const t of G.teams) { if (G.tick % 20 === 0) t.credit = Math.min(1, (t.credit ?? 1) + .005); const L = W.pending[t.id]; if (!L) continue; W.pending[t.id] = 0;
+    const drop = Math.min(.05, L / 8000 * C.warMarket / 100); for (const c of cos) c.price = Math.max(1, c.price * (1 - drop));
+    if (L >= RTS.WAR.newsMin && G.tick - (W.newsAt[t.id] || -9999) > 300) { W.newsAt[t.id] = G.tick; RTS.warNews(G, `${t.name} 기지 피해 ${Math.round(L)}: 증시 -${(drop * 100).toFixed(1)}%`); } }
+  for (const r of ['ore', 'gas']) { const s = W.supply[r]; if (!s) continue; W.supply[r] = 0; const up = Math.min(.05, s / 3000 * C.warSupply / 100); for (const c of cos) if (RTS.defs.companies[c.id].resource === r) c.earn = Math.min(2.5, c.earn * (1 + up)); }
+} });
 
 // diplomacy.js — 중립 진영 자유상단. 지부 위치는 게임마다 섞이고, 정찰로 찾아야 거래할 수 있다.
 // 동맹 신청은 베팅이다: 동맹금을 걸고 확률 판정을 받으며, 거절되면 동맹금을 잃는다.
@@ -1287,7 +1331,18 @@ RTS.SETTINGS = [
     { id: 'ctrlBonus', label: '지배 주주 배당', min: 100, max: 300, step: 10, def: 150, unit: '%' },
     { id: 'minority', label: '소수 주주 배당', min: 0, max: 100, step: 10, def: 50, unit: '%' },
   ] },
-  { group: '전쟁과 시장', note: '한 진영의 사령부가 모두 파괴되면 발동합니다. 남은 건물까지 전멸하면 게임이 끝나므로, 이 효과는 패전 직전 단계와 재건 경쟁에 작용합니다.', items: [
+  { group: '기지 전투 피해', note: '기지의 건물과 일꾼이 맞을 때마다 피해액을 계산합니다. 피해액은 잃은 가치에 기지 등급과 자원 가중을 곱한 값입니다.', items: [
+    { id: 'warMain', label: '본진 피해 배수', min: 0, max: 300, step: 10, def: 150, unit: '%' },
+    { id: 'warSat', label: '위성 기지 피해 배수', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warRes', label: '자원 많은 기지 가중', desc: '주변 자원이 풍부할수록 피해액 증가', min: 0, max: 200, step: 10, def: 50, unit: '%' },
+    { id: 'warEff', label: '채취 효율 손실', desc: '피해 기지의 자원 수입 감소폭', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warRecover', label: '효율 1% 회복 시간', desc: '교전 10초 후부터 회복', min: 1, max: 10, step: 1, def: 1, unit: '초' },
+    { id: 'warCredit', label: '신용 하락', desc: '진영 신용만큼 내 배당이 줄어듭니다', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warMarket', label: '증시 반응', desc: '피해액에 비례해 전 종목 하락', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warSupply', label: '공급 차질 특수', desc: '자원 기지가 맞으면 해당 자원 회사 실적 상승', min: 0, max: 300, step: 10, def: 100, unit: '%' },
+    { id: 'warLoot', label: '공격자 약탈', desc: '입힌 피해액 중 광석으로 얻는 비율', min: 0, max: 50, step: 5, def: 10, unit: '%' },
+  ] },
+  { group: '사령부 전부 상실', note: '남은 사령부가 하나도 없게 될 때 한 번 발동합니다. 다른 건물이 남아 있으면 게임은 계속됩니다.', items: [
     { id: 'warCrash', label: '본진 함락 시 증시 하락', desc: '전 종목에 즉시 적용', min: 0, max: 60, step: 5, def: 15, unit: '%' },
     { id: 'warSell', label: '패전 진영 지분 강제 매각', desc: '보유 주식 중 시장에 풀리는 비율', min: 0, max: 100, step: 10, def: 50, unit: '%' },
     { id: 'warHaircut', label: '강제 매각 할인', desc: '시세에서 깎이고 남은 금액만 받습니다', min: 0, max: 100, step: 10, def: 40, unit: '%' },
@@ -1308,9 +1363,9 @@ RTS.SETTINGS = [
 ];
 RTS.PRESETS = {
   기본: {},
-  안정: { newsEvery: 120, newsImpact: 50, volatility: 50, warCrash: 5, warSell: 20, warHaircut: 10 },
+  안정: { newsEvery: 120, newsImpact: 50, volatility: 50, warCrash: 5, warSell: 20, warHaircut: 10, warEff: 50, warCredit: 50, warMarket: 30, warLoot: 5 },
   투기장: { newsEvery: 30, newsImpact: 200, volatility: 250, impact: 1.5, divRate: 150 },
-  총력전: { warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
+  총력전: { warMain: 200, warEff: 200, warCredit: 200, warMarket: 200, warLoot: 25, warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
 };
 RTS.defaultSettings = () => { const o = {}; for (const g of RTS.SETTINGS) for (const s of g.items) o[s.id] = s.def; return o; };
 
@@ -1640,7 +1695,7 @@ RTS.mount = function (root, opts = {}) {
   function finish(o) { const G = app.G, win = o.winner === app.team, a = G.teams[app.team], b = G.teams.find(t => t.id !== app.team), m = Math.floor(G.tick / 1200), s = Math.floor(G.tick / 20) % 60;
     store.del('save'); $('k-endt').textContent = win ? '승리' : '패배'; $('k-ends').textContent = `${m}분 ${s}초 · ${b.name} AI ${RTS.defs.difficulties[b.ai].name}`;
     const row = (l, x, y) => `<tr><th scope="row">${l}</th><td>${x}</td><td>${y}</td></tr>`;
-    $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
+    $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('전쟁 피해액', Math.round(a.stats.warLoss || 0), Math.round(b.stats.warLoss || 0)) + row('약탈 획득', Math.round(a.stats.loot || 0), Math.round(b.stats.loot || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
     $('k-end').hidden = false; if (opts.onEnd) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
 
   // ── 메시지와 HUD ──────────────────────────────────────
@@ -1677,7 +1732,7 @@ RTS.mount = function (root, opts = {}) {
   function setMode(m) { app.mode = m; }
   function trade(company, qty) { RTS.command(app.G, app.team, { type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
   // ── 거래소 패널: 행은 한 번 만들고 값만 갱신해 클릭이 끊기지 않게 한다 ──
-  function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span></div><div id="x-rows"></div><div class="x-news" id="x-news"></div>`;
+  function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span><span>신용 <b id="x-credit">100%</b></span></div><div id="x-rows"></div><div class="x-war" id="x-war"></div><div class="x-news" id="x-news"></div>`;
     const rows = $('x-rows'); app.exRows = {};
     for (const c of Object.values(G.market.cos)) { const d = RTS.defs.companies[c.id], r = document.createElement('div'); r.className = 'x-row ' + d.resource;
       r.innerHTML = `<div class="x-top"><button class="x-name" title="거점으로 이동"><b>${d.name}</b><small>${d.blurb}</small></button><svg viewBox="0 0 90 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg><div class="x-price"><b></b><small></small></div></div><div class="x-stake" title="51주 이상이면 경영권"><i class="me"></i><i class="foe"></i><s></s></div><div class="x-meta"><span class="x-own"></span><span class="x-pay"></span></div><div class="x-btn"><button data-q="5">+5</button><button data-q="20">+20</button><button data-q="-5">-5</button><button data-q="-100">전량 매도</button></div>`;
@@ -1695,6 +1750,9 @@ RTS.mount = function (root, opts = {}) {
       r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
       r.querySelectorAll('.x-btn button').forEach(b => { const q = +b.dataset.q; b.disabled = q > 0 ? !c.free || t.res.ore < c.price : !mine; }); }
     $('x-value').textContent = Math.round(value); $('x-div').textContent = Math.round(t.stats.div || 0); $('x-next').textContent = '다음 배당 ' + Math.max(0, Math.ceil((G.market.nextDiv - G.tick) / 20)) + '초';
+    $('x-credit').textContent = Math.round((t.credit ?? 1) * 100) + '%';
+    const W = G.war, bases = Object.entries(W ? W.bases : {}).filter(([, b]) => b.team === app.team).sort((x, y) => y[1].main - x[1].main);
+    $('x-war').innerHTML = `<h3>내 기지 경제</h3>` + (bases.map(([, b]) => { const hot = G.tick - b.lastHit < 200; return `<div class="x-base${hot ? ' hot' : ''}"><b>${b.main ? '본진' : '위성 기지'}</b><span>가치 ${b.value}</span><span>자원 ${Math.round(b.res)}</span><span>피해 배수 ${RTS.baseGrade(G, b).toFixed(2)}</span><span class="${b.eff < 1 ? 'low' : ''}">효율 ${Math.round(b.eff * 100)}%${hot ? ' · 교전 중' : ''}</span></div>`; }).join('') || '<p>사령부가 없습니다.</p>') + `<p>누적 피해 ${Math.round(t.stats.warLoss || 0)} · 약탈 ${Math.round(t.stats.loot || 0)}</p>`;
     const sig = G.market.news.map(n => n.t).join(); if (sig !== app.newsSig) { app.newsSig = sig; $('x-news').innerHTML = G.market.news.map(n => `<p><time>${String(Math.floor(n.t / 1200)).padStart(2, '0')}:${String(Math.floor(n.t / 20) % 60).padStart(2, '0')}</time>${n.text}</p>`).join('') || '<p>아직 시장 소식이 없습니다.</p>'; } }
   // ── 자유상단 패널: 상태가 바뀔 때만 다시 만들어 슬라이더가 끊기지 않게 한다 ──
   function toggleDip() { app.dipOpen = !app.dipOpen; if (app.dipOpen && app.exOpen) toggleExchange(); $('k-dip').hidden = !app.dipOpen; $('k-dipbtn').classList.toggle('on', app.dipOpen); if (app.dipOpen) { app.dipSig = ''; updateDip(); } }

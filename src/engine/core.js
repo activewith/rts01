@@ -72,7 +72,7 @@ RTS.createGame = function (opts) {
       RTS.issue(G, w, { type: 'gather', node: ore.id });
     }
   });
-  RTS.initMarket(G); RTS.initDip(G); RTS.census(G); RTS.updateFog(G, true);
+  RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
 };
 

@@ -1,5 +1,5 @@
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/diplomacy','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const mk = (seed, map = 'ridge') => RTS.createGame({ map, seed, players: [{ faction: 'pioneers' }, { faction: 'ironclad' }] });
 for (const m of ['ridge', 'canyon']) { const g = mk(1, m); const L = Object.values(g.dip.list); assert.equal(L.length, 4, m + ' 지부 수'); for (const b of L) { const s = g.byId[b.site], p = RTS.findPath(g, g.bases[0].x, g.bases[0].y + 4, { x0: s.x - 3, y0: s.y - 3, x1: s.x + 2, y1: s.y + 2 }), l = p[p.length - 1]; assert(Math.hypot(l[0] - s.x, l[1] - s.y) < 4, m + ' 도달 불가 ' + b.id); } }
 const a = mk(1), layout = g => Object.values(g.dip.list).map(b => { const s = g.byId[b.site]; return s.x + ',' + s.y; }).join(' ');

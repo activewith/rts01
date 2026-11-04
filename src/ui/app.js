@@ -92,7 +92,7 @@ RTS.mount = function (root, opts = {}) {
   function finish(o) { const G = app.G, win = o.winner === app.team, a = G.teams[app.team], b = G.teams.find(t => t.id !== app.team), m = Math.floor(G.tick / 1200), s = Math.floor(G.tick / 20) % 60;
     store.del('save'); $('k-endt').textContent = win ? '승리' : '패배'; $('k-ends').textContent = `${m}분 ${s}초 · ${b.name} AI ${RTS.defs.difficulties[b.ai].name}`;
     const row = (l, x, y) => `<tr><th scope="row">${l}</th><td>${x}</td><td>${y}</td></tr>`;
-    $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
+    $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('전쟁 피해액', Math.round(a.stats.warLoss || 0), Math.round(b.stats.warLoss || 0)) + row('약탈 획득', Math.round(a.stats.loot || 0), Math.round(b.stats.loot || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
     $('k-end').hidden = false; if (opts.onEnd) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
 
   // ── 메시지와 HUD ──────────────────────────────────────
@@ -129,7 +129,7 @@ RTS.mount = function (root, opts = {}) {
   function setMode(m) { app.mode = m; }
   function trade(company, qty) { RTS.command(app.G, app.team, { type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
   // ── 거래소 패널: 행은 한 번 만들고 값만 갱신해 클릭이 끊기지 않게 한다 ──
-  function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span></div><div id="x-rows"></div><div class="x-news" id="x-news"></div>`;
+  function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span><span>신용 <b id="x-credit">100%</b></span></div><div id="x-rows"></div><div class="x-war" id="x-war"></div><div class="x-news" id="x-news"></div>`;
     const rows = $('x-rows'); app.exRows = {};
     for (const c of Object.values(G.market.cos)) { const d = RTS.defs.companies[c.id], r = document.createElement('div'); r.className = 'x-row ' + d.resource;
       r.innerHTML = `<div class="x-top"><button class="x-name" title="거점으로 이동"><b>${d.name}</b><small>${d.blurb}</small></button><svg viewBox="0 0 90 28" preserveAspectRatio="none" aria-hidden="true"><polyline fill="none" stroke-width="1.5" vector-effect="non-scaling-stroke"/></svg><div class="x-price"><b></b><small></small></div></div><div class="x-stake" title="51주 이상이면 경영권"><i class="me"></i><i class="foe"></i><s></s></div><div class="x-meta"><span class="x-own"></span><span class="x-pay"></span></div><div class="x-btn"><button data-q="5">+5</button><button data-q="20">+20</button><button data-q="-5">-5</button><button data-q="-100">전량 매도</button></div>`;
@@ -147,6 +147,9 @@ RTS.mount = function (root, opts = {}) {
       r.querySelector('.x-pay').textContent = down ? '가동 중단: 배당 없음' : `주당 ${(RTS.dividend(G, c) * k).toFixed(1)} ${unit}`; r.querySelector('.x-pay').classList.toggle('bad', !!down);
       r.querySelectorAll('.x-btn button').forEach(b => { const q = +b.dataset.q; b.disabled = q > 0 ? !c.free || t.res.ore < c.price : !mine; }); }
     $('x-value').textContent = Math.round(value); $('x-div').textContent = Math.round(t.stats.div || 0); $('x-next').textContent = '다음 배당 ' + Math.max(0, Math.ceil((G.market.nextDiv - G.tick) / 20)) + '초';
+    $('x-credit').textContent = Math.round((t.credit ?? 1) * 100) + '%';
+    const W = G.war, bases = Object.entries(W ? W.bases : {}).filter(([, b]) => b.team === app.team).sort((x, y) => y[1].main - x[1].main);
+    $('x-war').innerHTML = `<h3>내 기지 경제</h3>` + (bases.map(([, b]) => { const hot = G.tick - b.lastHit < 200; return `<div class="x-base${hot ? ' hot' : ''}"><b>${b.main ? '본진' : '위성 기지'}</b><span>가치 ${b.value}</span><span>자원 ${Math.round(b.res)}</span><span>피해 배수 ${RTS.baseGrade(G, b).toFixed(2)}</span><span class="${b.eff < 1 ? 'low' : ''}">효율 ${Math.round(b.eff * 100)}%${hot ? ' · 교전 중' : ''}</span></div>`; }).join('') || '<p>사령부가 없습니다.</p>') + `<p>누적 피해 ${Math.round(t.stats.warLoss || 0)} · 약탈 ${Math.round(t.stats.loot || 0)}</p>`;
     const sig = G.market.news.map(n => n.t).join(); if (sig !== app.newsSig) { app.newsSig = sig; $('x-news').innerHTML = G.market.news.map(n => `<p><time>${String(Math.floor(n.t / 1200)).padStart(2, '0')}:${String(Math.floor(n.t / 20) % 60).padStart(2, '0')}</time>${n.text}</p>`).join('') || '<p>아직 시장 소식이 없습니다.</p>'; } }
   // ── 자유상단 패널: 상태가 바뀔 때만 다시 만들어 슬라이더가 끊기지 않게 한다 ──
   function toggleDip() { app.dipOpen = !app.dipOpen; if (app.dipOpen && app.exOpen) toggleExchange(); $('k-dip').hidden = !app.dipOpen; $('k-dipbtn').classList.toggle('on', app.dipOpen); if (app.dipOpen) { app.dipSig = ''; updateDip(); } }
