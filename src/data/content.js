@@ -2,6 +2,8 @@
 // 스탯 기준: 사거리·시야·속도는 타일 단위, 쿨다운·시간은 초 단위.
 RTS.mod({
   difficulties: {
+    // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .6, interval: 60, maxWorkers: 14, waveSize: 4, waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
     easy:   { name: '쉬움',   income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
     normal: { name: '보통',   income: 1,   interval: 20, maxWorkers: 26, waveSize: 9,  waveGrow: 5, firstAttack: 270, expandAt: 330, invest: 280, investEvery: 16, scoutAt: 170, stake: 200, allyArmy: 8 },
     hard:   { name: '어려움', income: 1.3, interval: 10, maxWorkers: 34, waveSize: 12, waveGrow: 6, firstAttack: 220, expandAt: 240, invest: 260, investEvery: 12, scoutAt: 90, stake: 250, allyArmy: 8 },
@@ -117,10 +119,10 @@ RTS.mod({
     roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
   },
   factions: {
-    pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
+    pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', defense: 'p_turret', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
       ai: { build: [{ b: 'p_barracks', n: 1 }, { b: 'p_extractor', n: 1 }, { b: 'p_barracks', n: 2, after: 120 }, { b: 'p_lab', n: 1 }, { b: 'p_factory', n: 1 }, { b: 'p_extractor', n: 2 }, { b: 'p_turret', n: 1 }, { b: 'p_barracks', n: 3, after: 420 }, { b: 'p_factory', n: 2, after: 540 }],
         army: [{ u: 'p_rifle', w: 5 }, { u: 'p_gren', w: 3 }, { u: 'p_medic', w: 1 }, { u: 'p_tank', w: 3 }, { u: 'p_gunship', w: 2 }], research: ['p_wpn1', 'p_stim', 'p_arm1', 'p_mech1'] } },
-    ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
+    ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', defense: 'i_turret', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
       ai: { build: [{ b: 'i_forge', n: 1 }, { b: 'i_extractor', n: 1 }, { b: 'i_forge', n: 2, after: 120 }, { b: 'i_core', n: 1 }, { b: 'i_foundry', n: 1 }, { b: 'i_extractor', n: 2 }, { b: 'i_turret', n: 1 }, { b: 'i_forge', n: 3, after: 420 }, { b: 'i_foundry', n: 2, after: 540 }],
         army: [{ u: 'i_blade', w: 5 }, { u: 'i_striker', w: 4 }, { u: 'i_mender', w: 1 }, { u: 'i_colossus', w: 2 }, { u: 'i_wasp', w: 2 }], research: ['i_wpn1', 'i_servo', 'i_arm1', 'i_heavy1'] } },
   },

@@ -21,6 +21,7 @@
 | test/settings.js | 설정값이 시뮬레이션에 반영되는지, 본진 함락 효과 검사 | 없음 |
 | test/extractor.js | 두 진영의 추출기 건설과 에테르 채취 검사 | 없음 |
 | test/market.js | 매매·인수·배당·피격·승패 규칙 검사 | 없음 |
+| test/beginner.js | 왕초보 모드: 안개 해제, 방어탑 5~10개 배치 검사 | 없음 |
 
 ## 경제 규칙
 - 일꾼 채취는 유지하고, 회사 4곳(광석 2, 에테르 2)에 광석으로 투자한다. 회사당 100주를 나와 AI가 공유한다.
@@ -41,6 +42,13 @@
 - 발견한 지부에서는 광석과 에테르를 수수료 20%(동맹 10%, 남풍상회 2%)로 교환한다. 시세는 회사 실적에서 나온다.
 - 수레는 동맹 지부에서 내 본진으로 이동하며 적이 파괴할 수 있다.
 
+## 왕초보 모드
+- 상대 AI 난이도에서 `왕초보`를 고르면 적용된다(`difficulties.beginner`).
+- 전장의 안개 설정과 관계없이 맵 전체가 보인다(`reveal`).
+- 사람 플레이어 본진 둘레에 완공된 방어탑(개척단 방어포탑, 철갑회 감시포)이 5~10개 무작위로 놓인다(`towers`, 진영의 `defense`). 맵 중앙 쪽부터 채우고 광맥·분출구와 일꾼 동선은 비운다.
+- AI는 쉬움보다 수입·공격 규모가 낮고 첫 공격이 늦다(8분).
+- 방어탑도 완공 건물로 세므로 철로조합 동맹 조건(완공 건물 5개)이 시작부터 충족된다.
+
 ## 설정 메뉴
 - 항목 정의는 `src/data/settings.js`. 항목을 추가하면 메뉴에 자동으로 나타나고, 코드에서는 `RTS.cfg(G).키`로 읽는다.
 - 값은 브라우저에 저장되고 나와 AI에 똑같이 적용된다. 게임 중 변경은 일시정지 상태에서 즉시 적용되며, `startOnly` 항목만 다음 판부터 적용된다.
@@ -53,7 +61,7 @@
 - 건물 추가: `entities`에 `kind:'building'`, 일꾼의 `builds`에 id 추가.
 - 업그레이드: `upgrades`에 `effects:[{tag|id, stat, add|mul}]` 추가 후 건물의 `researches`에 id 추가.
 - 능력: `abilities`에 `use(G,u,c)`와 선택적으로 `ai(G,u)` 추가 후 유닛 `abilities`에 id 추가.
-- 진영: `factions`에 hq/worker/supply와 `ai` 블록 추가. 메뉴에 자동 표시.
+- 진영: `factions`에 hq/worker/supply/defense와 `ai` 블록 추가. 메뉴에 자동 표시.
 - 맵: `maps`에 기지·암벽·통로 좌표 추가. 메뉴에 자동 표시. 다른 생성 방식은 `mapgens`에 함수 추가.
 - 지부: `branches`에 조건 `check`, 혜택 `perk`(caravan, spread, divBonus, supply, mercs) 추가. 맵 `posts` 칸 수만큼 배치된다.
 - 새 규칙: `RTS.addSystem({id,run},{before:'movement'})`.

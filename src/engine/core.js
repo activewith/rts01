@@ -43,7 +43,8 @@ RTS.createGame = function (opts) {
   // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
     over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
-  G.nofog = !!opts.nofog || !G.cfg.fog;
+  const easy = opts.players.map(p => p.ai && RTS.defs.difficulties[p.ai]).find(d => d && d.reveal);
+  G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
   G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
@@ -72,8 +73,29 @@ RTS.createGame = function (opts) {
       RTS.issue(G, w, { type: 'gather', node: ore.id });
     }
   });
+  if (easy && easy.towers) G.teams.forEach(t => { if (!t.ai) RTS.giveTowers(G, t, easy.towers); });
   RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
+};
+
+// 왕초보: 본진 둘레에 완공된 방어탑을 [최소,최대] 사이 무작위 개수만큼 세운다.
+// 적이 올 방향(맵 중앙 쪽)부터 채우고, 광맥·분출구 근처와 사령부→광맥 일꾼 동선은 비워 둔다.
+RTS.giveTowers = function (G, t, range) {
+  const f = RTS.defs.factions[t.faction], id = f.defense; if (!id) return 0;
+  const d = RTS.defs.entities[id], hq = G.ents.find(e => e.team === t.id && e.def === f.hq); if (!hq) return 0;
+  const want = range[0] + Math.floor(RTS.rand(G) * (range[1] - range[0] + 1));
+  const ore = RTS.nearestNode(G, hq.x, hq.y, 'ore', 30), base = Math.atan2(G.h / 2 - hq.y, G.w / 2 - hq.x) + (RTS.rand(G) - .5) * .8; // 맵 중앙(적 방향)부터 채운다
+  const segD = (px, py) => { if (!ore) return 99; const ax = ore.x - hq.x, ay = ore.y - hq.y, L = ax * ax + ay * ay || 1, k = Math.max(0, Math.min(1, ((px - hq.x) * ax + (py - hq.y) * ay) / L)); return Math.hypot(px - hq.x - ax * k, py - hq.y - ay * k); };
+  let n = 0;
+  for (let r = 5; r <= 16 && n < want; r += 1) for (let k = 0; k < 32 && n < want; k++) {
+    const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI * 2 / 32, cx = hq.x + Math.cos(a) * r, cy = hq.y + Math.sin(a) * r;
+    const tx = Math.round(cx - d.size[0] / 2), ty = Math.round(cy - d.size[1] / 2), mx = tx + d.size[0] / 2, my = ty + d.size[1] / 2;
+    if (!RTS.canPlace(G, t.id, id, tx, ty, 1)) continue;
+    if (RTS.nearestNode(G, mx, my, 'ore', 4) || RTS.nearestNode(G, mx, my, 'gas', 4) || segD(mx, my) < 3) continue;
+    if (G.ents.some(e => e.def === id && e.team === t.id && Math.hypot(e.x - mx, e.y - my) < 3.5)) continue;
+    const e = RTS.spawn(G, id, t.id, mx, my); e.built = e.buildT; e.hp = RTS.stat(G, e, 'hp'); n++;
+  }
+  return n;
 };
 
 RTS.initRuntime = function (G) {

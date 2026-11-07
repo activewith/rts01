@@ -118,6 +118,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-game .k-opt{text-align:left;padding:8px 10px;background:rgba(27,36,51,.86);display:flex;flex-direction:column;gap:3px;min-width:0}
 .k-opt b{font-size:15px}.k-opt span{font-size:12.5px;line-height:1.4;color:var(--dim)}
 .k-game .k-opt.on{border-color:var(--brass);box-shadow:inset 0 0 0 1px var(--brass);background:#33301f}
+#k-opt-beginner{grid-column:1/-1}
 .k-go{display:flex;gap:8px;margin-top:6px}
 .k-game .k-primary{background:var(--brass);color:#16110a;border:0;font:400 23px var(--display);padding:10px 34px;clip-path:var(--cut)}
 .k-go button:not(.k-primary){padding:8px 16px}
@@ -185,7 +186,8 @@ RTS.createGame = function (opts) {
   // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
     over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
-  G.nofog = !!opts.nofog || !G.cfg.fog;
+  const easy = opts.players.map(p => p.ai && RTS.defs.difficulties[p.ai]).find(d => d && d.reveal);
+  G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
   G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
@@ -214,8 +216,29 @@ RTS.createGame = function (opts) {
       RTS.issue(G, w, { type: 'gather', node: ore.id });
     }
   });
+  if (easy && easy.towers) G.teams.forEach(t => { if (!t.ai) RTS.giveTowers(G, t, easy.towers); });
   RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
+};
+
+// 왕초보: 본진 둘레에 완공된 방어탑을 [최소,최대] 사이 무작위 개수만큼 세운다.
+// 적이 올 방향(맵 중앙 쪽)부터 채우고, 광맥·분출구 근처와 사령부→광맥 일꾼 동선은 비워 둔다.
+RTS.giveTowers = function (G, t, range) {
+  const f = RTS.defs.factions[t.faction], id = f.defense; if (!id) return 0;
+  const d = RTS.defs.entities[id], hq = G.ents.find(e => e.team === t.id && e.def === f.hq); if (!hq) return 0;
+  const want = range[0] + Math.floor(RTS.rand(G) * (range[1] - range[0] + 1));
+  const ore = RTS.nearestNode(G, hq.x, hq.y, 'ore', 30), base = Math.atan2(G.h / 2 - hq.y, G.w / 2 - hq.x) + (RTS.rand(G) - .5) * .8; // 맵 중앙(적 방향)부터 채운다
+  const segD = (px, py) => { if (!ore) return 99; const ax = ore.x - hq.x, ay = ore.y - hq.y, L = ax * ax + ay * ay || 1, k = Math.max(0, Math.min(1, ((px - hq.x) * ax + (py - hq.y) * ay) / L)); return Math.hypot(px - hq.x - ax * k, py - hq.y - ay * k); };
+  let n = 0;
+  for (let r = 5; r <= 16 && n < want; r += 1) for (let k = 0; k < 32 && n < want; k++) {
+    const a = base + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * Math.PI * 2 / 32, cx = hq.x + Math.cos(a) * r, cy = hq.y + Math.sin(a) * r;
+    const tx = Math.round(cx - d.size[0] / 2), ty = Math.round(cy - d.size[1] / 2), mx = tx + d.size[0] / 2, my = ty + d.size[1] / 2;
+    if (!RTS.canPlace(G, t.id, id, tx, ty, 1)) continue;
+    if (RTS.nearestNode(G, mx, my, 'ore', 4) || RTS.nearestNode(G, mx, my, 'gas', 4) || segD(mx, my) < 3) continue;
+    if (G.ents.some(e => e.def === id && e.team === t.id && Math.hypot(e.x - mx, e.y - my) < 3.5)) continue;
+    const e = RTS.spawn(G, id, t.id, mx, my); e.built = e.buildT; e.hp = RTS.stat(G, e, 'hp'); n++;
+  }
+  return n;
 };
 
 RTS.initRuntime = function (G) {
@@ -1183,6 +1206,8 @@ RTS.aiSpot = function (G, t, id, near) {
 // 스탯 기준: 사거리·시야·속도는 타일 단위, 쿨다운·시간은 초 단위.
 RTS.mod({
   difficulties: {
+    // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .6, interval: 60, maxWorkers: 14, waveSize: 4, waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
     easy:   { name: '쉬움',   income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
     normal: { name: '보통',   income: 1,   interval: 20, maxWorkers: 26, waveSize: 9,  waveGrow: 5, firstAttack: 270, expandAt: 330, invest: 280, investEvery: 16, scoutAt: 170, stake: 200, allyArmy: 8 },
     hard:   { name: '어려움', income: 1.3, interval: 10, maxWorkers: 34, waveSize: 12, waveGrow: 6, firstAttack: 220, expandAt: 240, invest: 260, investEvery: 12, scoutAt: 90, stake: 250, allyArmy: 8 },
@@ -1298,10 +1323,10 @@ RTS.mod({
     roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
   },
   factions: {
-    pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
+    pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', defense: 'p_turret', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
       ai: { build: [{ b: 'p_barracks', n: 1 }, { b: 'p_extractor', n: 1 }, { b: 'p_barracks', n: 2, after: 120 }, { b: 'p_lab', n: 1 }, { b: 'p_factory', n: 1 }, { b: 'p_extractor', n: 2 }, { b: 'p_turret', n: 1 }, { b: 'p_barracks', n: 3, after: 420 }, { b: 'p_factory', n: 2, after: 540 }],
         army: [{ u: 'p_rifle', w: 5 }, { u: 'p_gren', w: 3 }, { u: 'p_medic', w: 1 }, { u: 'p_tank', w: 3 }, { u: 'p_gunship', w: 2 }], research: ['p_wpn1', 'p_stim', 'p_arm1', 'p_mech1'] } },
-    ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
+    ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', defense: 'i_turret', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
       ai: { build: [{ b: 'i_forge', n: 1 }, { b: 'i_extractor', n: 1 }, { b: 'i_forge', n: 2, after: 120 }, { b: 'i_core', n: 1 }, { b: 'i_foundry', n: 1 }, { b: 'i_extractor', n: 2 }, { b: 'i_turret', n: 1 }, { b: 'i_forge', n: 3, after: 420 }, { b: 'i_foundry', n: 2, after: 540 }],
         army: [{ u: 'i_blade', w: 5 }, { u: 'i_striker', w: 4 }, { u: 'i_mender', w: 1 }, { u: 'i_colossus', w: 2 }, { u: 'i_wasp', w: 2 }], research: ['i_wpn1', 'i_servo', 'i_arm1', 'i_heavy1'] } },
   },
