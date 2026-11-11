@@ -8,8 +8,8 @@ function match(map, seed, a, b, da, db, max = 20 * 60 * 25) {
   return { map, seed, a, b, da, db, min: +(G.tick / 1200).toFixed(1), win: G.over ? G.teams[G.over.winner]?.faction + '#' + G.over.winner : 'none', st: G.teams.map(t => ({ ore: t.stats.ore, made: t.stats.made, lost: t.stats.lost, div: Math.round(t.stats.div), stk: Object.values(G.market.cos).map(c => c.shares[t.id]).join('/') })), ally: Object.values(G.dip.list).map(b => b.id + ':' + b.ally).join(' '), burn: G.teams.map(t => t.stats.burned || 0) };
 }
 const r = [];
-for (const m of ['ridge', 'canyon']) for (const s of [1, 2]) { r.push(match(m, s, 'pioneers', 'ironclad', 'normal', 'normal')); r.push(match(m, s + 10, 'ironclad', 'pioneers', 'normal', 'normal')); }
-for (const s of [7, 8, 9]) { r.push(match('ridge', s, 'pioneers', 'ironclad', 'hard', 'easy')); r.push(match('canyon', s, 'ironclad', 'pioneers', 'easy', 'hard')); r.push(match('ridge', s + 20, 'ironclad', 'pioneers', 'hard', 'easy')); }
+for (const m of ['ridge', 'canyon', 'crossroads', 'lake']) for (const s of [1, 2]) { r.push(match(m, s, 'pioneers', 'ironclad', 'normal', 'normal')); r.push(match(m, s + 10, 'ironclad', 'pioneers', 'normal', 'normal')); }
+for (const s of [7, 8, 9]) { r.push(match('ridge', s, 'pioneers', 'ironclad', 'hard', 'easy')); r.push(match('canyon', s, 'ironclad', 'pioneers', 'easy', 'hard')); r.push(match('ridge', s + 20, 'ironclad', 'pioneers', 'hard', 'easy')); r.push(match('crossroads', s, 'pioneers', 'ironclad', 'hard', 'easy')); r.push(match('lake', s, 'ironclad', 'pioneers', 'easy', 'hard')); }
 for (const x of r) console.log(JSON.stringify(x));
 // 결정성 및 저장 복원
 const mk = () => RTS.createGame({ map: 'ridge', seed: 5, players: [{ faction: 'pioneers', ai: 'normal' }, { faction: 'ironclad', ai: 'normal' }] });

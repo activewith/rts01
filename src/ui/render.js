@@ -6,6 +6,8 @@ RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
   ochre: { ground: ['#6f5238', '#664a32', '#785a3e'], sand: ['#a07c4e', '#957145', '#aa8656'], rock: ['#33222a', '#46303a', '#6f4d52'] },
+  frost: { ground: ['#5d7383', '#566b7a', '#64798a'], sand: ['#a9bccb', '#9eb2c2', '#b4c6d4'], rock: ['#1f2a3b', '#2b3a50', '#4a6280'] },
+  moss:  { ground: ['#3c5a3a', '#365335', '#426140'], sand: ['#4f6e70', '#486668', '#577678'], rock: ['#1e2620', '#2b362c', '#4a5a47'] },
 };
 const cx3 = w => w / 2;
 const NEUTRAL = { main: '#b9c2cf', dark: '#566274', light: '#eef2f7' };
