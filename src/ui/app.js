@@ -17,7 +17,7 @@ const HTML = `
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
@@ -31,7 +31,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-resume" hidden>이어하기</button><button id="k-setopen">설정</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-netopen" title="같은 와이파이의 다른 기기와 대전">둘이 대전</button><button id="k-resume" hidden>이어하기</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
@@ -47,6 +47,7 @@ const HTML = `
     </div>
   </section>
   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
+  <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel" id="k-netp"></div></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
 </div>`;
 
@@ -56,6 +57,8 @@ RTS.mount = function (root, opts = {}) {
   const store = { get(k) { try { return localStorage.getItem('kjh-rts:' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('kjh-rts:' + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem('kjh-rts:' + k); } catch (e) {} } };
   const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' }, settings: Object.assign(RTS.defaultSettings(), JSON.parse(store.get('settings') || '{}')) };
   const R = app.R = RTS.Renderer(view, app), cam = R.cam;
+  // 내 입력: 혼자 할 때는 바로 큐에, 둘이 할 때는 lockstep을 거쳐 두 기기에 같은 턴에 들어간다
+  const send = c => { if (!app.G) return; if (app.net && app.net.L) app.net.L.local(c); else RTS.command(app.G, app.team, c); };
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
   let ac = null, muted = store.get('mute') === '1'; const last = {};
@@ -86,11 +89,12 @@ RTS.mount = function (root, opts = {}) {
     showGame(G); };
   function showGame(G) { bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
-  app.toMenu = () => { if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
+  app.toMenu = () => { if (app.net) netClose(true); else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
   app.saveState = () => (app.G && !app.demo ? RTS.serialize(app.G) : null);
   app.loadState = json => { app.demo = false; app.team = 0; const G = RTS.deserialize(json); showGame(G); };
   function finish(o) { const G = app.G, win = o.winner === app.team, a = G.teams[app.team], b = G.teams.find(t => t.id !== app.team), m = Math.floor(G.tick / 1200), s = Math.floor(G.tick / 20) % 60;
-    store.del('save'); $('k-endt').textContent = win ? '승리' : '패배'; $('k-ends').textContent = `${m}분 ${s}초 · ${b.name} AI ${RTS.defs.difficulties[b.ai].name}`;
+    store.del('save'); $('k-endt').textContent = win ? '승리' : '패배'; $('k-ends').textContent = `${m}분 ${s}초 · ` + (b.ai ? `${b.name} AI ${RTS.defs.difficulties[b.ai].name}` : `${b.name} (사람)`);
+    if (app.net) { $('k-again').hidden = true; app.net.endShown = true; }
     const row = (l, x, y) => `<tr><th scope="row">${l}</th><td>${x}</td><td>${y}</td></tr>`;
     $('k-stats').innerHTML = `<thead><tr><th></th><td>${a.name}</td><td>${b.name}</td></tr></thead>` + row('캔 광석', a.stats.ore, b.stats.ore) + row('캔 에테르', a.stats.gas, b.stats.gas) + row('누적 배당', Math.round(a.stats.div || 0), Math.round(b.stats.div || 0)) + row('전쟁 피해액', Math.round(a.stats.warLoss || 0), Math.round(b.stats.warLoss || 0)) + row('약탈 획득', Math.round(a.stats.loot || 0), Math.round(b.stats.loot || 0)) + row('생산한 유닛', a.stats.made, b.stats.made) + row('파괴한 수', a.stats.kills, b.stats.kills) + row('잃은 수', a.stats.lost, b.stats.lost);
     $('k-end').hidden = false; if (opts.onEnd) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
@@ -109,25 +113,25 @@ RTS.mount = function (root, opts = {}) {
     if (!L) return items;
     const d = RTS.defOf(L), f = t.faction, ids = list.filter(e => e.def === L.def).map(e => e.id), allIds = list.filter(e => RTS.defOf(e).kind === 'unit').map(e => e.id);
     const ent = (id, act) => { const u = RTS.defs.entities[id], tech = RTS.techOk(t, u); return { key: u.key, img: R.icon(id, app.team, f), name: u.name, desc: u.desc, cost: u.cost, sub: u.supply ? '보급 ' + u.supply : '', ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name || RTS.defs.upgrades[r]?.name).join(', '), run: act }; };
-    if (!RTS.complete(L)) { items.push({ key: 'X', text: '취소', name: '건설 취소', desc: '비용의 75%를 돌려받습니다', ok: true, run: () => RTS.command(G, app.team, { type: 'cancel', building: L.id }) }); return items; }
+    if (!RTS.complete(L)) { items.push({ key: 'X', text: '취소', name: '건설 취소', desc: '비용의 75%를 돌려받습니다', ok: true, run: () => send({ type: 'cancel', building: L.id }) }); return items; }
     if (app.menu === 'build' && d.builds) { for (const id of d.builds) items.push(ent(id, () => { app.mode = { type: 'place', def: id }; app.menu = 'main'; })); items.push({ key: 'Escape', label: 'Esc', text: '뒤로', name: '뒤로', ok: true, run: () => { app.menu = 'main'; } }); return items; }
     if (d.kind === 'unit') {
       const tgt = (order, text, key, name, desc) => ({ key, text, name, desc, ok: true, run: () => setMode({ type: 'target', order }) });
       items.push(tgt('amove', '공격', 'A', '공격 이동', '이동하면서 만나는 적을 공격합니다'));
-      items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => RTS.command(G, app.team, { type: 'order', ids: allIds, order: null, stop: true }) });
-      items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => RTS.command(G, app.team, { type: 'order', ids: allIds, order: { type: 'hold' } }) });
+      items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => send({ type: 'order', ids: allIds, order: null, stop: true }) });
+      items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => send({ type: 'order', ids: allIds, order: { type: 'hold' } }) });
       items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
       for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
-        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : RTS.command(G, app.team, { type: 'ability', ids, ability: id }) }); }
+        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
     } else {
-      for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; RTS.command(G, app.team, { type: 'train', building: q.id, unit: id }); }));
-      for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => RTS.command(G, app.team, { type: 'research', building: L.id, upgrade: id }) }); }
-      if (L.prod.length) items.push({ key: 'X', text: '취소', name: '마지막 대기 취소', desc: '비용을 돌려받습니다', ok: true, run: () => RTS.command(G, app.team, { type: 'cancel', building: L.id }) });
+      for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
+      for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
+      if (L.prod.length) items.push({ key: 'X', text: '취소', name: '마지막 대기 취소', desc: '비용을 돌려받습니다', ok: true, run: () => send({ type: 'cancel', building: L.id }) });
     }
     return items; }
   function setMode(m) { app.mode = m; }
-  function trade(company, qty) { RTS.command(app.G, app.team, { type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
+  function trade(company, qty) { send({ type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
   // ── 거래소 패널: 행은 한 번 만들고 값만 갱신해 클릭이 끊기지 않게 한다 ──
   function buildExchange() { const G = app.G, el = $('k-ex'); el.innerHTML = `<div class="x-head"><h2>거래소</h2><span id="x-next"></span><button id="x-close" aria-label="거래소 닫기">닫기</button></div><div class="x-sum"><span>평가액 <b id="x-value">0</b></span><span>누적 배당 <b id="x-div">0</b></span><span>신용 <b id="x-credit">100%</b></span></div><div id="x-rows"></div><div class="x-war" id="x-war"></div><div class="x-news" id="x-news"></div>`;
     const rows = $('x-rows'); app.exRows = {};
@@ -163,9 +167,9 @@ RTS.mount = function (root, opts = {}) {
           (b.ally >= 0 && !mineA ? '' : `<div class="d-line d-barter"><button class="d-buy"></button><button class="d-sell"></button></div>`);
           r.querySelector('.d-go').onclick = () => { const e = G.byId[b.site]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
           const sl = r.querySelector('input'); if (sl) { sl.value = app.stakes[b.id] || 200; sl.oninput = () => { app.stakes[b.id] = +sl.value; updateDip(); }; }
-          const ap = r.querySelector('.d-apply'); if (ap) ap.onclick = () => { unlock(); RTS.command(G, me, { type: 'ally', branch: b.id, stake: +sl.value }); app.sfx('click'); };
-          const fu = r.querySelector('.d-fund'); if (fu) fu.onclick = () => RTS.command(G, me, { type: 'fund', branch: b.id, amount: 100 });
-          const bu = r.querySelector('.d-buy'), se = r.querySelector('.d-sell'); if (bu) { bu.onclick = () => RTS.command(G, me, { type: 'barter', branch: b.id, buy: true }); se.onclick = () => RTS.command(G, me, { type: 'barter', branch: b.id, buy: false }); } }
+          const ap = r.querySelector('.d-apply'); if (ap) ap.onclick = () => { unlock(); send({ type: 'ally', branch: b.id, stake: +sl.value }); app.sfx('click'); };
+          const fu = r.querySelector('.d-fund'); if (fu) fu.onclick = () => send({ type: 'fund', branch: b.id, amount: 100 });
+          const bu = r.querySelector('.d-buy'), se = r.querySelector('.d-sell'); if (bu) { bu.onclick = () => send({ type: 'barter', branch: b.id, buy: true }); se.onclick = () => send({ type: 'barter', branch: b.id, buy: false }); } }
         rows.appendChild(r); }); $('d-close').onclick = toggleDip; }
     const sp = RTS.tradeSpread(G, me), rate = G.dip.rate, t = G.teams[me]; const rt = $('d-rate'); if (rt) rt.textContent = `시세 에테르 1 = 광석 ${rate.toFixed(2)}`;
     for (const b of list) { const r = $('d-' + b.id), d = RTS.defs.branches[b.id]; if (!r || !b.found[me]) continue;
@@ -229,18 +233,18 @@ RTS.mount = function (root, opts = {}) {
   function spread(ids, x, y) { const n = ids.length, cols = Math.ceil(Math.sqrt(n)), out = {}; const s = .95; ids.forEach((id, i) => { const row = (i / cols) | 0, col = i % cols; out[id] = { x: x + (col - (cols - 1) / 2) * s, y: y + (row - (cols - 1) / 2) * s }; }); return out; }
   function context(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
-    if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); RTS.command(G, app.team, { type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+    if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
-    if (t && t.team !== app.team && (t.team >= 0 || t.company)) { RTS.command(G, app.team, { type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
+    if (t && t.team !== app.team && (t.team >= 0 || t.company)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
     const gas = t && t.team === app.team && RTS.defOf(t).placeOn && RTS.complete(t), ore = t && RTS.defOf(t).resource === 'ore';
-    if (t && (gas || ore) && workers.length) { RTS.command(G, app.team, { type: 'order', ids: workers, order: { type: 'gather', node: t.id }, queue }); if (rest.length) RTS.command(G, app.team, { type: 'order', ids: rest, order: { type: 'move', x: wx, y: wy }, spread: spread(rest, wx, wy), queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ffc247' }); return true; }
-    if (t && t.team === app.team && !RTS.complete(t) && workers.length) { RTS.command(G, app.team, { type: 'order', ids: workers, order: { type: 'build', site: t.id }, queue }); return true; }
-    RTS.command(G, app.team, { type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+    if (t && (gas || ore) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'gather', node: t.id }, queue }); if (rest.length) send({ type: 'order', ids: rest, order: { type: 'move', x: wx, y: wy }, spread: spread(rest, wx, wy), queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ffc247' }); return true; }
+    if (t && t.team === app.team && !RTS.complete(t) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'build', site: t.id }, queue }); return true; }
+    send({ type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
   function execMode(wx, wy, shift) { const G = app.G, m = app.mode, ids = selected().filter(e => e.team === app.team && RTS.defOf(e).kind === 'unit').map(e => e.id);
-    if (m.type === 'place') { const [tx, ty] = app.placeTile(m.def), w = selected().filter(e => RTS.defOf(e).gather).sort((a, b) => (a.order && a.order.type === 'build' ? 1 : 0) - (b.order && b.order.type === 'build' ? 1 : 0)); RTS.command(G, app.team, { type: 'place', ids: w.map(e => e.id), def: m.def, tx, ty, queue: shift }); if (!shift) app.mode = null; return; }
-    if (m.ability) RTS.command(G, app.team, { type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
-    else RTS.command(G, app.team, { type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
+    if (m.type === 'place') { const [tx, ty] = app.placeTile(m.def), w = selected().filter(e => RTS.defOf(e).gather).sort((a, b) => (a.order && a.order.type === 'build' ? 1 : 0) - (b.order && b.order.type === 'build' ? 1 : 0)); send({ type: 'place', ids: w.map(e => e.id), def: m.def, tx, ty, queue: shift }); if (!shift) app.mode = null; return; }
+    if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
+    else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
   const drag = {};
   view.addEventListener('contextmenu', e => e.preventDefault());
@@ -288,31 +292,111 @@ RTS.mount = function (root, opts = {}) {
   // ── 설정 메뉴: RTS.SETTINGS를 읽어 자동 생성한다. 게임 중에는 일시정지되고 바로 적용된다 ──
   const liveGame = () => app.G && !app.demo && !app.G.over;
   const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.zero && v === 0 ? s.zero : v + (s.unit || '');
-  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (liveGame() && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
+  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (liveGame() && !app.net && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
   function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
-    el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
-      RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && s.startOnly, v = src(s.id), id = 's-' + s.id;
+    el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live && app.net ? '둘이 대전 중에는 게임 규칙을 바꿀 수 없습니다. 화면과 소리만 바꿀 수 있고, 게임은 계속 진행됩니다.' : live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
+      RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && (s.startOnly || (app.net && !s.client)), v = src(s.id), id = 's-' + s.id;
         return `<div class="s-row${off ? ' off' : ''}"><label for="${id}"><b>${s.label}</b>${s.desc ? `<small>${s.desc}</small>` : ''}${off ? '<small>다음 판부터 적용</small>' : ''}</label>` + (s.type === 'toggle' ? `<input type="checkbox" id="${id}" data-s="${s.id}" ${v ? 'checked' : ''} ${off ? 'disabled' : ''}>` : `<input type="range" id="${id}" data-s="${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}" ${off ? 'disabled' : ''}>`) + `<output id="${id}-v">${fmtSet(s, v)}</output></div>`; }).join('')}</section>`).join('') + `<div class="s-foot"><button id="s-reset">기본값으로 되돌리기</button></div></div>`;
     el.querySelectorAll('[data-s]').forEach(i => { const s = RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === i.dataset.s); i.oninput = () => { const v = s.type === 'toggle' ? i.checked : +i.value; setValue(s, v); $('s-' + s.id + '-v').textContent = fmtSet(s, v); }; });
-    el.querySelectorAll('[data-preset]').forEach(b => { b.onclick = () => applySettings(Object.assign(RTS.defaultSettings(), RTS.PRESETS[b.dataset.preset]), true); });
-    $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings; }
+    el.querySelectorAll('[data-preset]').forEach(b => { if (live && app.net) b.disabled = true; b.onclick = () => applySettings(Object.assign(RTS.defaultSettings(), RTS.PRESETS[b.dataset.preset]), true); });
+    if (live && app.net) $('s-reset').disabled = true; $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings; }
   function applySettings(vals, keepOther) { for (const s of RTS.SETTINGS.flatMap(g => g.items)) { if (keepOther && (s.client || s.startOnly)) continue; setValue(s, vals[s.id]); } renderSettings(); }
   function toggleSettings() { app.setOpen = !app.setOpen; $('k-set').hidden = !app.setOpen; if (app.setOpen) renderSettings(); else { app.exRows = null; updateSpeed(); } }
-  function togglePause() { app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
+  function togglePause(remote) { if (app.net && remote === undefined) { netSend({ t: 'pause', on: !app.paused }); } else if (remote !== undefined) { if (app.paused === remote) return; notice(remote ? '상대가 일시정지했습니다' : '상대가 게임을 재개했습니다'); } app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
-  $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = togglePause; $('k-speed').onclick = () => { app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
+  $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); };
   $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => app.toMenu(); $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
+  $('k-netopen').onclick = () => { unlock(); netOpen(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
   $('k-idle').onclick = () => { if (app.idle && app.idle.length) { app.sel = app.idle.map(e => e.id); const u = app.idle[0]; centerOn(u.x, u.y); } };
   $('k-boxbtn').onclick = () => { app.boxTouch = !app.boxTouch; $('k-boxbtn').classList.toggle('on', app.boxTouch); };
 
+
+  // ── 둘이 대전: 방 만들기/참가, 연결, 시작 ─────────────
+  // 연결 수단: WebRTC(PeerJS). 처음 연결을 이어 줄 때만 PeerJS 공용 중계 서버를 쓰고, 이후 게임 데이터는 두 기기가 직접 주고받는다.
+  const PEER_SRC = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', PEER_PREFIX = 'kjh-rts01-';
+  const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function peerLib() { if (window.Peer) return Promise.resolve(window.Peer); return new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = PEER_SRC; sc.onload = () => (window.Peer ? ok(window.Peer) : no(new Error('load'))); sc.onerror = () => no(new Error('load')); document.head.appendChild(sc); }); }
+  const myName = () => (store.get('name') || '').trim().slice(0, 12) || '플레이어';
+  function netOpen() { if (app.net) netClose(true); app.net = { stage: 'choose', hc: ['none', 'none'] }; $('k-start').hidden = true; $('k-net').hidden = false; renderNet(); }
+  function netClose(bye) { const N = app.net; if (!N) return; app.net = null; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; $('k-net').hidden = true; }
+  function netSend(m) { const N = app.net; if (N && N.conn && N.conn.open) N.conn.send(m); }
+  function netStatus(text, bad) { if (!app.net) return; app.net.status = text; app.net.bad = !!bad; renderNet(); }
+  function netFail(err) { const N = app.net; if (!N) return; const ty = err && err.type;
+    const msg = ty === 'peer-unavailable' ? '그 번호의 방이 없습니다. 방장 화면의 번호를 다시 확인하세요.' : ty === 'network' || ty === 'server-error' || ty === 'socket-error' || (err && err.message === 'load') ? '연결 서버에 닿지 않습니다. 인터넷 연결을 확인하세요.' : ty === 'browser-incompatible' ? '이 브라우저는 기기 간 연결을 지원하지 않습니다. Chrome을 쓰세요.' : '연결 오류: ' + (ty || (err && err.message) || '알 수 없음');
+    if (N.L && app.G && !app.G.over) netLost(); else { N.stage = N.role === 'host' && N.stage === 'lobby' ? 'host' : N.stage; netStatus(msg, true); } }
+  function wireConn(conn) { const N = app.net; N.conn = conn;
+    conn.on('open', () => { if (app.net !== N) return; N.stage = 'lobby'; N.status = ''; if (N.role === 'guest') conn.send({ t: 'hello', name: myName() }); else sendLobby(); renderNet(); });
+    conn.on('data', m => { if (app.net === N) netMsg(m); });
+    conn.on('close', () => { if (app.net !== N) return; if (N.L) netLost(); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
+    conn.on('error', netFail); }
+  async function netHost() { const N = app.net; N.role = 'host'; N.stage = 'host'; netStatus('연결 준비 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
+    const tryCode = left => { N.code = String(1000 + Math.floor(Math.random() * 9000)); const peer = N.peer = new Peer(PEER_PREFIX + N.code, { debug: 0 });
+      peer.on('open', () => { if (app.net === N) netStatus('상대 기기에서 이 번호를 입력하세요.'); });
+      peer.on('connection', conn => { if (app.net !== N || N.conn) { conn.on('open', () => conn.close()); return; } wireConn(conn); });
+      peer.on('error', err => { if (app.net !== N) return; if (err.type === 'unavailable-id' && left > 0) { peer.destroy(); tryCode(left - 1); } else netFail(err); });
+      peer.on('disconnected', () => { if (app.net === N && !N.conn) try { peer.reconnect(); } catch (e) {} }); };
+    tryCode(4); }
+  async function netJoin(code) { const N = app.net; if (!/^\d{4}$/.test(code)) return netStatus('방 번호 숫자 4자리를 입력하세요.', true); N.role = 'guest'; N.code = code; N.stage = 'joining'; netStatus('방을 찾는 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
+    const peer = N.peer = new Peer({ debug: 0 }); peer.on('error', err => { if (app.net === N) { N.stage = 'choose'; netFail(err); } });
+    peer.on('open', () => { if (app.net !== N) return; const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); wireConn(conn); setTimeout(() => { if (app.net === N && N.stage === 'joining') { N.stage = 'choose'; netStatus('방에 연결하지 못했습니다. 두 기기가 같은 와이파이인지 확인하세요.', true); } }, 15000); }); }
+  // 방장이 정하는 내용: 전장, 진영(상대는 다른 진영), 팀별 핸디캡
+  const lobbyOf = () => { const fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, other = fs.find(x => x !== mine); return { map: app.cfg.map, factions: [mine, other], hc: app.net.hc.slice(), names: [myName(), app.net.peerName || '상대'] }; };
+  function sendLobby() { if (app.net && app.net.role === 'host') netSend({ t: 'lobby', lobby: lobbyOf() }); }
+  function netMsg(m) { const N = app.net; if (!m || typeof m !== 'object') return;
+    if (m.t === 'turn') { if (N.L) N.L.receive(m); else (N.early = N.early || []).push(m); return; }
+    if (m.t === 'hello' && N.role === 'host') { N.peerName = String(m.name || '상대').slice(0, 12); sendLobby(); renderNet(); return; }
+    if (m.t === 'lobby' && N.role === 'guest') { N.lobby = m.lobby; renderNet(); return; }
+    if (m.t === 'start' && N.role === 'guest') { netStart(m.opts, 1); return; }
+    if (m.t === 'pause') { togglePause(!!m.on); return; }
+    if (m.t === 'bye') { if (N.L && app.G && !app.G.over) netLost('상대가 게임을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
+  function netBegin() { const N = app.net, lb = lobbyOf(); const opts = RTS.netGameOpts({ map: lb.map, seed: 1 + Math.floor(Math.random() * 99999), settings: app.settings, factions: lb.factions, names: lb.names, hc: lb.hc });
+    netSend({ t: 'start', opts }); netStart(opts, 0); }
+  function netStart(opts, team) { const N = app.net, o = JSON.parse(JSON.stringify(opts)); // 두 기기가 똑같은 값으로 만들도록 방장도 같은 직렬화를 거친다
+    app.demo = false; app.team = team; app.speed = 1; app.paused = false; N.waitMs = 0;
+    N.L = RTS.Lockstep({ team, send: netSend, onDesync: () => notice('두 기기의 게임 상태가 어긋났습니다. 이번 판은 화면이 서로 다를 수 있습니다.', 'warn') });
+    for (const m of N.early || []) N.L.receive(m); N.early = null;
+    $('k-net').hidden = true; $('k-again').hidden = true; showGame(RTS.createGame(o)); notice(team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
+  function netLost(why) { const N = app.net; if (!N || N.endShown) return; N.endShown = true; app.paused = true; $('k-wait').hidden = true;
+    $('k-endt').textContent = '대전 중단'; $('k-ends').textContent = why || '상대 기기와 연결이 끊겼습니다.'; $('k-stats').innerHTML = ''; $('k-again').hidden = true; $('k-end').hidden = false; }
+  function renderNet() { const N = app.net, el = $('k-netp'); if (!N) return; const d = RTS.defs, st = N.status ? `<p class="k-netst${N.bad ? ' bad' : ''}" role="status">${esc(N.status)}</p>` : '';
+    const opt = (id, on, b, sub) => `<button class="k-opt${on ? ' on' : ''}" aria-pressed="${on}" data-v="${id}"><b>${esc(b)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</button>`;
+    let h = `<h1>둘이 대전</h1>`;
+    if (N.stage === 'choose' || N.stage === 'joining') {
+      h += `<p class="k-sub">두 기기에서 이 화면을 열고, 한쪽은 방을 만들고 다른 쪽은 방 번호로 들어갑니다. 같은 와이파이에서 Chrome이나 삼성 인터넷을 쓰세요.</p>
+        <h2>내 이름</h2><input class="k-in" id="n-name" maxlength="12" value="${esc(myName())}" autocomplete="off">
+        <div class="k-go"><button class="k-primary" id="n-host">방 만들기</button></div>
+        <h2>참가하기</h2><div class="k-netjoin"><input class="k-in" id="n-code" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="방 번호 4자리" value="${esc(N.code && N.role === 'guest' ? N.code : '')}"><button id="n-join" ${N.stage === 'joining' ? 'disabled' : ''}>참가</button></div>${st}`;
+    } else if (N.stage === 'host') {
+      h += `<p class="k-sub">상대 기기에서 <b>둘이 대전 → 참가하기</b>를 누르고 아래 번호를 입력하게 하세요.</p><div class="k-code" aria-label="방 번호">${N.code ? esc(N.code) : '----'}</div>${st}`;
+    } else if (N.role === 'host') { const lb = lobbyOf(), other = d.factions[lb.factions[1]].name;
+      h += `<p class="k-sub">연결됨 · 상대: <b>${esc(N.peerName || '상대')}</b></p>
+        <h2>전장</h2><div class="k-opts" id="n-map">${Object.values(d.maps).map(m => opt(m.id, lb.map === m.id, m.name)).join('')}</div>
+        <h2>내 진영 (상대는 ${esc(other)})</h2><div class="k-opts" id="n-fac">${Object.values(d.factions).map(f => opt(f.id, lb.factions[0] === f.id, f.name)).join('')}</div>
+        <h2>내 핸디캡</h2><div class="k-opts k-four" id="n-hc0">${Object.values(RTS.HANDICAPS).map(x => opt(x.id, N.hc[0] === x.id, x.name, x.blurb)).join('')}</div>
+        <h2>${esc(N.peerName || '상대')} 핸디캡</h2><div class="k-opts k-four" id="n-hc1">${Object.values(RTS.HANDICAPS).map(x => opt(x.id, N.hc[1] === x.id, x.name, x.blurb)).join('')}</div>
+        <p class="k-sub k-small">게임 규칙은 이 기기의 설정 메뉴 값을 그대로 씁니다.</p>${st}`;
+    } else { const lb = N.lobby;
+      h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb ? `<dl class="k-netsum"><dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
+    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? '<button class="k-primary" id="n-go">시작</button>' : ''}<button id="n-back">나가기</button></div>`;
+    el.innerHTML = h;
+    const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
+    on('n-back', () => { netClose(true); $('k-start').hidden = false; renderMenu(); });
+    on('n-host', () => { saveName(); netHost(); }); on('n-join', () => { saveName(); netJoin(el.querySelector('#n-code').value.trim()); }); on('n-go', () => { unlock(); netBegin(); });
+    const code = el.querySelector('#n-code'); if (code) code.onkeydown = e => { if (e.key === 'Enter') { saveName(); netJoin(code.value.trim()); } };
+    const pickers = { 'n-map': v => { app.cfg.map = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-fac': v => { app.cfg.faction = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-hc0': v => { N.hc[0] = v; }, 'n-hc1': v => { N.hc[1] = v; } };
+    for (const id of Object.keys(pickers)) el.querySelectorAll('#' + id + ' [data-v]').forEach(b => { b.onclick = () => { pickers[id](b.dataset.v); sendLobby(); renderNet(); }; }); }
+  function saveName() { const i = $('k-netp').querySelector('#n-name'); if (i) store.set('name', i.value.trim().slice(0, 12)); }
   // ── 루프 ──────────────────────────────────────────────
   function layout() { const r = $('k-stage').getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)); if (view.width !== W || view.height !== H) { view.width = W; view.height = H; clampCam(); } }
   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
   let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
-    if (!app.paused && !G.over && (app.demo || !app.setOpen)) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
+    if (app.net && app.net.L && !app.demo) { // 둘이 대전: 양쪽 입력이 모인 턴만 진행. 늦은 쪽이 따라잡도록 한 프레임에 최대 6틱
+      if (!app.paused && !G.over) { acc += dt; const per = 1000 / RTS.HZ; let n = 0, stuck = false; while (acc >= per && n < 6) { if (!app.net.L.advance(G)) { stuck = true; acc = Math.min(acc, per * 3); break; } acc -= per; n++; }
+        if (stuck) { app.net.waitMs = (app.net.waitMs || 0) + dt; } else app.net.waitMs = 0; $('k-wait').hidden = !(app.net.waitMs > 700); } }
+    else if (!app.paused && !G.over && (app.demo || !app.setOpen)) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
     if (app.demo) { if (!reduce) { const fight = G.ents.find(e => e.firedAt > G.tick - 20 && RTS.defOf(e).kind === 'unit'); if (fight) { const tx = fight.x * TS - view.width / 2, ty = fight.y * TS - view.height / 2; cam.x += (tx - cam.x) * .006; cam.y += (ty - cam.y) * .006; clampCam(); } } }
     else { const m = app.mouse, sp = 14 / cam.z, e = 12; let dx = 0, dy = 0; if (keys.ArrowLeft) dx = -sp; if (keys.ArrowRight) dx = sp; if (keys.ArrowUp) dy = -sp; if (keys.ArrowDown) dy = sp;
       if (app.settings.edgeScroll && m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
@@ -323,6 +407,6 @@ RTS.mount = function (root, opts = {}) {
     R.draw(Math.min(1, acc / (1000 / RTS.HZ))); }
   renderMenu(); layout(); demo(); raf = requestAnimationFrame(loop);
   if (opts.autostart) app.start(opts.autostart);
-  app.destroy = () => { alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
+  app.destroy = () => { if (app.net) netClose(true); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
   return app;
 };
