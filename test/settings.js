@@ -1,6 +1,6 @@
 // 설정이 실제 시뮬레이션을 바꾸는지 검사
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const mk = settings => RTS.createGame({ map: 'ridge', seed: 3, settings, players: [{ faction: 'pioneers' }, { faction: 'ironclad' }] });
 // 기본값은 설정 도입 전 수치와 같아야 한다
 for (const g of RTS.SETTINGS) for (const s of g.items) if (s.type !== 'toggle') { assert(s.def >= s.min && s.def <= s.max, s.id); }

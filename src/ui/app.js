@@ -17,7 +17,7 @@ const HTML = `
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
@@ -75,7 +75,7 @@ RTS.mount = function (root, opts = {}) {
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; G.teams.forEach((t, i) => { RTS.TEAM[i] = RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
+  function bind(G) { app.G = G; G.teams.forEach((t, i) => { RTS.TEAM[i] = RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
     RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
@@ -111,6 +111,7 @@ RTS.mount = function (root, opts = {}) {
   const cardRank = e => { const d = RTS.defOf(e); return (d.abilities ? 3 : 0) + (d.gather ? 2 : 0) + (d.kind === 'unit' ? 1 : 0); };
 
   function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
+    if (list.length === 1 && list[0].tribeHall && G.tribe) { const why = RTS.tribeBlock(G, app.team); items.push({ key: 'N', text: '외교', name: '잿빛 부족 외교', desc: why || '공병(일꾼)을 선택하고 이 회당을 우클릭하면 외교 미션 2개를 받습니다. 2개 성공 동맹, 1개 중립, 0개 적대', ok: !why, why, run: () => notice('공병을 선택하고 회당을 우클릭하세요', 'ok') }); return items; }
     if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
     if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(G, c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(G, c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 ${RTS.cfg(G).fee}%)`, ok: true, run: () => trade(id, qty) });
       tr(5, 'Q', '+5', '5주 매수'); tr(20, 'W', '+20', '20주 매수'); tr(-5, 'E', '-5', '5주 매도'); tr(-100, 'R', '전량', '보유 주식 전량 매도'); return items; }
@@ -193,10 +194,11 @@ RTS.mount = function (root, opts = {}) {
   function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
     let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
     const e = list[0], d = RTS.defOf(e), f = e.team >= 0 ? G.teams[e.team].faction : 'pioneers';
-    if (list.length === 1 && e.branch) { const b = G.dip.list[e.branch], d2 = RTS.defs.branches[e.branch]; h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${d2.name}</h3><p class="k-st">${b.ally < 0 ? '중립 지부' : b.ally === app.team ? '내 동맹' : '상대 동맹'} · ${d2.perkText}</p></div></div>`;
+    if (list.length === 1 && e.tribeHall && G.tribe) { const T = G.tribe, r = T.rel[app.team]; h = `<div class="k-one"><img src="${R.icon(e.def, RTS.TRIBE, f)}" alt=""><div><h3>잿빛 부족 회당</h3><p class="k-hp">${Math.ceil(e.hp)} / ${d.hp}</p><p class="k-st">${RTS.tribeRelName(r)} · ${r === 'ally' ? '공격받으면 확률로 지원군을 보냅니다' : r === 'hostile' ? '주기적으로 습격해 옵니다' : '공병으로 우클릭해 외교'}</p></div></div>`;
+    } else if (list.length === 1 && e.branch) { const b = G.dip.list[e.branch], d2 = RTS.defs.branches[e.branch]; h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${d2.name}</h3><p class="k-st">${b.ally < 0 ? '중립 지부' : b.ally === app.team ? '내 동맹' : '상대 동맹'} · ${d2.perkText}</p></div></div>`;
     } else if (list.length === 1 && e.company) { const c = G.market.cos[e.company], co = RTS.defs.companies[e.company], hp = d.hp, dn = e.downUntil > G.tick;
       h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${co.name}</h3><p class="k-hp">${Math.ceil(e.hp)} / ${hp}${dn ? ' · 가동 중단' : ''}</p><p class="k-st">주가 ${c.price.toFixed(1)} · 내 지분 ${c.shares[app.team]}주 · ${c.owner < 0 ? '경영권 없음' : c.owner === app.team ? '내 경영권' : '상대 경영권'}</p></div></div>`;
-    } else if (list.length === 1) { const max = e.team >= 0 ? RTS.stat(G, e, 'hp') : 0, w = RTS.weapon(e), stats = [];
+    } else if (list.length === 1) { const max = e.team >= 0 || e.team === RTS.TRIBE ? RTS.stat(G, e, 'hp') : 0, w = RTS.weapon(e), stats = [];
       if (d.resource) stats.push(`남은 양 ${e.amount}`);
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
@@ -209,14 +211,27 @@ RTS.mount = function (root, opts = {}) {
     $('k-ore').textContent = Math.floor(t.res.ore); $('k-gas').textContent = Math.floor(t.res.gas); $('k-sup').textContent = t.sup + '/' + t.cap; $('k-sup').parentNode.classList.toggle('full', t.sup >= t.cap);
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     const idle = G.ents.filter(e => e.team === app.team && RTS.defOf(e).gather && !e.order); $('k-idlen').textContent = idle.length; app.idle = idle;
-    renderInfo(); renderCard(); if (htip.shown) { const x = app.G.byId[htip.id]; if (!x || x.dead || !canSee(x)) hideHover(); else { const h = tipHTML({ ent: x }); if (h !== htip.sig) { htip.sig = h; $('k-htip').innerHTML = h; } } } const m = app.mode, mb = $('k-modebar');
+    renderTribe(); renderInfo(); renderCard(); if (htip.shown) { const x = app.G.byId[htip.id]; if (!x || x.dead || !canSee(x)) hideHover(); else { const h = tipHTML({ ent: x }); if (h !== htip.sig) { htip.sig = h; $('k-htip').innerHTML = h; } } } const m = app.mode, mb = $('k-modebar');
     if (m) { mb.hidden = false; const txt = m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요' : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 이동 지점을 고르세요' : '순찰 지점을 고르세요'; if (mb.textContent !== txt + ' · Esc 취소') mb.textContent = txt + ' · Esc 취소'; } else mb.hidden = true; }
+  // 잿빛 부족 상태와 외교 미션 진행도. 부족을 발견한 뒤에만 보인다
+  function renderTribe() { const G = app.G, T = G.tribe, el = $('k-tribe'), me = app.team; if (!T || me < 0 || !T.found[me]) { if (!el.hidden) { el.hidden = true; app.tribeSig = ''; } return; }
+    const r = T.dead ? 'gone' : T.rel[me], L = T.missions[me], wait = T.wait[me] > G.tick ? Math.ceil((T.wait[me] - G.tick) / 20) : 0;
+    let h = `<div class="tr-top"><b>잿빛 부족</b><em class="tr-${r}">${T.dead ? '회당 무너짐' : RTS.tribeRelName(r)}</em><button type="button" class="tr-go" aria-label="회당 보기">보기</button></div>`;
+    if (L) h += L.map(m => { const d = RTS.defs.tribeMissions[m.id], [cur, need] = RTS.missionProg(G, me, m), left = Math.max(0, Math.ceil((m.until - G.tick) / 20)), st = m.done === true ? '성공' : m.done === false ? '실패' : left + '초';
+      return `<div class="tr-m ${m.done === true ? 'ok' : m.done === false ? 'bad' : ''}"><div class="tr-h"><span>${d.name}</span><span>${st}</span></div><p>${d.text}</p><i><s style="width:${Math.round(cur / need * 100)}%"></s></i><small>${Math.floor(cur)} / ${need}${d.unit || ''}</small>${m.id === 'scout' && m.done === null ? `<button type="button" class="tr-pt" data-x="${m.x}" data-y="${m.y}">지점 보기</button>` : ''}</div>`; }).join('');
+    else if (!T.dead && r === 'neutral') h += `<p class="tr-n">${wait ? `다시 외교까지 ${wait}초` : (RTS.tribeBlock(G, me) || '공병을 선택하고 회당을 우클릭하면 미션 2개를 받습니다. 2개 성공 동맹 · 1개 중립 · 0개 적대')}</p>`;
+    else if (r === 'ally') h += `<p class="tr-n">공격받으면 ${Math.round(RTS.TRIBE_RULES.helpChance * 100)}% 확률로 지원군을 보냅니다</p>`;
+    else if (r === 'hostile') h += `<p class="tr-n">주기적으로 습격해 옵니다. 회당을 무너뜨리면 광석 +${RTS.TRIBE_RULES.loot}</p>`;
+    if (h === app.tribeSig) return; app.tribeSig = h; el.innerHTML = h; el.hidden = false;
+    el.querySelector('.tr-go').onclick = () => { const e = G.byId[T.hall]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
+    el.querySelectorAll('.tr-pt').forEach(b => { b.onclick = () => centerOn(+b.dataset.x, +b.dataset.y); }); }
   function renderMini() { const G = app.G, c = mini.getContext('2d'), W = mini.width, H = mini.height, sc = Math.min(W / G.w, H / G.h), ox = (W - G.w * sc) / 2, oy = (H - G.h * sc) / 2; app.miniT = { sc, ox, oy };
     c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
     const t = G.teams[app.team], fogged = t && !G.nofog;
-    for (const e of G.ents) { const d = RTS.defOf(e), x = ox + e.x * sc, y = oy + e.y * sc; if (e.branch && !RTS.branchKnown(G, app.team, e)) continue;
+    for (const e of G.ents) { const d = RTS.defOf(e), x = ox + e.x * sc, y = oy + e.y * sc; if ((e.branch || e.team === RTS.TRIBE) && !RTS.branchKnown(G, app.team, e)) continue;
       if (fogged && !d.site && e.team !== app.team && !(e.team < 0 ? t.seen[(e.y | 0) * G.w + (e.x | 0)] : RTS.visibleTo(G, app.team, e.x, e.y))) continue;
-      c.fillStyle = d.site && e.team < 0 ? '#eef2f7' : e.team < 0 ? (d.resource === 'ore' ? '#ffc247' : '#ea7be0') : RTS.TEAM[e.team].main; const s = d.site ? 5 : d.size && e.team >= 0 ? 4 : 2.4; c.fillRect(x - s / 2, y - s / 2, s, s); }
+      c.fillStyle = e.team === RTS.TRIBE ? RTS.TEAM[RTS.TRIBE].main : d.site && e.team < 0 ? '#eef2f7' : e.team < 0 ? (d.resource === 'ore' ? '#ffc247' : '#ea7be0') : RTS.TEAM[e.team].main; const s = d.site || e.tribeHall ? 5 : d.size && e.team !== -1 ? 4 : 2.4; c.fillRect(x - s / 2, y - s / 2, s, s); }
+    const TM = G.tribe && G.tribe.missions[app.team]; if (TM) for (const q of TM) if (q.id === 'scout' && q.done === null) { c.strokeStyle = '#9dffb5'; c.lineWidth = 1.5; c.beginPath(); c.arc(ox + q.x * sc, oy + q.y * sc, 5 * sc + 2, 0, Math.PI * 2); c.stroke(); }
     if (fogged) { c.fillStyle = 'rgba(8,12,22,.72)'; const step = 2; for (let y = 0; y < G.h; y += step) for (let x = 0; x < G.w; x += step) { if (!t.vis[y * G.w + x]) { c.globalAlpha = t.seen[y * G.w + x] ? .45 : 1; c.fillRect(ox + x * sc, oy + y * sc, sc * step + .6, sc * step + .6); } } c.globalAlpha = 1;
       for (const id of Object.keys(R.ghosts)) { const g = R.ghosts[id]; c.fillStyle = RTS.TEAM[g.team].main; c.fillRect(ox + g.x * sc - 2, oy + g.y * sc - 2, 4, 4); } }
     c.strokeStyle = '#fff'; c.lineWidth = 1; c.strokeRect(ox + cam.x / TS * sc, oy + cam.y / TS * sc, view.width / cam.z / TS * sc, view.height / cam.z / TS * sc); }
@@ -239,6 +254,15 @@ RTS.mount = function (root, opts = {}) {
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
+    if (t && t.team === RTS.TRIBE && G.tribe) { const T = G.tribe, workers = units.filter(e => RTS.defOf(e).gather);
+      if (t.tribeHall && workers.length && !RTS.foe(G, app.team, RTS.TRIBE) && T.rel[app.team] !== 'ally') { // 공병 → 회당: 외교 미션 받기
+        const why = RTS.tribeBlock(G, app.team); if (why) { notice(why, 'warn'); return true; }
+        const w = workers.slice().sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
+        send({ type: 'order', ids: [w.id], order: { type: 'envoy', target: t.id }, queue }); notice('공병이 회당으로 외교하러 갑니다', 'ok'); R.pings.push({ x: t.x, y: t.y, life: 24, max: 24, c: '#9dffb5' }); return true; }
+      if (!RTS.foe(G, app.team, RTS.TRIBE)) { // 중립·동맹 부족은 한 번 더 눌러야 공격한다
+        const arm = app.tribeArm; if (!arm || arm.id !== t.id || performance.now() - arm.at > 3000) { app.tribeArm = { id: t.id, at: performance.now() }; notice(T.rel[app.team] === 'ally' ? '동맹 부족입니다. 한 번 더 누르면 공격하고 동맹이 깨집니다' : '한 번 더 누르면 부족을 공격합니다. 공격하면 적대 관계가 됩니다', 'warn'); return true; }
+        app.tribeArm = null; }
+      send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
     const gas = t && t.team === app.team && RTS.defOf(t).placeOn && RTS.complete(t), ore = t && RTS.defOf(t).resource === 'ore';
@@ -271,7 +295,7 @@ RTS.mount = function (root, opts = {}) {
         + row('비용', costTxt(u.cost)) + row('시간', u.time ? sec(u.time) : '') + row('필요', needList(u, t)) + row('방법', howTo(src.up).join('<br>')) + '</table>';
       return h; }
     if (src.ent) { e = src.ent; id = e.def; d = D[id]; } else { id = src.def; d = D[id]; }
-    const own = e ? (e.team === me ? '내 것' : e.team < 0 ? '중립' : '상대') : '';
+    const own = e ? (e.team === me ? '내 것' : e.team === RTS.TRIBE && G.tribe ? '잿빛 부족 · ' + RTS.tribeRelName(G.tribe.rel[me] || 'neutral') : e.team < 0 ? '중립' : '상대') : '';
     if (e && e.branch) { const b = G.dip.list[e.branch], bd = RTS.defs.branches[e.branch];
       return `<b>${bd.name}</b><small class="t-kind">자유상단 지부 · ${b.ally < 0 ? '중립' : b.ally === me ? '내 동맹' : '상대 동맹'}</small><table>${row('혜택', bd.perkText)}${row('동맹 조건', bd.need)}${row('체력', Math.ceil(e.hp) + ' / ' + d.hp)}</table><p>N 키로 자유상단을 열어 거래하거나 동맹을 신청합니다.</p>`; }
     if (e && e.company) { const c = G.market.cos[e.company], co = RTS.defs.companies[e.company];

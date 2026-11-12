@@ -36,6 +36,12 @@ RTS.mod({
     n_caravan: { kind: 'unit', name: '상단 수레', abbr: '수', art: 'caravan', uncontrollable: true, passive: true, r: .5, hp: 90, speed: 2.6, sight: 5, tags: ['mech'], desc: '도착하면 자원을 내려놓는다. 파괴되면 화물을 잃는다' },
     n_merc:    { kind: 'unit', name: '유랑 용병', abbr: '용', art: 'trooper', tint: 1, r: .42, hp: 110, armor: 1, speed: 2.8, sight: 8, tags: ['bio'], weapon: { damage: 12, range: 5, cooldown: .9, speed: 24, art: 'tracer' }, desc: '용병단이 보낸 정예 병력. 보급을 쓰지 않는다' },
 
+    // ── 잿빛 부족: AI로 움직이는 중립 세력(tribe.js). 팀 번호 RTS.TRIBE ──
+    t_hall:    { kind: 'building', name: '부족 회당', art: 't_hall', size: [4, 3], hp: 1600, armor: 2, sight: 10, aggro: 7, weapon: { damage: 10, range: 7, cooldown: 1.2, speed: 22, art: 'tracer' }, desc: '잿빛 부족의 중심. 공병으로 우클릭하면 외교 미션을 받는다' },
+    t_tower:   { kind: 'building', name: '부족 망루', art: 't_tower', size: [2, 2], hp: 500, armor: 1, sight: 10, aggro: 7, weapon: { damage: 11, range: 7, cooldown: 1, speed: 22, art: 'tracer' }, desc: '적대 세력만 공격한다' },
+    t_warrior: { kind: 'unit', name: '부족 전사', abbr: '전', art: 'tribal', r: .42, hp: 95, armor: 1, speed: 2.9, sight: 8, tags: ['bio'], weapon: { damage: 10, range: .4, cooldown: .9, air: false }, desc: '도끼를 든 근접 전사. 지상만 공격' },
+    t_archer:  { kind: 'unit', name: '부족 궁수', abbr: '궁', art: 'tribal', tint: 1, r: .38, hp: 60, speed: 2.8, sight: 9, tags: ['bio'], weapon: { damage: 8, range: 5.5, cooldown: 1, speed: 20, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
+
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
       weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], desc: '자원 채취와 건설' },
@@ -118,6 +124,20 @@ RTS.mod({
     rail:   { name: '철로조합', base: .35, need: '완공 건물 5개 이상', perkText: '보급 +12, 90초마다 에테르 80 수레', check: (G, t) => Object.values(t.have).reduce((s, n) => s + n, 0) >= 5, perk: { supply: 12, caravan: { res: 'gas', amount: 80, every: 90 } } },
     roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
   },
+  // 잿빛 부족 외교 미션. 공병이 회당에 가면 이 중 2개를 무작위로 받는다.
+  // need 목표치, prog(G,t,m) 현재치, time 제한(초). start는 시작 시 기준값, tick은 1초마다, pay는 성공 순간 내는 자원
+  tribeMissions: {
+    oreGift:  { name: '광석 공물', time: 100, need: 250, pay: { ore: 250 }, text: '광석 250을 모으면 자동으로 바친다', prog: (G, t) => t.res.ore },
+    gasGift:  { name: '에테르 공물', time: 150, need: 100, pay: { gas: 100 }, text: '에테르 100을 모으면 자동으로 바친다', prog: (G, t) => t.res.gas },
+    guard:    { name: '회당 경비', time: 150, need: 20, unit: '초', text: '전투 유닛 4기 이상을 회당 8칸 안에 모두 합쳐 20초 둔다', prog: (G, t, m) => m.acc,
+      tick(G, t, m) { const T = G.tribe; let n = 0; for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable && Math.hypot(e.x - T.x, e.y - T.y) < 8) n++; if (n >= 4) m.acc++; } },
+    hunt:     { name: '침입자 토벌', time: 180, need: 4, text: '상대 유닛이나 건물 4개를 파괴한다', start: (G, t, m) => { m.k0 = t.stats.kills; }, prog: (G, t, m) => t.stats.kills - m.k0 },
+    scout:    { name: '정찰 의뢰', time: 120, need: 1, text: '표시된 지점에 유닛을 보낸다(5칸 안)', prog: (G, t, m) => m.acc,
+      start(G, t, m) { const hq = G.ents.find(e => e.team === t.id && RTS.defOf(e).dropoff) || { x: 0, y: 0 }, L = G.bases.filter(b => Math.hypot(b.x - hq.x, b.y - hq.y) > 15 && b.start === undefined); const b = L[Math.floor(RTS.rand(G) * L.length)] || G.bases[0]; m.x = b.x; m.y = b.y; },
+      tick(G, t, m) { for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && Math.hypot(e.x - m.x, e.y - m.y) < 5) { m.acc = 1; return; } } },
+    build:    { name: '교역로 건설', time: 150, need: 2, text: '건물 2개를 새로 완공한다', start: (G, t, m) => { m.b0 = Object.values(t.have).reduce((s, n) => s + n, 0); }, prog: (G, t, m) => Object.values(t.have).reduce((s, n) => s + n, 0) - m.b0 },
+    muster:   { name: '병력 과시', time: 150, need: 8, text: '전투 유닛 8기를 동시에 갖춘다', prog: (G, t) => G.ents.filter(e => e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length },
+  },
   factions: {
     pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', defense: 'p_turret', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
       ai: { build: [{ b: 'p_barracks', n: 1 }, { b: 'p_extractor', n: 1 }, { b: 'p_barracks', n: 2, after: 120 }, { b: 'p_lab', n: 1 }, { b: 'p_factory', n: 1 }, { b: 'p_extractor', n: 2 }, { b: 'p_turret', n: 1 }, { b: 'p_barracks', n: 3, after: 420 }, { b: 'p_factory', n: 2, after: 540 }],
@@ -129,24 +149,24 @@ RTS.mod({
   maps: {
     ridge: { name: '쌍둥이 능선', gen: 'symmetric', w: 72, h: 72, theme: 'dusk', desc: '72×72 · 기지 4 · 중앙이 트인 대각 대치',
       bases: [{ x: 11, y: 11, start: 0, dir: 3.93 }, { x: 13, y: 36, dir: 3.14, ore: 6, oneVent: true }, { x: 58, y: 14, dir: 5.5, ore: 6, oneVent: true }],
-      sites: [[27, 42], [46, 17]], posts: [[36, 5], [5, 48]], rocks: [[26, 20, 4], [20, 26, 4], [36, 24, 3], [30, 12, 3], [44, 8, 3], [24, 46, 3.5], [10, 52, 4], [36, 36, 2.5], [46, 26, 3]],
+      sites: [[27, 42], [46, 17]], posts: [[36, 5], [5, 48]], tribe: [36, 36], rocks: [[26, 20, 4], [20, 26, 4], [36, 24, 3], [30, 12, 3], [44, 8, 3], [24, 46, 3.5], [10, 52, 4], [36, 36, 2.5], [46, 26, 3]],
       sand: [[36, 36, 14], [24, 30, 8], [52, 20, 9]],
       lanes: [[11, 11, 23, 23, 3], [23, 23, 36, 36, 4], [13, 36, 28, 36, 3], [58, 14, 44, 28, 3], [23, 23, 13, 36, 2.5]] },
     canyon: { name: '협곡 회랑', gen: 'symmetric', w: 96, h: 48, theme: 'ochre', desc: '96×48 · 기지 4 · 좁은 관문 세 곳',
       bases: [{ x: 11, y: 24, start: 0, dir: 3.14 }, { x: 34, y: 10, dir: 4.71, ore: 6, oneVent: true }, { x: 34, y: 38, dir: 1.57, ore: 6, oneVent: true }],
-      sites: [[42, 15], [57, 33]], posts: [[14, 6], [36, 25]], walls: [[24, 0, 24, 15, 1.4], [24, 33, 24, 48, 1.4], [48, 0, 48, 10, 1.6], [48, 19, 48, 29, 1.6], [48, 38, 48, 48, 1.6]],
+      sites: [[42, 15], [57, 33]], posts: [[14, 6], [36, 25]], tribe: [48, 24], walls: [[24, 0, 24, 15, 1.4], [24, 33, 24, 48, 1.4], [48, 0, 48, 10, 1.6], [48, 19, 48, 29, 1.6], [48, 38, 48, 48, 1.6]],
       rocks: [[40, 24, 3.5]], sand: [[48, 14, 7], [48, 34, 7], [24, 24, 8]],
       lanes: [[11, 24, 40, 24, 2.5], [34, 10, 62, 10, 2.5], [34, 38, 62, 38, 2.5]] },
     crossroads: { name: '빙원 십자로', gen: 'symmetric', w: 80, h: 80, theme: 'frost', desc: '80×80 · 기지 4 · 남북 대치, 본진 앞 관문과 중앙 원형 교차로',
       bases: [{ x: 40, y: 9, start: 0, dir: 4.71 }, { x: 11, y: 12, dir: 3.93, ore: 6, oneVent: true }, { x: 12, y: 46, dir: 3.14, ore: 6, oneVent: true }],
-      sites: [[22, 33], [40, 27]], posts: [[5, 29], [62, 40]],
+      sites: [[22, 33], [40, 27]], posts: [[5, 29], [62, 40]], tribe: [40, 40],
       walls: [[2, 22, 33, 22, 1.3], [47, 22, 78, 22, 1.3]],
       rocks: [[25, 30, 4.5], [55, 30, 4.5], [40, 40, 3.2], [30, 62, 3], [5, 66, 3.5], [74, 50, 2.5]],
       sand: [[40, 40, 11], [11, 30, 6], [62, 8, 5]],
       lanes: [[40, 9, 40, 32, 3.5], [40, 9, 11, 12, 3], [11, 12, 12, 46, 2.5], [12, 46, 32, 46, 3], [40, 32, 32, 46, 2.5]] },
     lake: { name: '거울 호수', gen: 'symmetric', w: 96, h: 64, theme: 'moss', desc: '96×64 · 기지 4 · 중앙 호수를 도는 두 갈래 길, 뒷마당 확장',
       bases: [{ x: 11, y: 32, start: 0, dir: 3.14 }, { x: 13, y: 9, dir: 3.93, ore: 6, oneVent: true }, { x: 48, y: 11, dir: 4.71, ore: 9 }],
-      sites: [[30, 14], [34, 50]], posts: [[6, 56], [62, 30]],
+      sites: [[30, 14], [34, 50]], posts: [[6, 56], [62, 30]], tribe: [48, 32], tribeLanes: [[48, 32, 48, 17, 2.5]],
       walls: [[2, 19, 26, 19, 1.4], [26, 2, 26, 19, 1.4]],
       rocks: [[48, 32, 9], [40, 27, 4], [30, 32, 3], [72, 20, 3], [22, 48, 3.5]],
       sand: [[48, 32, 15], [48, 9, 7]],

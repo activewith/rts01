@@ -72,6 +72,13 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .s-foot{padding-block:6px}
 @media (max-width:520px){.s-row{grid-template-columns:minmax(0,1fr) 76px}.s-row label{grid-column:1/-1}}
 .k-msg.warn{border-color:var(--bad);color:#ffd5cf}.k-msg.ok{border-color:var(--ok)}
+.k-tribe{position:absolute;top:10px;left:max(10px,env(safe-area-inset-left,0px));z-index:3;width:min(250px,46%);background:rgba(16,21,31,.9);border:1px solid #4f8a3c;border-left:3px solid #7bd65a;padding:6px 9px;font-size:13px;display:flex;flex-direction:column;gap:5px}
+.k-tribe[hidden]{display:none}.k-tribe .tr-top{display:flex;align-items:center;gap:8px}.k-tribe .tr-top b{color:#d9f7c6}.k-tribe .tr-top em{font-style:normal;font-size:12px;padding:0 6px;border:1px solid var(--line)}
+.k-tribe .tr-ally{color:var(--ok);border-color:var(--ok)!important}.k-tribe .tr-hostile{color:var(--bad);border-color:var(--bad)!important}.k-tribe .tr-neutral{color:#e6f7c6}.k-tribe .tr-gone{color:var(--dim)}
+.k-tribe button{margin-left:auto;padding:1px 7px;font-size:12px}.k-tribe .tr-pt{margin:2px 0 0}
+.k-tribe .tr-m{border-top:1px solid var(--line);padding-top:4px}.k-tribe .tr-h{display:flex;justify-content:space-between;font-weight:600}.k-tribe .tr-m.ok .tr-h{color:var(--ok)}.k-tribe .tr-m.bad .tr-h{color:var(--bad)}
+.k-tribe p{margin:1px 0 3px;color:var(--dim);font-size:12px;line-height:1.35}.k-tribe i{display:block;height:5px;background:#0a0f18}.k-tribe s{display:block;height:100%;background:#7bd65a;text-decoration:none}.k-tribe small{font:12px var(--num);color:var(--dim)}
+.k-game.demo .k-tribe{display:none}
 .k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:4px 12px;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 .k-paused{position:absolute;inset:0;display:grid;place-items:center;font:400 44px var(--display);letter-spacing:.06em;background:rgba(8,12,22,.45);pointer-events:none}
 .k-bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;background:var(--panel);border-top:2px solid var(--brass);padding-block:8px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));min-height:176px}

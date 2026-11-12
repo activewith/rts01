@@ -1,6 +1,6 @@
 // 왕초보 모드: 안개 없음, 사람 쪽 본진에 완공 방어탑 5~10개, AI 쪽은 없음
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const counts = {};
 for (const map of Object.keys(RTS.defs.maps)) for (const fac of Object.keys(RTS.defs.factions)) for (let seed = 1; seed <= 60; seed++) {
   const foe = fac === 'pioneers' ? 'ironclad' : 'pioneers', def = RTS.defs.factions[fac].defense;
