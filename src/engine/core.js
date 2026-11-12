@@ -55,6 +55,8 @@ RTS.createGame = function (opts) {
       res: { ore: G.cfg.startOre, gas: G.cfg.startGas }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
       stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
     if (p.ai) t.inc = RTS.defs.difficulties[p.ai].income;
+    const hc = p.hc && RTS.HANDICAPS && RTS.HANDICAPS[p.hc]; // 2인 대전 팀별 핸디캡
+    if (hc && hc.id !== 'none') { t.hc = hc.id; t.res.ore += hc.ore || 0; t.res.gas += hc.gas || 0; t.inc *= hc.income || 1; if (hc.reveal) t.reveal = true; }
     G.teams.push(t);
   });
   m.nodes.forEach(n => {
@@ -74,6 +76,7 @@ RTS.createGame = function (opts) {
     }
   });
   if (easy && easy.towers) G.teams.forEach(t => { if (!t.ai) RTS.giveTowers(G, t, easy.towers); });
+  G.teams.forEach(t => { const hc = t.hc && RTS.HANDICAPS[t.hc]; if (hc && hc.towers) RTS.giveTowers(G, t, hc.towers); });
   RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
 };

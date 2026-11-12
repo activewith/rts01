@@ -106,6 +106,7 @@ RTS.updateFog = function (G, force) {
   if (G.nofog || (!force && G.tick % 8)) return;
   for (const t of G.teams) {
     if (t.ai) continue;
+    if (t.reveal) { if (!t.vis[0] || force) { t.vis.fill(1); t.seen.fill(1); } continue; } // 핸디캡: 이 팀만 맵 전체 공개
     t.vis.fill(0);
     for (const e of G.ents) {
       if (e.team !== t.id || e.dead) continue;

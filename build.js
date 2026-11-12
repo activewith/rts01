@@ -1,6 +1,6 @@
 // node build.js → 저장소 맨 위 index.html 생성. GitHub Pages가 이 파일을 그대로 서비스한다.
 const fs = require('fs');
-const order = ['engine/core', 'engine/map', 'engine/sim', 'engine/market', 'engine/war', 'engine/diplomacy', 'engine/ai', 'data/content', 'data/settings', 'ui/render', 'ui/app'];
+const order = ['engine/core', 'engine/map', 'engine/sim', 'engine/market', 'engine/war', 'engine/diplomacy', 'engine/ai', 'engine/net', 'data/content', 'data/settings', 'ui/render', 'ui/app'];
 const js = order.map(f => fs.readFileSync(`src/${f}.js`, 'utf8')).join('\n');
 const page = fs.readFileSync('src/index.template.html', 'utf8').replace('/*__BUNDLE__*/', () => js);
 const i = page.indexOf('<div id="kr-app">');

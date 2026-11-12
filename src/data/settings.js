@@ -60,3 +60,10 @@ RTS.PRESETS = {
   총력전: { warMain: 200, warEff: 200, warCredit: 200, warMarket: 200, warLoot: 25, warCrash: 40, warSell: 100, warHaircut: 70, warRebuild: 40, siteImpact: 250, siteDown: 80 },
 };
 RTS.defaultSettings = () => { const o = {}; for (const g of RTS.SETTINGS) for (const s of g.items) o[s.id] = s.def; return o; };
+// 2인 대전 핸디캡 단계. 방장이 팀마다 고른다. towers는 [최소,최대] 완공 방어탑, income은 채취 수입 배율.
+RTS.HANDICAPS = {
+  none:  { id: 'none',  name: '없음', blurb: '같은 조건' },
+  light: { id: 'light', name: '약간', blurb: '광석 +200, 수입 +10%', ore: 200, income: 1.1 },
+  mid:   { id: 'mid',   name: '보통', blurb: '광석 +400, 수입 +20%, 방어탑 3~5', ore: 400, gas: 50, income: 1.2, towers: [3, 5] },
+  big:   { id: 'big',   name: '많이', blurb: '광석 +600, 수입 +35%, 방어탑 5~10, 맵 공개', ore: 600, gas: 100, income: 1.35, towers: [5, 10], reveal: true },
+};
