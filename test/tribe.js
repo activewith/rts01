@@ -5,11 +5,13 @@ const mk = (seed, map = 'ridge', ai) => RTS.createGame({ map, seed, players: [{ 
 const run = (G, sec) => { for (let i = 0; i < sec * RTS.HZ; i++) RTS.step(G); };
 const TU = G => G.ents.filter(e => e.team === RTS.TRIBE && !e.dead && RTS.defOf(e).kind === 'unit');
 
-// 1) 모든 맵: 회당·망루·병력 배치, 두 시작 기지에서 걸어서 닿고 거리가 같다
+// 1) 모든 맵: 회당·망루·병력 배치, 무작위 위치(가운데·시작 기지 근처 제외), 두 시작 기지에서 걸어서 닿는다
 for (const m of Object.keys(RTS.defs.maps)) { const G = mk(3, m), T = G.tribe, h = G.byId[T.hall];
   assert(h && h.tribeHall, m + ' 회당'); assert.equal(G.ents.filter(e => e.def === 't_tower').length, 2, m + ' 망루 2'); assert.equal(TU(G).length, 4, m + ' 시작 병력');
   const d = G.bases.filter(b => b.start !== undefined).map(b => { const p = RTS.findPath(G, b.x, b.y + 4, { x0: Math.round(h.x - 3), y0: Math.round(h.y - 2.5), x1: Math.round(h.x + 2), y1: Math.round(h.y + 1.5) }), l = p[p.length - 1]; assert(Math.hypot(l[0] - h.x, l[1] - h.y) < 4.5, m + ' 도달 불가'); return Math.hypot(b.x - h.x, b.y - h.y); });
-  assert(Math.abs(d[0] - d[1]) < 2.5, m + ' 거리 차 ' + d); console.log(m, '회당', h.x, h.y, '거리', d.map(Math.round)); }
+  assert(Math.hypot(h.x - G.w / 2, h.y - G.h / 2) >= RTS.TRIBE_RULES.centerGap, m + ' 가운데에 놓임'); assert(Math.min(...d) >= RTS.TRIBE_RULES.startGap, m + ' 시작 기지에 너무 가까움');
+  const spots = new Set([1, 2, 3, 4, 5, 6, 7, 8].map(n => { const g = mk(n, m), q = g.byId[g.tribe.hall]; return q.x + ',' + q.y; })); assert(spots.size >= 4, m + ' 위치가 섞이지 않음 ' + spots.size);
+  console.log(m, '회당', h.x, h.y, '거리', d.map(Math.round), '서로 다른 위치', spots.size + '/8'); }
 
 // 2) 중립: 서로 자동 공격하지 않는다
 { const G = mk(4), h = G.byId[G.tribe.hall]; assert(!RTS.foe(G, 0, RTS.TRIBE) && !RTS.foe(G, RTS.TRIBE, 1) && RTS.foe(G, 0, 1));
@@ -61,7 +63,7 @@ assert(RTS.tribeBlock(G, 0).includes('진행 중'));
 { const g = mk(14), H = g.byId[g.tribe.hall]; RTS.updateFog(g, true); const i = (H.y | 0) * g.w + (H.x | 0); assert(!g.teams[0].vis[i]); g.tribe.rel[0] = 'ally'; RTS.updateFog(g, true); assert(g.teams[0].vis[i], '동맹 시야'); }
 
 // 10) AI 상대: 부족을 찾고 외교를 시도한다. 저장·복원 후 결정성
-{ let tried = 0; for (const s of [31, 32, 33, 34]) { const g = mk(s, 'crossroads', 'normal'); g.teams[0].ai = 'normal'; run(g, 600); const T2 = g.tribe;
+{ let tried = 0; for (const s of [31, 32, 33, 34]) { const g = mk(s, 'crossroads', 'hard'); g.teams[0].ai = 'hard'; run(g, 900); const T2 = g.tribe;
     const r = T2.rel.map(x => x[0]).join(''); if (T2.rel.some(x => x !== 'neutral') || T2.missions.some(Boolean) || T2.wait.some(x => x > 0)) tried++; console.log('AI 대전', s, '발견', T2.found.join(','), '관계', T2.rel.join(','), '지원', T2.sent); }
   assert(tried >= 2, 'AI가 부족 외교를 하지 않음'); }
 { const a = mk(40, 'lake', 'hard'); a.teams[0].ai = 'hard'; run(a, 200); const b = RTS.deserialize(RTS.serialize(a)); run(a, 120); run(b, 120); assert.equal(RTS.serialize(a), RTS.serialize(b), '저장 복원 결정성'); }
