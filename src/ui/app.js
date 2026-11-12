@@ -313,7 +313,7 @@ RTS.mount = function (root, opts = {}) {
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
   view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; if (drag.touch) { clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } } // 길게 눌러 도움말을 본 뒤에는 탭 명령을 내지 않는다 const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; if (drag.touch) { clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } } /* 길게 눌러 도움말을 본 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
