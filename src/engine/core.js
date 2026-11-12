@@ -6,7 +6,8 @@
 const RTS = (globalThis.RTS = globalThis.RTS || {});
 RTS.version = '0.1.0';
 RTS.HZ = 20;
-RTS.defs = { terrain: {}, entities: {}, upgrades: {}, abilities: {}, factions: {}, maps: {}, mapgens: {}, difficulties: {}, companies: {}, marketEvents: {}, branches: {} };
+RTS.defs = { terrain: {}, entities: {}, upgrades: {}, abilities: {}, factions: {}, maps: {}, mapgens: {}, difficulties: {}, companies: {}, marketEvents: {}, branches: {}, tribeMissions: {} };
+RTS.TRIBE = -2;       // 잿빛 부족(AI 중립 세력)의 팀 번호. -1은 자원·거점 같은 비활성 중립
 RTS.orders = {};      // 유닛 명령 핸들러: RTS.orders.move = (G,u,o)=>...
 RTS.systems = [];     // 틱 파이프라인: [{id, run(G)}]
 RTS.commands = {};    // 플레이어 입력 처리기: RTS.commands.train = (G,team,cmd)=>...
@@ -47,7 +48,7 @@ RTS.createGame = function (opts) {
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
-  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || [];
+  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null;
   RTS.initRuntime(G);
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;
@@ -77,7 +78,7 @@ RTS.createGame = function (opts) {
   });
   if (easy && easy.towers) G.teams.forEach(t => { if (!t.ai) RTS.giveTowers(G, t, easy.towers); });
   G.teams.forEach(t => { const hc = t.hc && RTS.HANDICAPS[t.hc]; if (hc && hc.towers) RTS.giveTowers(G, t, hc.towers); });
-  RTS.initMarket(G); RTS.initDip(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
+  RTS.initMarket(G); RTS.initDip(G); if (RTS.initTribe) RTS.initTribe(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
 };
 

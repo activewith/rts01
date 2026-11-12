@@ -2,7 +2,7 @@
 // 두 '기기'가 각자 게임을 만들고, 무작위 입력을 지연·순서 뒤섞임이 있는 가짜 네트워크로 주고받는다.
 // 끝에 두 게임 상태가 완전히 같은지, 일부러 어긋나게 하면 해시 검사가 잡아내는지 본다.
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fail++; };
 
 // 시뮬레이션 밖의 난수(봇·네트워크용). G.rng를 건드리지 않는다.

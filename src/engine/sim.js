@@ -45,6 +45,8 @@ RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
   if (db.size) { const r = RTS.rectOf(b), cx = Math.max(r.x0, Math.min(a.x, r.x0 + r.w)), cy = Math.max(r.y0, Math.min(a.y, r.y0 + r.h)); return Math.max(0, Math.hypot(a.x - cx, a.y - cy) - ra); }
   return Math.max(0, dist(a, b) - ra - (db.r || 0));
 };
+// 적대 판정. 같은 팀과 -1(자원·거점)은 적이 아니다. 잿빛 부족(RTS.TRIBE)은 플레이어마다 관계가 다르다(tribe.js)
+RTS.foe = (G, a, b) => { if (a === b || a === -1 || b === -1) return false; if (a === RTS.TRIBE || b === RTS.TRIBE) return !!(G.tribe && RTS.tribeFoe && RTS.tribeFoe(G, a === RTS.TRIBE ? b : a)); return true; };
 RTS.canHit = (w, t) => { const air = !!defOf(t).air; return air ? w.air !== false : w.ground !== false; };
 
 // ── 명령 ───────────────────────────────────────────────────
@@ -152,12 +154,12 @@ function fire(G, u, w, t) {
   else G.projectiles.push({ x: u.x, y: u.y, sx: u.x, sy: u.y, tx: t.x, ty: t.y, target: t.id, dmg, speed: w.speed, team: u.team, wdef: u.def, sieged: !!u.sieged, src: u.id, art: w.art || 'bolt' });
 }
 RTS.hit = function (G, t, x, y, dmg, w, src) {
-  const team = src.team;
+  const team = src.team; let got = false;
   if (w.splash) RTS.query(G, x, y, w.splash, o => {
-    if (o.dead || o.team === team || o.team < 0 || !RTS.canHit(w, o)) return;
+    if (o.dead || !RTS.foe(G, team, o.team) || !RTS.canHit(w, o)) return;
     const d = RTS.edgeDist({ def: 'none_', x, y }, o);
-    if (d <= w.splash) RTS.damage(G, o, dmg * (d < w.splash / 2 ? 1 : .5), src);
-  }); if (w.splash && t && t.team < 0 && !t.dead) RTS.damage(G, t, dmg, src); // 중립 회사 거점은 공간 해시에 없다
+    if (d <= w.splash) { if (o === t) got = true; RTS.damage(G, o, dmg * (d < w.splash / 2 ? 1 : .5), src); }
+  }); if (w.splash && t && !got && !t.dead && t.team !== team) RTS.damage(G, t, dmg, src); // 직접 겨눈 대상: 공간 해시에 없는 중립 거점, 아직 적이 아닌 부족
   if (!w.splash && t && !t.dead) RTS.damage(G, t, dmg + ((w.vs || {})[(defOf(t).tags || []).find(k => (w.vs || {})[k])] || 0), src);
   RTS.emit(G, 'impact', { x, y, w, team });
 };
@@ -166,7 +168,8 @@ RTS.damage = function (G, t, dmg, src) {
   const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
-  if (t.team >= 0) { RTS.emit(G, 'attacked', { e: t, src }); RTS.warDamage(G, t, hpBefore - Math.max(0, t.hp), src); }
+  if (t.team >= 0) { RTS.emit(G, 'attacked', { e: t, src }); RTS.warDamage(G, t, hpBefore - Math.max(0, t.hp), src); if (RTS.tribeAllyHit) RTS.tribeAllyHit(G, t, src); }
+  else if (t.team === RTS.TRIBE && RTS.tribeHit) RTS.tribeHit(G, t, src);
   if (src && !src.dead && defOf(t).kind === 'unit' && !t.order && RTS.weapon(t) && !defOf(t).passive) t.order = { type: 'amove', x: t.x, y: t.y };
   if (t.hp <= 0) RTS.kill(G, t, src);
 };
@@ -179,13 +182,14 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
+  if (e.team === RTS.TRIBE && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
   if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 
 RTS.scan = function (G, u, w, r) {
   let best = null, bs = -1e9;
   RTS.query(G, u.x, u.y, r, t => {
-    if (t.dead || t.team === u.team || t.team < 0 || t.downUntil > G.tick || !RTS.canHit(w, t)) return;
+    if (t.dead || !RTS.foe(G, u.team, t.team) || t.downUntil > G.tick || !RTS.canHit(w, t)) return;
     const d = RTS.edgeDist(u, t); if (d > r) return;
     const td = defOf(t), s = (td.weapon ? (td.kind === 'unit' ? 3 : 2.4) : td.kind === 'unit' ? 2 : 1) * 100 - d * 8;
     if (s > bs) { bs = s; best = t; }
@@ -314,6 +318,7 @@ function staffExtractor(G, x) {
 // ── 건물 틱 ────────────────────────────────────────────────
 function runBuilding(G, b) {
   const d = defOf(b), t = G.teams[b.team];
+  if (!t) { if (d.weapon) { if (b.cd > 0) b.cd--; const tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, d.weapon, 'range') && b.cd <= 0) fire(G, b, d.weapon, tg); } return; } // 잿빛 부족 건물: 사격만 한다
   if (b.built < b.buildT) {
     const on = RTS.defs.factions[t.faction].selfBuild ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
     if (on) { b.built++; b.hp = Math.min(RTS.stat(G, b, 'hp'), b.hp + d.hp * .9 / b.buildT);

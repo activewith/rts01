@@ -94,7 +94,7 @@ RTS.findPath = function (G, sx, sy, goal) {
 // 공간 해시 — 매 틱 재구성. 저장되지 않는다.
 RTS.rebuildGrid = function (G) {
   for (const c of G._grid) c.length = 0;
-  for (const e of G.ents) { if (e.dead || e.team < 0) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
+  for (const e of G.ents) { if (e.dead || e.team === -1) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
 };
 RTS.query = function (G, x, y, r, fn) {
   const pad = r + 3, x0 = Math.max(0, (x - pad) >> 2), x1 = Math.min(G._cols - 1, (x + pad) >> 2), y0 = Math.max(0, (y - pad) >> 2), y1 = Math.min(G._rows - 1, (y + pad) >> 2);
@@ -107,9 +107,9 @@ RTS.updateFog = function (G, force) {
   for (const t of G.teams) {
     if (t.ai) continue;
     if (t.reveal) { if (!t.vis[0] || force) { t.vis.fill(1); t.seen.fill(1); } continue; } // 핸디캡: 이 팀만 맵 전체 공개
-    t.vis.fill(0);
+    t.vis.fill(0); const tribeEyes = RTS.tribeAlly && RTS.tribeAlly(G, t.id); // 잿빛 부족 동맹이면 부족 시야를 공유한다
     for (const e of G.ents) {
-      if (e.team !== t.id || e.dead) continue;
+      if ((e.team !== t.id && !(tribeEyes && e.team === RTS.TRIBE)) || e.dead) continue;
       const r = RTS.defs.entities[e.def].sight || 8, cx = e.x | 0, cy = e.y | 0, R = r * r;
       for (let y = Math.max(0, cy - r); y <= Math.min(G.h - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(G.w - 1, cx + r); x++) {
         if ((x - cx) ** 2 + (y - cy) ** 2 <= R) { const i = y * G.w + x; t.vis[i] = 1; t.seen[i] = 1; }
@@ -137,6 +137,8 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
   const nodes = [], bases = [], sites = [], posts = [];
   for (const [x, y] of spec.posts || []) { disc(x, y, 3.5, 0); posts.push({ x, y }); posts.push({ x: w - x, y: h - y }); }
   for (const [x, y] of spec.sites || []) { disc(x, y, 3.5, 0); sites.push({ x, y }); sites.push({ x: w - x, y: h - y }); }
+  let tribe = null; // 잿빛 부족 회당 자리: 대칭 중심선 위. 둘레를 비우고 필요하면 둑길(tribeLanes)을 낸다
+  if (spec.tribe) { for (const [a, b, c, d, t] of spec.tribeLanes || []) line(a, b, c, d, t, 0); disc(spec.tribe[0], spec.tribe[1], 6.5, 0); tribe = { x: spec.tribe[0], y: spec.tribe[1] }; }
   const cx = w / 2, cy = h / 2;
   half.forEach((b, i) => {
     const dir = b.dir !== undefined ? b.dir : Math.atan2(b.y - cy, b.x - cx);
@@ -147,5 +149,5 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
     add('vent', Math.round(b.x + Math.cos(dir + 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir + 2.05) * 7.5 - 1), 2, 2);
     if (!b.oneVent) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
   });
-  return { w, h, tiles, bases, nodes, sites, posts };
+  return { w, h, tiles, bases, nodes, sites, posts, tribe };
 };

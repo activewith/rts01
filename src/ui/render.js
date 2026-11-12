@@ -3,6 +3,7 @@
 RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
 // 진영 색. 어느 팀 슬롯이든 진영이 같으면 같은 색으로 그린다.
 RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
+RTS.TEAM[RTS.TRIBE] = { main: '#7bd65a', dark: '#2f5e22', light: '#d9f7c6' }; // 잿빛 부족
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
   ochre: { ground: ['#6f5238', '#664a32', '#785a3e'], sand: ['#a07c4e', '#957145', '#aa8656'], rock: ['#33222a', '#46303a', '#6f4d52'] },
@@ -48,6 +49,13 @@ RTS.art = {
       circ(c, 0, 0, 8.5, MECH[1]); circ(c, 0, 0, 5.5, p.dark); circ(c, 2, 0, 3, p.main); c.strokeStyle = MECH[0]; c.lineWidth = 2.4; for (const a of [-1, 1]) { c.beginPath(); c.moveTo(6, 4 * a); c.lineTo(12, 7 * a); c.lineTo(14, 2 * a); c.stroke(); }
       if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
     caravan(c, p, s) { shade(c, -15, -10, 30, 20, '#7a5a34', 3); shade(c, -12, -8, 18, 16, '#d2b06a', 2); shade(c, 7, -7, 10, 14, p.main, 2); c.fillStyle = '#1c222e'; for (const [x, y] of [[-10, -12], [8, -12], [-10, 10], [8, 10]]) c.fillRect(x, y, 8, 3); },
+    tribal(c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0); // 잿빛 부족: 가죽 망토, 전사는 도끼, 궁수(tint 1)는 활
+      circ(c, -2 + w, 5, 3.2, '#4a3a2a'); circ(c, -2 - w, -5, 3.2, '#4a3a2a');
+      c.fillStyle = '#6b5236'; c.beginPath(); c.ellipse(-1, 0, 7.5, 10, 0, 0, TAU); c.fill();
+      c.fillStyle = p.dark; c.beginPath(); c.ellipse(0, 0, 5.4, 8, 0, 0, TAU); c.fill();
+      circ(c, 1, 0, 4.6, '#c9a27a'); c.fillStyle = p.main; c.fillRect(-1.5, -4.6, 2.6, 9.2);
+      if (s.tint === 1) { c.strokeStyle = '#9a7442'; c.lineWidth = 2; c.beginPath(); c.arc(4, 0, 9, -1.15, 1.15); c.stroke(); c.strokeStyle = '#e8e2d0'; c.lineWidth = .8; c.beginPath(); c.moveTo(4 + Math.cos(-1.15) * 9, Math.sin(-1.15) * 9); c.lineTo(4 + Math.cos(1.15) * 9, Math.sin(1.15) * 9); c.stroke(); }
+      else { c.strokeStyle = '#7a5a34'; c.lineWidth = 2.4; c.beginPath(); c.moveTo(3, 4); c.lineTo(14, 6); c.stroke(); c.fillStyle = '#c8ced8'; c.beginPath(); c.moveTo(12, 1.5); c.lineTo(18, 3); c.lineTo(17, 10.5); c.lineTo(12, 8.5); c.closePath(); c.fill(); } },
     flyer(c, p, s) { const f = s.tint === 1;
       c.fillStyle = f ? MECH[1] : STEEL[1]; c.beginPath(); c.moveTo(f ? 18 : 20, 0); c.lineTo(-12, f ? -16 : -19); c.lineTo(-7, 0); c.lineTo(-12, f ? 16 : 19); c.closePath(); c.fill();
       c.fillStyle = p.dark; c.beginPath(); c.moveTo(12, 0); c.lineTo(-8, -8); c.lineTo(-5, 0); c.lineTo(-8, 8); c.closePath(); c.fill();
@@ -55,6 +63,16 @@ RTS.art = {
   },
   // 건물은 (ctx, w, h, 팔레트, 상태) 로 그린다. 원점은 왼쪽 위, 단위는 px.
   buildings: {
+    t_hall(c, w, h, p, s) { const cx = w / 2, cy = h / 2; // 잿빛 부족 회당: 흙마당, 둥근 초가 지붕, 양옆 토템, 화톳불
+      c.fillStyle = '#5a4630'; c.beginPath(); c.ellipse(cx, cy + 3, cx - 2, cy - 3, 0, 0, TAU); c.fill();
+      c.fillStyle = '#8a6a40'; c.beginPath(); c.ellipse(cx, cy - 2, cx - 16, cy - 10, 0, 0, TAU); c.fill();
+      c.strokeStyle = '#5c4528'; c.lineWidth = 2; for (const k of [.75, .5]) { c.beginPath(); c.ellipse(cx, cy - 2, (cx - 16) * k, (cy - 10) * k, 0, 0, TAU); c.stroke(); }
+      circ(c, cx, cy - 2, 7, p.dark); circ(c, cx, cy - 2, 4, p.main);
+      for (const x of [10, w - 10]) { shade(c, x - 4, 10, 8, h - 26, '#3a2c1e', 2); circ(c, x, 12, 5.5, p.main); c.fillStyle = '#1c140c'; c.fillRect(x - 2.5, 10, 2, 2); c.fillRect(x + .5, 10, 2, 2); }
+      circ(c, cx, h - 9, 5, '#3a2c1e'); circ(c, cx, h - 10, 3 + Math.sin(s.t * .3), '#ffb04a'); },
+    t_tower(c, w, h, p, s) { c.fillStyle = '#3e2f20'; for (const [x, y] of [[6, 6], [w - 11, 6], [6, h - 11], [w - 11, h - 11]]) c.fillRect(x, y, 5, 5); // 나무 망루
+      shade(c, 9, 9, w - 18, h - 18, '#7a5d3a', 3); c.strokeStyle = '#4e3a24'; c.lineWidth = 2; c.beginPath(); c.moveTo(11, 11); c.lineTo(w - 11, h - 11); c.moveTo(w - 11, 11); c.lineTo(11, h - 11); c.stroke();
+      circ(c, w / 2, h / 2, 8, p.dark); circ(c, w / 2, h / 2, 4.5, p.main); c.fillStyle = p.light; c.fillRect(w / 2 + 2, 6, 10, 6); },
     hq(c, w, h, p, s) { plate(c, w, h, s); shade(c, 14, 12, w - 28, h - 26, p.dark, 6); circ(c, w / 2, h / 2 - 4, 19, s.m[3]); circ(c, w / 2, h / 2 - 4, 14, p.main); circ(c, w / 2, h / 2 - 4, 7, p.light);
       c.fillStyle = s.m[0]; for (let i = 0; i < 4; i++) c.fillRect(10 + i * (w - 28) / 3, h - 12, 8, 6); },
     depot(c, w, h, p, s) { plate(c, w, h, s); for (const [x, y] of [[9, 9], [33, 9], [9, 32], [33, 32]]) { shade(c, x, y, 21, 20, s.m[2], 2); c.fillStyle = p.main; c.fillRect(x + 3, y + 8, 15, 4); } },
@@ -92,6 +110,7 @@ function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서�
 RTS.Renderer = function (canvas, app) {
   const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], ghosts: {}, pings: [] };
   let bake = null, bakeFor = null; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
+  const ringCol = e => e.team === app.team ? '#7dffa8' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
   const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: e.team >= 0 && app.G.teams[e.team]?.faction === 'ironclad' ? MECH : STEEL, facing: e.facing });
 
   function bakeTerrain(G) {
@@ -151,6 +170,7 @@ RTS.Renderer = function (canvas, app) {
     if (prog < 1) { c.globalAlpha = 1; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); (RTS.art.buildings[d.art] || plate)(c, w, h, P, st); c.restore();
       c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]);
       c.fillStyle = '#ffcb5c'; c.fillRect(0, h * (1 - prog) - 1.5, w, 3); }
+    if (e.tribeHall && !ghost && G.tribe) { const T = G.tribe, me = app.team, r = me >= 0 ? T.rel[me] : '', txt = '잿빛 부족' + (T.dead ? '' : r ? ' · ' + RTS.tribeRelName(r) : ''); c.font = '600 12px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(8,12,22,.78)'; c.fillRect(w / 2 - 54, h + 3, 108, 17); c.fillStyle = r === 'ally' ? '#9dffb5' : r === 'hostile' ? '#ff9a8a' : '#e6f7c6'; c.fillText(txt, w / 2, h + 16); c.textAlign = 'start'; }
     if (e.branch && !ghost) { c.font = '600 12px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(8,12,22,.78)'; c.fillRect(w / 2 - 44, h + 3, 88, 17); c.fillStyle = '#ffe6b0'; c.fillText(RTS.defs.branches[e.branch].name, w / 2, h + 16); c.textAlign = 'start'; }
     if (e.company && !ghost) { const co = G.market.cos[e.company]; c.font = '600 12px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; const label = RTS.defs.companies[e.company].name + ' ' + co.price.toFixed(1); c.fillStyle = 'rgba(8,12,22,.78)'; c.fillRect(w / 2 - 50, h + 3, 100, 17); c.fillStyle = st.down ? '#ff8a7a' : '#fff'; c.fillText(st.down ? '가동 중단' : label, w / 2, h + 16); c.textAlign = 'start'; }
     if (e.hp < d.hp * .45 && prog >= 1 && app.frame % 7 === 0 && !ghost) R.fx.push({ k: 'smoke', x: e.x + (Math.random() - .5) * d.size[0] * .6, y: e.y + (Math.random() - .5) * d.size[1] * .6, life: 24, max: 24, s: 8 });
@@ -195,7 +215,7 @@ RTS.Renderer = function (canvas, app) {
     const pos = e => [(e.px + (e.x - e.px) * alpha) * TS, (e.py + (e.y - e.py) * alpha) * TS];
     for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 : 0; // 그림자 + 선택 링
       c.fillStyle = 'rgba(0,0,0,.3)'; c.beginPath(); c.ellipse(x + 2 + lift * .3, y + 3 + lift * .2, d.r * TS * (d.air ? .8 : 1), d.r * TS * .72, 0, 0, TAU); c.fill();
-      if (sel.has(e.id)) { c.strokeStyle = e.team === me ? '#7dffa8' : e.team < 0 ? '#ffe27a' : '#ff6a5a'; c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
+      if (sel.has(e.id)) { c.strokeStyle = ringCol(e); c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
     us.sort((a, b) => (RTS.defOf(a).air ? 1 : 0) - (RTS.defOf(b).air ? 1 : 0) || a.y - b.y);
     for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
       c.save(); c.translate(x, y - lift); c.rotate(e.facing);
@@ -219,11 +239,14 @@ RTS.Renderer = function (canvas, app) {
     if (m && m.type === 'place' && app.mouse.inside) { const d = RTS.defs.entities[m.def], [tx, ty] = app.placeTile(m.def), ok = RTS.canPlace(G, me, m.def, tx, ty), s = { x: tx + d.size[0] / 2, y: ty + d.size[1] / 2, team: me, def: m.def, built: 1, buildT: 1, facing: 0 };
       c.globalAlpha = .55; drawBuilding(c, G, s, d, alpha); c.globalAlpha = 1; c.fillStyle = ok ? 'rgba(90,255,150,.28)' : 'rgba(255,70,60,.35)'; c.fillRect(tx * TS, ty * TS, d.size[0] * TS, d.size[1] * TS); }
     if (m && m.type === 'target' && m.radius && app.mouse.inside) { c.strokeStyle = '#ffd27a'; c.lineWidth = 2; c.beginPath(); c.arc(app.mouse.wx * TS, app.mouse.wy * TS, m.radius * TS, 0, TAU); c.stroke(); }
+    const TM = G.tribe && me >= 0 && G.tribe.missions[me]; // 잿빛 부족 정찰 미션 지점
+    if (TM) for (const q of TM) if (q.id === 'scout' && q.done === null) { const X = q.x * TS, Y = q.y * TS; c.strokeStyle = '#9dffb5'; c.lineWidth = 2.5; c.setLineDash([10, 8]); c.lineDashOffset = -t * .6; c.beginPath(); c.arc(X, Y, 5 * TS, 0, TAU); c.stroke(); c.setLineDash([]); c.lineDashOffset = 0;
+      c.font = '700 14px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center'; c.fillStyle = 'rgba(8,12,22,.8)'; c.fillRect(X - 40, Y - 11, 80, 20); c.fillStyle = '#9dffb5'; c.fillText('정찰 지점', X, Y + 4); c.textAlign = 'start'; }
     R.pings = R.pings.filter(p => { p.life--; const k = p.life / p.max; c.strokeStyle = p.c; c.lineWidth = 2; c.globalAlpha = k; c.beginPath(); c.arc(p.x * TS, p.y * TS, (1 - k) * 22 + 4, 0, TAU); c.stroke(); c.globalAlpha = 1; return p.life > 0; });
     c.setTransform(1, 0, 0, 1, 0, 0);
     if (app.box) { const b = app.box; c.strokeStyle = '#7dffa8'; c.lineWidth = 1.5; c.fillStyle = 'rgba(125,255,168,.1)'; c.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); c.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
   };
-  function selBox(c, e, d) { const r = RTS.rectOf(e); c.strokeStyle = e.team === app.team ? '#7dffa8' : e.team < 0 ? '#ffe27a' : '#ff6a5a'; c.lineWidth = 2; c.strokeRect(r.x0 * TS - 2, r.y0 * TS - 2, r.w * TS + 4, r.h * TS + 4); }
+  function selBox(c, e, d) { const r = RTS.rectOf(e); c.strokeStyle = ringCol(e); c.lineWidth = 2; c.strokeRect(r.x0 * TS - 2, r.y0 * TS - 2, r.w * TS + 4, r.h * TS + 4); }
   function drawFx(c) {
     R.fx = R.fx.filter(f => { const k = f.life / f.max, X = f.x * TS, Y = f.y * TS; f.life--;
       if (f.k === 'flash') { circ(c, X, Y - (f.air ? 20 : 0), f.s * k + 1, '#fff2c0'); }

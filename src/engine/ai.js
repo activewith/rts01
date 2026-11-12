@@ -51,6 +51,7 @@ RTS.aiThink = function (G, t) {
     if (free[0]) { const w = builder(), d = D[f.hq]; if (w) cmd({ type: 'place', ids: [w.id], def: f.hq, tx: Math.round(free[0].x - d.size[0] / 2), ty: Math.round(free[0].y - d.size[1] / 2) }); }
   }
   RTS.aiDiplomacy(G, t, diff, units);
+  if (RTS.aiTribe) RTS.aiTribe(G, t, diff, units);
   // 투자는 생산보다 먼저 판단해 병력에 자금이 전부 묶이지 않게 한다
   RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14));
   // 생산
@@ -72,7 +73,7 @@ RTS.aiThink = function (G, t) {
   // 교전 판단
   for (const u of army) for (const id of D[u.def].abilities || []) { const ab = RTS.defs.abilities[id]; if (ab.ai && RTS.abilityReady(G, u, ab)) ab.ai(G, u); }
   let threat = null;
-  for (const b of builds) { RTS.query(G, b.x, b.y, 9, o => { if (!threat && !o.dead && o.team !== t.id && o.team >= 0 && D[o.def].kind === 'unit') threat = o; }); if (threat) break; }
+  for (const b of builds) { RTS.query(G, b.x, b.y, 9, o => { if (!threat && !o.dead && RTS.foe(G, t.id, o.team) && D[o.def].kind === 'unit') threat = o; }); if (threat) break; }
   const ids = army.map(u => u.id);
   S.wave = S.wave || diff.waveSize;
   if (threat && !S.attacking) { cmd({ type: 'order', ids: ids.filter(i => { const o = G.byId[i].order; return !o || o.type !== 'amove' || Math.hypot(o.x - threat.x, o.y - threat.y) > 6; }), order: { type: 'amove', x: threat.x, y: threat.y } }); S.defending = G.tick; return; }
