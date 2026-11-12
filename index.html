@@ -137,6 +137,19 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-four{grid-template-columns:repeat(2,1fr)}
 .k-small{font-size:12.5px;color:var(--dim)}
 .k-netsum{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:4px 0}.k-netsum dt{color:var(--dim)}.k-netsum dd{margin:0}
+.k-netp{display:flex;flex-direction:column;gap:9px}
+.k-game .k-primary:disabled{opacity:.4;cursor:not-allowed}
+.k-netchat{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:6px}.k-netchat .k-go{margin-top:0}
+.k-ver{margin:6px 0 0;font:12px var(--num);color:var(--dim)}
+.k-chatlog{position:absolute;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;z-index:6;width:min(78%,360px);display:flex;flex-direction:column;gap:3px;pointer-events:none}
+.k-chatlog p{margin:0;background:rgba(16,21,31,.86);padding:4px 10px;font-size:14px;line-height:1.4;border-left:3px solid var(--line);overflow-wrap:anywhere}
+.k-chatlog p b{margin-right:8px;font-weight:600}.k-chatlog p.me b{color:#7fd0ff}.k-chatlog p.peer b{color:#ffab8a}.k-chatlog p.peer{border-left-color:#ff8a5a}.k-chatlog p.me{border-left-color:#46c4ff}
+.k-chatbox:not([hidden])~.k-chatlog,.k-stage:has(.k-chatbox:not([hidden])) .k-chatlog{bottom:96px}
+.k-chatlog.lobby{position:static;width:auto;max-height:150px;min-height:40px;overflow:auto;pointer-events:auto;background:rgba(16,21,31,.6);padding:4px}
+.k-chatlog.lobby p{background:none;padding:2px 6px}
+.k-chatbox{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:7;width:min(94%,520px);display:flex;flex-direction:column;gap:6px;background:rgba(16,21,31,.94);border:1px solid var(--brass);padding:8px}
+.k-chatrow{display:flex;gap:6px}.k-chatrow .k-in{flex:1}
+.k-quick{display:flex;flex-wrap:wrap;gap:5px}.k-game .k-quick button{padding:5px 10px;font-size:13.5px}
 .k-help{color:var(--dim);font-size:13px}.k-help summary{cursor:pointer;padding:4px 0}
 .k-help dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:4px 0 0}.k-help dt{color:var(--text);font-weight:600}.k-help dd{margin:0}
 #k-stats{border-collapse:collapse;font-family:var(--num);font-variant-numeric:tabular-nums;width:100%}
@@ -156,7 +169,8 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>// ─────────────────────────────────────────────────────────────
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '1b51ece';
+// ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
 // 좌표 단위는 타일(float). 시뮬레이션은 20틱/초 고정이며 결정적이다.
@@ -1497,6 +1511,8 @@ RTS.SETTINGS = [
   ] },
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
+    { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
+    { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
   ] },
 ];
@@ -1765,6 +1781,66 @@ RTS.Renderer = function (canvas, app) {
   return R;
 };
 
+// music.js — 배경음악. 외부 소리 파일 없이 WebAudio로 그 자리에서 합성한다. DOM 없음.
+// const m = RTS.Music(audioContext); m.setMode('menu'|'game'|'off'); m.setIntensity(0~1); m.setVolume(0~1); m.stop();
+// 곡은 SONGS에 데이터로 추가한다. 음은 MIDI 번호(60 = 가운데 도), 한 칸은 16분음표.
+RTS.MUSIC_SONGS = {
+  // 메뉴: 느리고 넓은 화음, 드럼 없음
+  menu: { bpm: 72, steps: 16, chords: [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], bass: [45, 41, 36, 43],
+    arp: [0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 1, -1, -1, -1], arpOct: 12, padVol: .05, arpVol: .022, drums: false },
+  // 전투: 빠른 박, 긴장도에 따라 킥·스네어·16분 아르페지오가 더해진다
+  game: { bpm: 112, steps: 16, chords: [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59], [50, 53, 57], [53, 57, 60], [52, 56, 59], [52, 56, 59]],
+    bass: [45, 41, 43, 40, 38, 41, 40, 40], arp: [0, 1, 2, 1, 0, 1, 2, 3, 0, 1, 2, 1, 0, 2, 1, 2], arpOct: 12, padVol: .032, arpVol: .018, drums: true },
+};
+RTS.Music = function (ac) {
+  const SONGS = RTS.MUSIC_SONGS, hz = m => 440 * Math.pow(2, (m - 69) / 12);
+  const out = ac.createGain(); out.gain.value = 0; out.connect(ac.destination);
+  const bus = ac.createGain(); bus.gain.value = 1; bus.connect(out);
+  // 가벼운 메아리(딜레이)로 공간감
+  const dly = ac.createDelay(1), fb = ac.createGain(), wet = ac.createGain(); fb.gain.value = .25; wet.gain.value = .18;
+  bus.connect(dly); dly.connect(fb); fb.connect(dly); dly.connect(wet); wet.connect(out);
+  const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = noise.getChannelData(0); let seed = 7;
+  for (let i = 0; i < nd.length; i++) { seed = (seed * 16807) % 2147483647; nd[i] = seed / 1073741823.5 - 1; }
+  const S = { mode: 'off', song: null, step: 0, bar: 0, next: 0, vol: .5, heat: 0, timer: 0, fading: false };
+
+  function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
+  function osc(type, f, t, dur, peak, a, cut, detune) { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f; if (detune) o.detune.value = detune;
+    let node = o; if (cut) { const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; o.connect(lp); node = lp; }
+    node.connect(g); g.connect(bus); env(g, t, a, peak, dur); o.start(t); o.stop(t + a + dur + .05); }
+  function hit(t, type, f, q, peak, dur) { const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noise; fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    s.connect(fl); fl.connect(g); g.connect(bus); env(g, t, .002, peak, dur); s.start(t); s.stop(t + dur + .05); }
+  function kick(t) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + .12); o.connect(g); g.connect(bus); env(g, t, .003, .38, .26); o.start(t); o.stop(t + .32); }
+
+  function play(sg, step, bar, t, sp) { const ci = bar % sg.chords.length, ch = sg.chords[ci], h = S.mode === 'game' ? S.heat : 0;
+    if (step === 0) { for (const m of ch) { osc('sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, 900, -6); osc('sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, 900, 6); }
+      if (!sg.drums) osc('triangle', hz(sg.bass[ci]), t, sp * 14, .12, .05, 0); }
+    if (sg.drums) {
+      if (step % 2 === 0) osc('triangle', hz(sg.bass[ci] + (step % 8 === 6 ? 12 : 0)), t, sp * 1.6, .11, .008, 0); // 8분음 베이스
+      if (step % 2 === 0) hit(t, 'highpass', 7000, .7, step % 4 === 2 ? .045 : .025, .04);
+      if (h > .25 && (step === 0 || step === 8 || (h > .7 && step === 10))) kick(t);
+      if (h > .55 && (step === 4 || step === 12)) { hit(t, 'bandpass', 1800, .9, .12, .12); osc('triangle', 190, t, .08, .06, .002, 0); }
+    }
+    const a = sg.arp[step], arpOn = a >= 0 && (sg.drums ? (h > .45 || step % 2 === 0) : true);
+    if (arpOn) osc(sg.drums ? 'square' : 'sine', hz(ch[a % ch.length] + sg.arpOct + (a >= ch.length ? 12 : 0)), t, sp * (sg.drums ? 1.2 : 6), sg.arpVol * (sg.drums ? .6 + h * .6 : 1), .005, sg.drums ? 2200 : 0); }
+
+  function tick() { if (!S.song || S.fading) return; if (typeof document !== 'undefined' && document.hidden) { S.next = 0; return; } // 숨긴 탭에서는 쉬고, 돌아오면 이어서
+    const sg = SONGS[S.song], sp = 60 / sg.bpm / 4; if (S.next < ac.currentTime) S.next = ac.currentTime + .05;
+    while (S.next < ac.currentTime + .2) { play(sg, S.step, S.bar, S.next, sp); S.next += sp; if (++S.step >= sg.steps) { S.step = 0; S.bar++; } } }
+  function level() { return S.mode === 'off' ? 0 : S.vol; }
+  function ramp(v, sec) { const t = ac.currentTime; out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.linearRampToValueAtTime(v, t + sec); }
+  S.timer = setInterval(tick, 40);
+
+  return {
+    setMode(mode) { if (mode === S.mode) return; const was = S.mode; S.mode = mode; if (mode === 'off') { ramp(0, .6); return; }
+      if (was === 'off' || !S.song) { S.song = mode; S.step = 0; S.bar = 0; S.next = 0; ramp(level(), 1.2); return; }
+      S.fading = true; ramp(0, .7); setTimeout(() => { S.fading = false; if (S.mode !== mode) return; S.song = mode; S.step = 0; S.bar = 0; S.next = 0; ramp(level(), 1); }, 750); },
+    setVolume(v) { S.vol = Math.max(0, Math.min(1, v)); if (!S.fading) ramp(level(), .25); },
+    setIntensity(v) { S.heat = Math.max(0, Math.min(1, v)); },
+    get mode() { return S.mode; },
+    stop() { clearInterval(S.timer); ramp(0, .2); setTimeout(() => { try { out.disconnect(); } catch (e) {} }, 300); },
+  };
+};
+
 // app.js — DOM UI, 입력, 사운드, 게임 루프. RTS.mount(el, opts) 하나로 어디에든 붙는다.
 // 월드 연동: const g = RTS.mount(div, {onEnd: r => {...}}); g.start({faction,map,difficulty}); g.destroy();
 const HTML = `
@@ -1777,14 +1853,14 @@ const HTML = `
       <button id="k-dipbtn" class="k-ex-open" title="자유상단 (N)">상단</button>
       <button id="k-idle" title="쉬는 일꾼 선택 (.)">쉬는 일꾼 <b id="k-idlen">0</b></button>
       <button id="k-boxbtn" class="k-touch" title="터치 범위 선택">범위 선택</button>
-      <button id="k-speed" title="게임 속도">1배속</button>
+      <button id="k-chatbtn" hidden title="채팅 (Enter)">채팅</button><button id="k-voicebtn" hidden title="음성 채팅: 내 마이크 켜고 끄기">음성 켜기</button><button id="k-speed" title="게임 속도">1배속</button>
       <button id="k-pause" title="일시정지 (F2)">정지</button>
       <button id="k-mute" title="소리">소리 끔</button>
       <button id="k-setbtn" title="설정">설정</button>
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
@@ -1811,11 +1887,13 @@ const HTML = `
         <dt>회사 거점 공격</dt><dd>우클릭으로 공격하면 주가가 내리고, 무너지면 40초간 가동이 멈추며 배당도 끊깁니다</dd>
         <dt>터치</dt><dd>한 손가락은 지도 이동, 탭은 선택 또는 명령. 범위 선택 버튼을 켜면 드래그로 묶습니다</dd>
       </dl></details>
+      <p class="k-ver" id="k-ver"></p>
     </div>
   </section>
   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
-  <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel" id="k-netp"></div></section>
+  <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel"><div class="k-netp" id="k-netp"></div><div class="k-netchat" id="k-netchat" hidden><h2>대화</h2><div class="k-chatlog lobby" id="n-chatlog" aria-live="polite"></div><form class="k-chatrow" id="n-chatform"><input class="k-in" id="n-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력" aria-label="채팅 메시지"><button type="submit">보내기</button></form><div class="k-quick" id="n-quick"></div><div class="k-go"><button id="n-voice">음성 켜기</button></div><p class="k-small">음성 채팅은 두 기기가 같은 방에 있으면 소리가 되울려 삐 소리가 날 수 있습니다. 이어폰을 쓰거나 다른 방에서 하세요.</p></div></div></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
+  <audio id="k-voiceout" autoplay playsinline></audio>
 </div>`;
 
 RTS.mount = function (root, opts = {}) {
@@ -1828,8 +1906,10 @@ RTS.mount = function (root, opts = {}) {
   const send = c => { if (!app.G) return; if (app.net && app.net.L) app.net.L.local(c); else RTS.command(app.G, app.team, c); };
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
-  let ac = null, muted = store.get('mute') === '1'; const last = {};
-  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); };
+  let ac = null, music = null, muted = store.get('mute') === '1'; const last = {};
+  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); } };
+  // 배경음악: 메뉴·대기실은 잔잔한 곡, 게임 중에는 전투 곡. 음성 채팅으로 상대 목소리가 들어오는 동안은 음악을 줄인다
+  function applyMusic() { if (!music) return; const duck = voice.inCall ? .4 : 1; music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? 'game' : 'menu') : 'off'); }
   function tone(f, f2, dur, type, vol) { vol *= app.settings.volume / 100; if (vol <= 0) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
   app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
     ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
@@ -1840,7 +1920,7 @@ RTS.mount = function (root, opts = {}) {
 
   function bind(G) { app.G = G; G.teams.forEach((t, i) => { RTS.TEAM[i] = RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
-    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
+    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
     RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
     RTS.on(G, 'gameover', o => { if (!app.demo) finish(o); else setTimeout(demo, 2500); });
   }
@@ -1854,7 +1934,7 @@ RTS.mount = function (root, opts = {}) {
   app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions), foe = f.find(x => x !== app.cfg.faction); app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
     const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
     showGame(G); };
-  function showGame(G) { hideHover(); bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
+  function showGame(G) { hideHover(); bind(G); $('k-chatbtn').hidden = $('k-voicebtn').hidden = !app.net; $('k-chatbox').hidden = true; renderChat(); app.heat = 0; $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
   app.toMenu = () => { if (app.net) netClose(true); else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
   app.saveState = () => (app.G && !app.demo ? RTS.serialize(app.G) : null);
@@ -2098,8 +2178,10 @@ RTS.mount = function (root, opts = {}) {
   mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });
   mini.addEventListener('pointerup', () => { app.miniDrag = false; });
   const keys = {}; let lastDigit = 0, lastDigitT = 0;
-  const onKey = e => { if (app.setOpen) { if (e.key === 'Escape') toggleSettings(); return; } const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
+  const onKey = e => { const tg = e.target; if (tg && (tg.tagName === 'INPUT' || tg.tagName === 'TEXTAREA') && tg.type !== 'range' && tg.type !== 'checkbox') { if (e.key === 'Escape' && tg.id === 'k-chatin') closeChat(); return; }
+    if (app.setOpen) { if (e.key === 'Escape') toggleSettings(); return; } const live = app.G && !app.demo && !app.G.over; keys[e.key] = true; if (!live) return; const k = e.key.length === 1 ? e.key.toUpperCase() : e.key;
     if (k.startsWith('Arrow')) { e.preventDefault(); return; }
+    if (k === 'Enter' && app.net && app.net.conn) { e.preventDefault(); openChat(); return; }
     if (k === 'F2') { e.preventDefault(); togglePause(); return; }
     if (/^[0-9]$/.test(k)) { e.preventDefault(); const list = selected().filter(u => u.team === app.team).map(u => u.id);
       if (e.ctrlKey || e.metaKey || e.altKey) { app.groups[k] = list; notice(`${k}번 부대 지정`, 'ok'); }
@@ -2117,7 +2199,7 @@ RTS.mount = function (root, opts = {}) {
   // ── 설정 메뉴: RTS.SETTINGS를 읽어 자동 생성한다. 게임 중에는 일시정지되고 바로 적용된다 ──
   const liveGame = () => app.G && !app.demo && !app.G.over;
   const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.zero && v === 0 ? s.zero : v + (s.unit || '');
-  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (liveGame() && !app.net && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
+  function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (s.id === 'music') applyMusic(); if (s.id === 'voiceVol') $('k-voiceout').volume = v / 100; if (liveGame() && !app.net && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
   function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
     el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live && app.net ? '둘이 대전 중에는 게임 규칙을 바꿀 수 없습니다. 화면과 소리만 바꿀 수 있고, 게임은 계속 진행됩니다.' : live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
       RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && (s.startOnly || (app.net && !s.client)), v = src(s.id), id = 's-' + s.id;
@@ -2130,7 +2212,7 @@ RTS.mount = function (root, opts = {}) {
   function togglePause(remote) { if (app.net && remote === undefined) { netSend({ t: 'pause', on: !app.paused }); } else if (remote !== undefined) { if (app.paused === remote) return; notice(remote ? '상대가 일시정지했습니다' : '상대가 게임을 재개했습니다'); } app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
   $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
-  $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); };
+  $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); applyMusic(); };
   $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => app.toMenu(); $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-netopen').onclick = () => { unlock(); netOpen(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
@@ -2145,42 +2227,45 @@ RTS.mount = function (root, opts = {}) {
   function peerLib() { if (window.Peer) return Promise.resolve(window.Peer); return new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = PEER_SRC; sc.onload = () => (window.Peer ? ok(window.Peer) : no(new Error('load'))); sc.onerror = () => no(new Error('load')); document.head.appendChild(sc); }); }
   const myName = () => (store.get('name') || '').trim().slice(0, 12) || '플레이어';
   function netOpen() { if (app.net) netClose(true); app.net = { stage: 'choose', hc: ['none', 'none'] }; $('k-start').hidden = true; $('k-net').hidden = false; renderNet(); }
-  function netClose(bye) { const N = app.net; if (!N) return; app.net = null; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; $('k-net').hidden = true; }
+  function netClose(bye) { const N = app.net; if (!N) return; voiceReset(); app.net = null; chat.list = []; $('k-chatbox').hidden = true; renderChat(); $('k-netchat').hidden = true; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; $('k-net').hidden = true; }
   function netSend(m) { const N = app.net; if (N && N.conn && N.conn.open) N.conn.send(m); }
   function netStatus(text, bad) { if (!app.net) return; app.net.status = text; app.net.bad = !!bad; renderNet(); }
   function netFail(err) { const N = app.net; if (!N) return; const ty = err && err.type;
     const msg = ty === 'peer-unavailable' ? '그 번호의 방이 없습니다. 방장 화면의 번호를 다시 확인하세요.' : ty === 'network' || ty === 'server-error' || ty === 'socket-error' || (err && err.message === 'load') ? '연결 서버에 닿지 않습니다. 인터넷 연결을 확인하세요.' : ty === 'browser-incompatible' ? '이 브라우저는 기기 간 연결을 지원하지 않습니다. Chrome을 쓰세요.' : '연결 오류: ' + (ty || (err && err.message) || '알 수 없음');
     if (N.L && app.G && !app.G.over) netLost(); else { N.stage = N.role === 'host' && N.stage === 'lobby' ? 'host' : N.stage; netStatus(msg, true); } }
   function wireConn(conn) { const N = app.net; N.conn = conn;
-    conn.on('open', () => { if (app.net !== N) return; N.stage = 'lobby'; N.status = ''; if (N.role === 'guest') conn.send({ t: 'hello', name: myName() }); else sendLobby(); renderNet(); });
+    conn.on('open', () => { if (app.net !== N) return; N.stage = 'lobby'; N.status = ''; if (N.role === 'guest') conn.send({ t: 'hello', name: myName(), build: RTS.BUILD }); else sendLobby(); renderNet(); });
     conn.on('data', m => { if (app.net === N) netMsg(m); });
-    conn.on('close', () => { if (app.net !== N) return; if (N.L) netLost(); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
+    conn.on('close', () => { if (app.net !== N) return; voiceReset(); if (N.L) netLost(); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
     conn.on('error', netFail); }
   async function netHost() { const N = app.net; N.role = 'host'; N.stage = 'host'; netStatus('연결 준비 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
     const tryCode = left => { N.code = String(1000 + Math.floor(Math.random() * 9000)); const peer = N.peer = new Peer(PEER_PREFIX + N.code, { debug: 0 });
       peer.on('open', () => { if (app.net === N) netStatus('상대 기기에서 이 번호를 입력하세요.'); });
+      peer.on('call', call => onCall(N, call));
       peer.on('connection', conn => { if (app.net !== N || N.conn) { conn.on('open', () => conn.close()); return; } wireConn(conn); });
       peer.on('error', err => { if (app.net !== N) return; if (err.type === 'unavailable-id' && left > 0) { peer.destroy(); tryCode(left - 1); } else netFail(err); });
       peer.on('disconnected', () => { if (app.net === N && !N.conn) try { peer.reconnect(); } catch (e) {} }); };
     tryCode(4); }
   async function netJoin(code) { const N = app.net; if (!/^\d{4}$/.test(code)) return netStatus('방 번호 숫자 4자리를 입력하세요.', true); N.role = 'guest'; N.code = code; N.stage = 'joining'; netStatus('방을 찾는 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
-    const peer = N.peer = new Peer({ debug: 0 }); peer.on('error', err => { if (app.net === N) { N.stage = 'choose'; netFail(err); } });
+    const peer = N.peer = new Peer({ debug: 0 }); peer.on('call', call => onCall(N, call)); peer.on('error', err => { if (app.net === N) { N.stage = 'choose'; netFail(err); } });
     peer.on('open', () => { if (app.net !== N) return; const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); wireConn(conn); setTimeout(() => { if (app.net === N && N.stage === 'joining') { N.stage = 'choose'; netStatus('방에 연결하지 못했습니다. 두 기기가 같은 와이파이인지 확인하세요.', true); } }, 15000); }); }
   // 방장이 정하는 내용: 전장, 진영(상대는 다른 진영), 팀별 핸디캡
-  const lobbyOf = () => { const fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, other = fs.find(x => x !== mine); return { map: app.cfg.map, factions: [mine, other], hc: app.net.hc.slice(), names: [myName(), app.net.peerName || '상대'] }; };
+  const lobbyOf = () => { const fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, other = fs.find(x => x !== mine); return { map: app.cfg.map, factions: [mine, other], hc: app.net.hc.slice(), names: [myName(), app.net.peerName || '상대'], build: RTS.BUILD }; };
   function sendLobby() { if (app.net && app.net.role === 'host') netSend({ t: 'lobby', lobby: lobbyOf() }); }
   function netMsg(m) { const N = app.net; if (!m || typeof m !== 'object') return;
     if (m.t === 'turn') { if (N.L) N.L.receive(m); else (N.early = N.early || []).push(m); return; }
-    if (m.t === 'hello' && N.role === 'host') { N.peerName = String(m.name || '상대').slice(0, 12); sendLobby(); renderNet(); return; }
+    if (m.t === 'hello' && N.role === 'host') { N.peerName = String(m.name || '상대').slice(0, 12); N.peerBuild = String(m.build || '이전 버전'); sendLobby(); renderNet(); return; }
     if (m.t === 'lobby' && N.role === 'guest') { N.lobby = m.lobby; renderNet(); return; }
     if (m.t === 'start' && N.role === 'guest') { netStart(m.opts, 1); return; }
     if (m.t === 'pause') { togglePause(!!m.on); return; }
+    if (m.t === 'chat') { chatAdd(false, peerName(), String(m.text || '').slice(0, 80)); return; }
+    if (m.t === 'voice') { notice(m.on ? peerName() + ' 님이 마이크를 켰습니다' + (voice.stream ? '' : ' · 음성 켜기로 내 마이크도 켤 수 있습니다') : peerName() + ' 님이 마이크를 껐습니다', 'ok'); return; }
     if (m.t === 'bye') { if (N.L && app.G && !app.G.over) netLost('상대가 게임을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
   function netBegin() { const N = app.net, lb = lobbyOf(); const opts = RTS.netGameOpts({ map: lb.map, seed: 1 + Math.floor(Math.random() * 99999), settings: app.settings, factions: lb.factions, names: lb.names, hc: lb.hc });
     netSend({ t: 'start', opts }); netStart(opts, 0); }
   function netStart(opts, team) { const N = app.net, o = JSON.parse(JSON.stringify(opts)); // 두 기기가 똑같은 값으로 만들도록 방장도 같은 직렬화를 거친다
     app.demo = false; app.team = team; app.speed = 1; app.paused = false; N.waitMs = 0;
-    N.L = RTS.Lockstep({ team, send: netSend, onDesync: () => notice('두 기기의 게임 상태가 어긋났습니다. 이번 판은 화면이 서로 다를 수 있습니다.', 'warn') });
+    N.L = RTS.Lockstep({ team, send: netSend, onDesync: () => notice('두 기기의 게임 상태가 어긋났습니다. 두 기기 모두 새로고침한 뒤 방을 새로 만드세요.', 'warn') });
     for (const m of N.early || []) N.L.receive(m); N.early = null;
     $('k-net').hidden = true; $('k-again').hidden = true; showGame(RTS.createGame(o)); notice(team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
   function netLost(why) { const N = app.net; if (!N || N.endShown) return; N.endShown = true; app.paused = true; $('k-wait').hidden = true;
@@ -2204,15 +2289,65 @@ RTS.mount = function (root, opts = {}) {
         <p class="k-sub k-small">게임 규칙은 이 기기의 설정 메뉴 값을 그대로 씁니다.</p>${st}`;
     } else { const lb = N.lobby;
       h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb ? `<dl class="k-netsum"><dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
-    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? '<button class="k-primary" id="n-go">시작</button>' : ''}<button id="n-back">나가기</button></div>`;
+    const vb = verState(N); if (N.stage === 'lobby' && vb) h += `<p class="k-netst bad" role="alert">${vb}</p>`;
+    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}<button id="n-back">나가기</button></div>`;
     el.innerHTML = h;
     const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
     on('n-back', () => { netClose(true); $('k-start').hidden = false; renderMenu(); });
     on('n-host', () => { saveName(); netHost(); }); on('n-join', () => { saveName(); netJoin(el.querySelector('#n-code').value.trim()); }); on('n-go', () => { unlock(); netBegin(); });
     const code = el.querySelector('#n-code'); if (code) code.onkeydown = e => { if (e.key === 'Enter') { saveName(); netJoin(code.value.trim()); } };
     const pickers = { 'n-map': v => { app.cfg.map = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-fac': v => { app.cfg.faction = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-hc0': v => { N.hc[0] = v; }, 'n-hc1': v => { N.hc[1] = v; } };
-    for (const id of Object.keys(pickers)) el.querySelectorAll('#' + id + ' [data-v]').forEach(b => { b.onclick = () => { pickers[id](b.dataset.v); sendLobby(); renderNet(); }; }); }
+    for (const id of Object.keys(pickers)) el.querySelectorAll('#' + id + ' [data-v]').forEach(b => { b.onclick = () => { pickers[id](b.dataset.v); sendLobby(); renderNet(); }; });
+    $('k-netchat').hidden = N.stage !== 'lobby'; renderChat(); renderVoice(); }
+  // 두 기기 버전 비교: 다르면 계산이 어긋나므로 시작을 막는다. 빈 문자열이면 같음
+  function verState(N) { const other = N.role === 'host' ? N.peerBuild : N.lobby && (N.lobby.build || '이전 버전'); if (!other || other === RTS.BUILD) return '';
+    return `두 기기의 게임 버전이 다릅니다 (이 기기 ${esc(RTS.BUILD || '?')}, 상대 ${esc(other)}). 두 기기 모두 게임 탭을 닫고 다시 연 뒤 방을 새로 만드세요.`; }
   function saveName() { const i = $('k-netp').querySelector('#n-name'); if (i) store.set('name', i.value.trim().slice(0, 12)); }
+  // ── 둘이 대전 채팅: 게임 명령(lockstep)과 별도로 연결에 바로 보낸다. 게임 계산에는 영향이 없다 ──
+  const QUICK = ['공격!', '도와줘', '잠깐만', '잘했어', 'ㅋㅋㅋ', '좋은 게임!', '한 판 더?'];
+  const chat = { list: [] };
+  const peerName = () => { const N = app.net; return (N && (N.role === 'host' ? N.peerName : N.lobby && N.lobby.names[0])) || '상대'; };
+  function chatAdd(mine, name, text) { if (!text) return; chat.list.push({ mine, name, text, at: performance.now() }); if (chat.list.length > 60) chat.list.shift(); renderChat(); setTimeout(renderChat, 9100);
+    if (!mine && ac && !muted) { tone(880, 880, .07, 'sine', .05); setTimeout(() => tone(1320, 1320, .09, 'sine', .04), 90); } }
+  function chatSend(text) { text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (!text || !app.net || !app.net.conn || !app.net.conn.open) return false; netSend({ t: 'chat', text }); chatAdd(true, myName(), text); return true; }
+  const chatLine = m => `<p class="${m.mine ? 'me' : 'peer'}"><b>${esc(m.mine ? '나' : m.name)}</b>${esc(m.text)}</p>`;
+  function renderChat() { const now = performance.now(), open = !$('k-chatbox').hidden;
+    $('k-chatlog').innerHTML = chat.list.filter(m => open || now - m.at < 9000).slice(-6).map(chatLine).join('');
+    const nl = $('n-chatlog'); nl.innerHTML = chat.list.slice(-40).map(chatLine).join('') || '<p class="k-empty">메시지가 여기에 표시됩니다.</p>'; nl.scrollTop = nl.scrollHeight; }
+  function openChat() { if (!app.net || !app.net.conn) return; $('k-chatbox').hidden = false; $('k-chatbtn').classList.add('on'); renderChat(); if (matchMedia('(pointer:fine)').matches) $('k-chatin').focus(); }
+  function closeChat() { $('k-chatbox').hidden = true; $('k-chatbtn').classList.remove('on'); $('k-chatin').blur(); if (app.G && !app.demo) view.focus({ preventScroll: true }); renderChat(); }
+  $('k-chatbtn').onclick = () => ($('k-chatbox').hidden ? openChat() : closeChat()); $('k-chatx').onclick = closeChat;
+  $('k-chatbox').onsubmit = e => { e.preventDefault(); const i = $('k-chatin'); if (chatSend(i.value)) i.value = ''; closeChat(); };
+  $('n-chatform').onsubmit = e => { e.preventDefault(); const i = $('n-chatin'); if (chatSend(i.value)) i.value = ''; };
+  for (const [id, after] of [['k-quick', closeChat], ['n-quick', null]]) for (const q of QUICK) { const b = document.createElement('button'); b.type = 'button'; b.textContent = q; b.onclick = () => { chatSend(q); if (after) after(); }; $(id).appendChild(b); }
+
+  // ── 둘이 대전 음성: 각자 자기 마이크를 한 방향 통화로 보낸다(켜는 쪽이 걸고, 받는 쪽은 듣기만). 그래서 켜고 끄기가 서로 독립이다 ──
+  const voice = { stream: null, out: null, inCall: null, needTap: false };
+  function renderVoice() { const on = !!voice.stream, txt = on ? '마이크 끄기' : '음성 켜기', ttl = (on ? '내 마이크 켜짐' : '내 마이크 꺼짐') + ' · ' + (voice.inCall ? '상대 음성 들림' : '상대 마이크 꺼짐');
+    for (const id of ['k-voicebtn', 'n-voice']) { const b = $(id); b.textContent = txt; b.classList.toggle('on', on); b.title = ttl; } applyMusic(); }
+  async function voiceToggle() { const N = app.net; if (!N || !N.conn || !N.peer) return; unlock();
+    if (voice.stream) { voiceStop(true); notice('마이크를 껐습니다'); return; }
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) { notice('이 브라우저에서는 마이크를 쓸 수 없습니다. https 주소인지, Chrome인지 확인하세요.', 'warn'); return; }
+    let st; try { st = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true }, video: false }); }
+    catch (e) { notice(e && e.name === 'NotAllowedError' ? '마이크 권한이 거부되었습니다. 주소창 왼쪽 자물쇠 → 권한에서 마이크를 허용하세요.' : e && e.name === 'NotFoundError' ? '이 기기에서 마이크를 찾지 못했습니다.' : '마이크를 열 수 없습니다: ' + ((e && (e.name || e.message)) || '알 수 없음'), 'warn'); return; }
+    if (app.net !== N || !N.conn) { st.getTracks().forEach(t => t.stop()); return; }
+    voice.stream = st; const call = voice.out = N.peer.call(N.conn.peer, st, { metadata: { kind: 'voice' } });
+    if (call) { call.on('close', () => { if (voice.out === call) voiceStop(false); }); call.on('error', () => { if (voice.out === call) { voiceStop(false); notice('음성 연결에 실패했습니다', 'warn'); } }); }
+    netSend({ t: 'voice', on: true }); notice('마이크를 켰습니다', 'ok'); renderVoice(); }
+  function voiceStop(tell) { const c = voice.out; voice.out = null; if (c) try { c.close(); } catch (e) {} if (voice.stream) voice.stream.getTracks().forEach(t => t.stop()); voice.stream = null; if (tell) netSend({ t: 'voice', on: false }); renderVoice(); }
+  function voiceReset() { voiceStop(false); const c = voice.inCall; voice.inCall = null; if (c) try { c.close(); } catch (e) {} $('k-voiceout').srcObject = null; voice.needTap = false; renderVoice(); }
+  function onCall(N, call) { if (app.net !== N || !N.conn || call.peer !== N.conn.peer) { try { call.close(); } catch (e) {} return; }
+    const old = voice.inCall; voice.inCall = call; if (old) try { old.close(); } catch (e) {}
+    call.on('stream', s => { if (voice.inCall !== call) return; const a = $('k-voiceout'); a.srcObject = s; a.volume = app.settings.voiceVol / 100;
+      const p = a.play(); if (p) p.then(() => { voice.needTap = false; }).catch(() => { voice.needTap = true; notice('화면을 한 번 누르면 상대 음성이 들립니다', 'warn'); }); renderVoice(); });
+    call.on('close', () => { if (voice.inCall === call) { voice.inCall = null; $('k-voiceout').srcObject = null; renderVoice(); } });
+    call.on('error', () => {}); call.answer(); renderVoice(); }
+  $('k-voicebtn').onclick = voiceToggle; $('n-voice').onclick = voiceToggle;
+  // 아무 곳이나 처음 누르면 소리를 연다(브라우저 자동 재생 제한). 막혔던 상대 음성도 이때 다시 튼다
+  const anyTap = () => { unlock(); if (voice.needTap) { const p = $('k-voiceout').play(); if (p) p.then(() => { voice.needTap = false; }).catch(() => {}); } };
+  root.addEventListener('pointerdown', anyTap, true); window.addEventListener('keydown', anyTap, true);
+  $('k-ver').textContent = '버전 ' + (RTS.BUILD || '개발');
+
   // ── 루프 ──────────────────────────────────────────────
   function layout() { const r = $('k-stage').getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)); if (view.width !== W || view.height !== H) { view.width = W; view.height = H; clampCam(); } }
   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
@@ -2229,10 +2364,11 @@ RTS.mount = function (root, opts = {}) {
       view.style.cursor = app.mode ? 'crosshair' : 'default';
       if (app.frame % 12 === 0) renderHud(); }
     if (app.frame % 15 === 0 && !app.demo) renderMini();
+    if (music && app.frame % 12 === 0) { if (!app.demo && !G.over) { if (G.ents.some(e => e.team === app.team && e.firedAt > G.tick - 8)) app.heat = Math.max(app.heat || 0, .75); app.heat = (app.heat || 0) * .965; music.setIntensity(Math.max(app.heat, Math.min(.3, G.tick / 20 / 900))); } if (app.frame % 36 === 0) applyMusic(); }
     R.draw(Math.min(1, acc / (1000 / RTS.HZ))); }
   renderMenu(); layout(); demo(); raf = requestAnimationFrame(loop);
   if (opts.autostart) app.start(opts.autostart);
-  app.destroy = () => { if (app.net) netClose(true); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
+  app.destroy = () => { if (app.net) netClose(true); if (music) music.stop(); window.removeEventListener('keydown', anyTap, true); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
   return app;
 };
 </script>

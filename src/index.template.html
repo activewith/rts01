@@ -132,6 +132,19 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-four{grid-template-columns:repeat(2,1fr)}
 .k-small{font-size:12.5px;color:var(--dim)}
 .k-netsum{display:grid;grid-template-columns:auto 1fr;gap:4px 12px;margin:4px 0}.k-netsum dt{color:var(--dim)}.k-netsum dd{margin:0}
+.k-netp{display:flex;flex-direction:column;gap:9px}
+.k-game .k-primary:disabled{opacity:.4;cursor:not-allowed}
+.k-netchat{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:6px}.k-netchat .k-go{margin-top:0}
+.k-ver{margin:6px 0 0;font:12px var(--num);color:var(--dim)}
+.k-chatlog{position:absolute;left:max(10px,env(safe-area-inset-left,0px));bottom:10px;z-index:6;width:min(78%,360px);display:flex;flex-direction:column;gap:3px;pointer-events:none}
+.k-chatlog p{margin:0;background:rgba(16,21,31,.86);padding:4px 10px;font-size:14px;line-height:1.4;border-left:3px solid var(--line);overflow-wrap:anywhere}
+.k-chatlog p b{margin-right:8px;font-weight:600}.k-chatlog p.me b{color:#7fd0ff}.k-chatlog p.peer b{color:#ffab8a}.k-chatlog p.peer{border-left-color:#ff8a5a}.k-chatlog p.me{border-left-color:#46c4ff}
+.k-chatbox:not([hidden])~.k-chatlog,.k-stage:has(.k-chatbox:not([hidden])) .k-chatlog{bottom:96px}
+.k-chatlog.lobby{position:static;width:auto;max-height:150px;min-height:40px;overflow:auto;pointer-events:auto;background:rgba(16,21,31,.6);padding:4px}
+.k-chatlog.lobby p{background:none;padding:2px 6px}
+.k-chatbox{position:absolute;left:50%;bottom:10px;transform:translateX(-50%);z-index:7;width:min(94%,520px);display:flex;flex-direction:column;gap:6px;background:rgba(16,21,31,.94);border:1px solid var(--brass);padding:8px}
+.k-chatrow{display:flex;gap:6px}.k-chatrow .k-in{flex:1}
+.k-quick{display:flex;flex-wrap:wrap;gap:5px}.k-game .k-quick button{padding:5px 10px;font-size:13.5px}
 .k-help{color:var(--dim);font-size:13px}.k-help summary{cursor:pointer;padding:4px 0}
 .k-help dl{display:grid;grid-template-columns:auto 1fr;gap:3px 10px;margin:4px 0 0}.k-help dt{color:var(--text);font-weight:600}.k-help dd{margin:0}
 #k-stats{border-collapse:collapse;font-family:var(--num);font-variant-numeric:tabular-nums;width:100%}
