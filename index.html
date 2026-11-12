@@ -176,7 +176,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '03ba3e5';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'e635b0c';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -1163,19 +1163,40 @@ RTS.TRIBE_RULES = {
   raidEvery: [110, 150],
   loot: 250,          // 회당을 무너뜨린 쪽이 얻는 광석
   homeR: 9,           // 이 거리보다 멀리 있는 한가한 부족 병력은 회당으로 돌아온다
+  centerGap: 12,      // 맵 가운데에서 이만큼은 떨어진 곳에 둔다
+  startGap: 20,       // 시작 기지에서 최소 거리
 };
 const TR = () => RTS.TRIBE_RULES;
 const REL_NAME = { neutral: '중립', ally: '동맹', hostile: '적대' };
 RTS.tribeRelName = r => REL_NAME[r] || r;
 const tTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind });
 
+// 회당 자리: 게임마다 무작위. 맵 가운데, 시작 기지·확장 기지·자원·회사 거점·지부 근처는 피하고, 두 시작 기지에서 걸어서 닿아야 한다
+RTS.tribeSpotPick = function (G) {
+  const H = RTS.defs.entities.t_hall, starts = G.bases.filter(b => b.start !== undefined), cx = G.w / 2, cy = G.h / 2, R = TR();
+  const keep = [...G.siteSpots, ...G.postSpots], res = G.ents.filter(e => RTS.defOf(e).kind === 'resource');
+  const reach = (x, y, tx, ty) => starts.every(b => { const p = RTS.findPath(G, b.x, b.y + 4, { x0: tx - 1, y0: ty - 1, x1: tx + H.size[0], y1: ty + H.size[1] }), l = p[p.length - 1]; return l && Math.hypot(l[0] - x, l[1] - y) < 4.5; });
+  // 조건을 만족하는 칸을 모두 모은 뒤 무작위 순서로 길이 닿는지 본다. 없으면 간격 조건을 줄여 다시 찾는다
+  for (const k of [1, .75, .5]) {
+    const cand = [];
+    for (let y = 7; y <= G.h - 7; y++) for (let x = 7; x <= G.w - 7; x++) { const px = x + .5, py = y + .5;
+      if (Math.hypot(px - cx, py - cy) < R.centerGap) continue;
+      if (starts.some(b => Math.hypot(b.x - px, b.y - py) < R.startGap * (k < 1 ? .85 : 1)) || G.bases.some(b => Math.hypot(b.x - px, b.y - py) < 11 * k)) continue;
+      if (keep.some(q => Math.hypot(q.x - px, q.y - py) < 7 * k) || res.some(e => Math.hypot(e.x - px, e.y - py) < 6 * k)) continue;
+      const tx = Math.round(px - H.size[0] / 2), ty = Math.round(py - H.size[1] / 2); if (!RTS.canPlace(G, RTS.TRIBE, 't_hall', tx, ty, 2)) continue;
+      cand.push([px, py, tx, ty]); }
+    for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
+    for (const [px, py, tx, ty] of cand.slice(0, 60)) if (reach(px, py, tx, ty)) return { x: px, y: py };
+  }
+  return G.tribeSpot; // 못 찾으면 맵 데이터의 자리(있다면)
+};
 RTS.initTribe = function (G) {
-  const s = G.tribeSpot; if (!s) return;
+  const s = RTS.tribeSpotPick(G); if (!s) return;
   const H = RTS.defs.entities.t_hall, hx = Math.round(s.x - H.size[0] / 2), hy = Math.round(s.y - H.size[1] / 2);
   const hall = RTS.spawn(G, 't_hall', RTS.TRIBE, hx + H.size[0] / 2, hy + H.size[1] / 2); hall.built = hall.buildT; hall.hp = H.hp; hall.tribeHall = true;
-  // 망루 2개: 두 시작 기지 방향에 하나씩 두어 양쪽 조건을 같게 한다
-  const starts = G.bases.filter(b => b.start !== undefined), Tw = RTS.defs.entities.t_tower;
-  for (const b of starts) { const a0 = Math.atan2(b.y - hall.y, b.x - hall.x); let done = false;
+  const Tw = RTS.defs.entities.t_tower;
+  const ta = RTS.rand(G) * Math.PI * 2; // 망루 2개: 서로 반대쪽
+  for (const a0 of [ta, ta + Math.PI]) { let done = false;
     for (let r = 4.5; r <= 7 && !done; r += .5) for (let k = 0; k < 9 && !done; k++) { const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * .3, tx = Math.round(hall.x + Math.cos(a) * r - 1), ty = Math.round(hall.y + Math.sin(a) * r - 1);
       if (!RTS.canPlace(G, RTS.TRIBE, 't_tower', tx, ty, 0)) continue; const e = RTS.spawn(G, 't_tower', RTS.TRIBE, tx + 1, ty + 1); e.built = e.buildT; e.hp = Tw.hp; done = true; } }
   const n = G.teams.length;
@@ -1465,10 +1486,11 @@ RTS.netGameOpts = function (o) {
 RTS.mod({
   difficulties: {
     // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
-    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .6, interval: 60, maxWorkers: 14, waveSize: 4, waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
-    easy:   { name: '쉬움',   income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
-    normal: { name: '보통',   income: 1,   interval: 20, maxWorkers: 26, waveSize: 9,  waveGrow: 5, firstAttack: 270, expandAt: 330, invest: 280, investEvery: 16, scoutAt: 170, stake: 200, allyArmy: 8 },
-    hard:   { name: '어려움', income: 1.3, interval: 10, maxWorkers: 34, waveSize: 12, waveGrow: 6, firstAttack: 220, expandAt: 240, invest: 260, investEvery: 12, scoutAt: 90, stake: 250, allyArmy: 8 },
+    // 2026-11 하향: 각 단계가 예전보다 두 단계 아래 수치를 쓴다(어려움 = 예전 쉬움, 보통 = 예전 왕초보, 쉬움·왕초보는 그보다 더 약하게)
+    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14 },
+    easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13 },
+    normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
+    hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
   },
   terrain: {
     ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' },
@@ -1611,24 +1633,24 @@ RTS.mod({
   maps: {
     ridge: { name: '쌍둥이 능선', gen: 'symmetric', w: 72, h: 72, theme: 'dusk', desc: '72×72 · 기지 4 · 중앙이 트인 대각 대치',
       bases: [{ x: 11, y: 11, start: 0, dir: 3.93 }, { x: 13, y: 36, dir: 3.14, ore: 6, oneVent: true }, { x: 58, y: 14, dir: 5.5, ore: 6, oneVent: true }],
-      sites: [[27, 42], [46, 17]], posts: [[36, 5], [5, 48]], tribe: [36, 36], rocks: [[26, 20, 4], [20, 26, 4], [36, 24, 3], [30, 12, 3], [44, 8, 3], [24, 46, 3.5], [10, 52, 4], [36, 36, 2.5], [46, 26, 3]],
+      sites: [[27, 42], [46, 17]], posts: [[36, 5], [5, 48]], rocks: [[26, 20, 4], [20, 26, 4], [36, 24, 3], [30, 12, 3], [44, 8, 3], [24, 46, 3.5], [10, 52, 4], [36, 36, 2.5], [46, 26, 3]],
       sand: [[36, 36, 14], [24, 30, 8], [52, 20, 9]],
       lanes: [[11, 11, 23, 23, 3], [23, 23, 36, 36, 4], [13, 36, 28, 36, 3], [58, 14, 44, 28, 3], [23, 23, 13, 36, 2.5]] },
     canyon: { name: '협곡 회랑', gen: 'symmetric', w: 96, h: 48, theme: 'ochre', desc: '96×48 · 기지 4 · 좁은 관문 세 곳',
       bases: [{ x: 11, y: 24, start: 0, dir: 3.14 }, { x: 34, y: 10, dir: 4.71, ore: 6, oneVent: true }, { x: 34, y: 38, dir: 1.57, ore: 6, oneVent: true }],
-      sites: [[42, 15], [57, 33]], posts: [[14, 6], [36, 25]], tribe: [48, 24], walls: [[24, 0, 24, 15, 1.4], [24, 33, 24, 48, 1.4], [48, 0, 48, 10, 1.6], [48, 19, 48, 29, 1.6], [48, 38, 48, 48, 1.6]],
+      sites: [[42, 15], [57, 33]], posts: [[14, 6], [36, 25]], walls: [[24, 0, 24, 15, 1.4], [24, 33, 24, 48, 1.4], [48, 0, 48, 10, 1.6], [48, 19, 48, 29, 1.6], [48, 38, 48, 48, 1.6]],
       rocks: [[40, 24, 3.5]], sand: [[48, 14, 7], [48, 34, 7], [24, 24, 8]],
       lanes: [[11, 24, 40, 24, 2.5], [34, 10, 62, 10, 2.5], [34, 38, 62, 38, 2.5]] },
     crossroads: { name: '빙원 십자로', gen: 'symmetric', w: 80, h: 80, theme: 'frost', desc: '80×80 · 기지 4 · 남북 대치, 본진 앞 관문과 중앙 원형 교차로',
       bases: [{ x: 40, y: 9, start: 0, dir: 4.71 }, { x: 11, y: 12, dir: 3.93, ore: 6, oneVent: true }, { x: 12, y: 46, dir: 3.14, ore: 6, oneVent: true }],
-      sites: [[22, 33], [40, 27]], posts: [[5, 29], [62, 40]], tribe: [40, 40],
+      sites: [[22, 33], [40, 27]], posts: [[5, 29], [62, 40]],
       walls: [[2, 22, 33, 22, 1.3], [47, 22, 78, 22, 1.3]],
       rocks: [[25, 30, 4.5], [55, 30, 4.5], [40, 40, 3.2], [30, 62, 3], [5, 66, 3.5], [74, 50, 2.5]],
       sand: [[40, 40, 11], [11, 30, 6], [62, 8, 5]],
       lanes: [[40, 9, 40, 32, 3.5], [40, 9, 11, 12, 3], [11, 12, 12, 46, 2.5], [12, 46, 32, 46, 3], [40, 32, 32, 46, 2.5]] },
     lake: { name: '거울 호수', gen: 'symmetric', w: 96, h: 64, theme: 'moss', desc: '96×64 · 기지 4 · 중앙 호수를 도는 두 갈래 길, 뒷마당 확장',
       bases: [{ x: 11, y: 32, start: 0, dir: 3.14 }, { x: 13, y: 9, dir: 3.93, ore: 6, oneVent: true }, { x: 48, y: 11, dir: 4.71, ore: 9 }],
-      sites: [[30, 14], [34, 50]], posts: [[6, 56], [62, 30]], tribe: [48, 32], tribeLanes: [[48, 32, 48, 17, 2.5]],
+      sites: [[30, 14], [34, 50]], posts: [[6, 56], [62, 30]],
       walls: [[2, 19, 26, 19, 1.4], [26, 2, 26, 19, 1.4]],
       rocks: [[48, 32, 9], [40, 27, 4], [30, 32, 3], [72, 20, 3], [22, 48, 3.5]],
       sand: [[48, 32, 15], [48, 9, 7]],

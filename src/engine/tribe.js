@@ -17,19 +17,40 @@ RTS.TRIBE_RULES = {
   raidEvery: [110, 150],
   loot: 250,          // 회당을 무너뜨린 쪽이 얻는 광석
   homeR: 9,           // 이 거리보다 멀리 있는 한가한 부족 병력은 회당으로 돌아온다
+  centerGap: 12,      // 맵 가운데에서 이만큼은 떨어진 곳에 둔다
+  startGap: 20,       // 시작 기지에서 최소 거리
 };
 const TR = () => RTS.TRIBE_RULES;
 const REL_NAME = { neutral: '중립', ally: '동맹', hostile: '적대' };
 RTS.tribeRelName = r => REL_NAME[r] || r;
 const tTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind });
 
+// 회당 자리: 게임마다 무작위. 맵 가운데, 시작 기지·확장 기지·자원·회사 거점·지부 근처는 피하고, 두 시작 기지에서 걸어서 닿아야 한다
+RTS.tribeSpotPick = function (G) {
+  const H = RTS.defs.entities.t_hall, starts = G.bases.filter(b => b.start !== undefined), cx = G.w / 2, cy = G.h / 2, R = TR();
+  const keep = [...G.siteSpots, ...G.postSpots], res = G.ents.filter(e => RTS.defOf(e).kind === 'resource');
+  const reach = (x, y, tx, ty) => starts.every(b => { const p = RTS.findPath(G, b.x, b.y + 4, { x0: tx - 1, y0: ty - 1, x1: tx + H.size[0], y1: ty + H.size[1] }), l = p[p.length - 1]; return l && Math.hypot(l[0] - x, l[1] - y) < 4.5; });
+  // 조건을 만족하는 칸을 모두 모은 뒤 무작위 순서로 길이 닿는지 본다. 없으면 간격 조건을 줄여 다시 찾는다
+  for (const k of [1, .75, .5]) {
+    const cand = [];
+    for (let y = 7; y <= G.h - 7; y++) for (let x = 7; x <= G.w - 7; x++) { const px = x + .5, py = y + .5;
+      if (Math.hypot(px - cx, py - cy) < R.centerGap) continue;
+      if (starts.some(b => Math.hypot(b.x - px, b.y - py) < R.startGap * (k < 1 ? .85 : 1)) || G.bases.some(b => Math.hypot(b.x - px, b.y - py) < 11 * k)) continue;
+      if (keep.some(q => Math.hypot(q.x - px, q.y - py) < 7 * k) || res.some(e => Math.hypot(e.x - px, e.y - py) < 6 * k)) continue;
+      const tx = Math.round(px - H.size[0] / 2), ty = Math.round(py - H.size[1] / 2); if (!RTS.canPlace(G, RTS.TRIBE, 't_hall', tx, ty, 2)) continue;
+      cand.push([px, py, tx, ty]); }
+    for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
+    for (const [px, py, tx, ty] of cand.slice(0, 60)) if (reach(px, py, tx, ty)) return { x: px, y: py };
+  }
+  return G.tribeSpot; // 못 찾으면 맵 데이터의 자리(있다면)
+};
 RTS.initTribe = function (G) {
-  const s = G.tribeSpot; if (!s) return;
+  const s = RTS.tribeSpotPick(G); if (!s) return;
   const H = RTS.defs.entities.t_hall, hx = Math.round(s.x - H.size[0] / 2), hy = Math.round(s.y - H.size[1] / 2);
   const hall = RTS.spawn(G, 't_hall', RTS.TRIBE, hx + H.size[0] / 2, hy + H.size[1] / 2); hall.built = hall.buildT; hall.hp = H.hp; hall.tribeHall = true;
-  // 망루 2개: 두 시작 기지 방향에 하나씩 두어 양쪽 조건을 같게 한다
-  const starts = G.bases.filter(b => b.start !== undefined), Tw = RTS.defs.entities.t_tower;
-  for (const b of starts) { const a0 = Math.atan2(b.y - hall.y, b.x - hall.x); let done = false;
+  const Tw = RTS.defs.entities.t_tower;
+  const ta = RTS.rand(G) * Math.PI * 2; // 망루 2개: 서로 반대쪽
+  for (const a0 of [ta, ta + Math.PI]) { let done = false;
     for (let r = 4.5; r <= 7 && !done; r += .5) for (let k = 0; k < 9 && !done; k++) { const a = a0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * .3, tx = Math.round(hall.x + Math.cos(a) * r - 1), ty = Math.round(hall.y + Math.sin(a) * r - 1);
       if (!RTS.canPlace(G, RTS.TRIBE, 't_tower', tx, ty, 0)) continue; const e = RTS.spawn(G, 't_tower', RTS.TRIBE, tx + 1, ty + 1); e.built = e.buildT; e.hp = Tw.hp; done = true; } }
   const n = G.teams.length;
