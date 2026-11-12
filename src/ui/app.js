@@ -23,7 +23,7 @@ const HTML = `
     <div class="k-info" id="k-info"></div>
     <div class="k-card" id="k-card"></div>
   </footer>
-  <div class="k-tip" id="k-tip" hidden></div>
+  <div class="k-tip" id="k-tip" hidden></div><div class="k-tip k-htip" id="k-htip" hidden role="tooltip"></div>
   <section class="k-overlay k-start" id="k-start">
     <div class="k-panel">
       <h1>광맥전선</h1>
@@ -87,7 +87,7 @@ RTS.mount = function (root, opts = {}) {
   app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions), foe = f.find(x => x !== app.cfg.faction); app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
     const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
     showGame(G); };
-  function showGame(G) { bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
+  function showGame(G) { hideHover(); bind(G); $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
   app.toMenu = () => { if (app.net) netClose(true); else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
   app.saveState = () => (app.G && !app.demo ? RTS.serialize(app.G) : null);
@@ -112,7 +112,7 @@ RTS.mount = function (root, opts = {}) {
       tr(5, 'Q', '+5', '5주 매수'); tr(20, 'W', '+20', '20주 매수'); tr(-5, 'E', '-5', '5주 매도'); tr(-100, 'R', '전량', '보유 주식 전량 매도'); return items; }
     if (!L) return items;
     const d = RTS.defOf(L), f = t.faction, ids = list.filter(e => e.def === L.def).map(e => e.id), allIds = list.filter(e => RTS.defOf(e).kind === 'unit').map(e => e.id);
-    const ent = (id, act) => { const u = RTS.defs.entities[id], tech = RTS.techOk(t, u); return { key: u.key, img: R.icon(id, app.team, f), name: u.name, desc: u.desc, cost: u.cost, sub: u.supply ? '보급 ' + u.supply : '', ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name || RTS.defs.upgrades[r]?.name).join(', '), run: act }; };
+    const ent = (id, act) => { const u = RTS.defs.entities[id], tech = RTS.techOk(t, u); return { def: id, key: u.key, img: R.icon(id, app.team, f), name: u.name, desc: u.desc, cost: u.cost, sub: u.supply ? '보급 ' + u.supply : '', ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name || RTS.defs.upgrades[r]?.name).join(', '), run: act }; };
     if (!RTS.complete(L)) { items.push({ key: 'X', text: '취소', name: '건설 취소', desc: '비용의 75%를 돌려받습니다', ok: true, run: () => send({ type: 'cancel', building: L.id }) }); return items; }
     if (app.menu === 'build' && d.builds) { for (const id of d.builds) items.push(ent(id, () => { app.mode = { type: 'place', def: id }; app.menu = 'main'; })); items.push({ key: 'Escape', label: 'Esc', text: '뒤로', name: '뒤로', ok: true, run: () => { app.menu = 'main'; } }); return items; }
     if (d.kind === 'unit') {
@@ -126,7 +126,7 @@ RTS.mount = function (root, opts = {}) {
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
-      for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
+      for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
       if (L.prod.length) items.push({ key: 'X', text: '취소', name: '마지막 대기 취소', desc: '비용을 돌려받습니다', ok: true, run: () => send({ type: 'cancel', building: L.id }) });
     }
     return items; }
@@ -185,7 +185,7 @@ RTS.mount = function (root, opts = {}) {
     items.forEach((it, i) => { const b = document.createElement('button'); b.id = 'k-cmd-' + i; b.className = 'k-cmd' + (it.ok ? '' : ' off') + (it.cost && !RTS.canPay(t, it.cost) ? ' poor' : ''); b.innerHTML = (it.img ? `<img src="${it.img}" alt="">` : `<em>${it.text}</em>`) + `<kbd>${it.label || it.key}</kbd>` + (it.cool ? `<u>${it.cool}</u>` : '');
       b.setAttribute('aria-label', it.name); b.onclick = () => { unlock(); useItem(it); }; b.onmouseenter = () => tip(b, it); b.onmouseleave = () => { $('k-tip').hidden = true; }; el.appendChild(b); }); }
   function useItem(it) { if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } app.sfx('click'); it.run(); app.cardSig = ''; renderCard(); $('k-tip').hidden = true; }
-  function tip(b, it) { const T = $('k-tip'), r = b.getBoundingClientRect(), rr = root.getBoundingClientRect(); T.innerHTML = `<b>${it.name}</b>${it.cost ? `<p>${cost(it.cost)} ${it.sub || ''}</p>` : ''}${it.desc ? `<p>${it.desc}</p>` : ''}${it.why ? `<p class="why">${it.why}</p>` : ''}`; T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; }
+  function tip(b, it) { const T = $('k-tip'), r = b.getBoundingClientRect(), rr = root.getBoundingClientRect(); if (it.def || it.up) { T.innerHTML = tipHTML(it.up ? { up: it.up } : { def: it.def, how: true }); T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; return; } T.innerHTML = `<b>${it.name}</b>${it.cost ? `<p>${cost(it.cost)} ${it.sub || ''}</p>` : ''}${it.desc ? `<p>${it.desc}</p>` : ''}${it.why ? `<p class="why">${it.why}</p>` : ''}`; T.hidden = false; T.style.right = Math.max(8, rr.right - r.right) + 'px'; T.style.bottom = (rr.bottom - r.top + 8) + 'px'; }
   function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
     let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
     const e = list[0], d = RTS.defOf(e), f = e.team >= 0 ? G.teams[e.team].faction : 'pioneers';
@@ -205,7 +205,7 @@ RTS.mount = function (root, opts = {}) {
     $('k-ore').textContent = Math.floor(t.res.ore); $('k-gas').textContent = Math.floor(t.res.gas); $('k-sup').textContent = t.sup + '/' + t.cap; $('k-sup').parentNode.classList.toggle('full', t.sup >= t.cap);
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     const idle = G.ents.filter(e => e.team === app.team && RTS.defOf(e).gather && !e.order); $('k-idlen').textContent = idle.length; app.idle = idle;
-    renderInfo(); renderCard(); const m = app.mode, mb = $('k-modebar');
+    renderInfo(); renderCard(); if (htip.shown) { const x = app.G.byId[htip.id]; if (!x || x.dead || !canSee(x)) hideHover(); else { const h = tipHTML({ ent: x }); if (h !== htip.sig) { htip.sig = h; $('k-htip').innerHTML = h; } } } const m = app.mode, mb = $('k-modebar');
     if (m) { mb.hidden = false; const txt = m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요' : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 이동 지점을 고르세요' : '순찰 지점을 고르세요'; if (mb.textContent !== txt + ' · Esc 취소') mb.textContent = txt + ' · Esc 취소'; } else mb.hidden = true; }
   function renderMini() { const G = app.G, c = mini.getContext('2d'), W = mini.width, H = mini.height, sc = Math.min(W / G.w, H / G.h), ox = (W - G.w * sc) / 2, oy = (H - G.h * sc) / 2; app.miniT = { sc, ox, oy };
     c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
@@ -246,16 +246,74 @@ RTS.mount = function (root, opts = {}) {
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
+
+  // ── 풍선 도움말: 유닛·건물·연구의 이름, 능력치, 비용, 필요 조건, 만드는 방법 ──
+  const RES_NAME = { ore: '광석', gas: '에테르' };
+  const nameOf = id => RTS.defs.entities[id]?.name || RTS.defs.upgrades[id]?.name || id;
+  const sec = n => (n % 1 ? n.toFixed(1) : n) + '초';
+  // 이 유닛·건물·연구를 어디서 어떻게 만드는지: 만드는 쪽 정의와 단축키 경로
+  function howTo(id) { const D = RTS.defs.entities, out = [];
+    for (const b of Object.values(D)) {
+      if ((b.trains || []).includes(id)) out.push(`${b.name} 선택 → ${D[id].key ? D[id].key + ' 키' : '버튼'}`);
+      if ((b.builds || []).includes(id)) out.push(`${b.name} 선택 → B(건설) → ${D[id].key || ''}`);
+      if ((b.researches || []).includes(id)) out.push(`${b.name} 선택 → ${RTS.defs.upgrades[id].key} 키`); }
+    return out; }
+  function needList(d, t) { return (d.requires || []).map(r => { const ok = t && (t.have[r] > 0 || t.upgrades[r]); return `<span class="${t ? (ok ? 'ok' : 'no') : ''}">${t ? (ok ? '✓ ' : '✗ ') : ''}${nameOf(r)}</span>`; }).join(' · '); }
+  const costTxt = c => Object.keys(c || {}).map(k => `<span class="c-${k}">${RES_NAME[k]} ${c[k]}</span>`).join(' ');
+  function tipHTML(src) { const G = app.G, me = app.team, t = G && G.teams[me], D = RTS.defs.entities; let h = '', e = null, d, id;
+    const row = (k, v) => v === '' || v == null ? '' : `<tr><th>${k}</th><td>${v}</td></tr>`;
+    if (src.up) { const u = RTS.defs.upgrades[src.up], done = t && t.upgrades[src.up], doing = t && t.research[src.up];
+      h += `<b>${u.name}</b><small class="t-kind">연구${done ? ' · 완료' : doing ? ' · 진행 중' : ''}</small><p>${u.desc || ''}</p><table>`
+        + row('비용', costTxt(u.cost)) + row('시간', u.time ? sec(u.time) : '') + row('필요', needList(u, t)) + row('방법', howTo(src.up).join('<br>')) + '</table>';
+      return h; }
+    if (src.ent) { e = src.ent; id = e.def; d = D[id]; } else { id = src.def; d = D[id]; }
+    const own = e ? (e.team === me ? '내 것' : e.team < 0 ? '중립' : '상대') : '';
+    if (e && e.branch) { const b = G.dip.list[e.branch], bd = RTS.defs.branches[e.branch];
+      return `<b>${bd.name}</b><small class="t-kind">자유상단 지부 · ${b.ally < 0 ? '중립' : b.ally === me ? '내 동맹' : '상대 동맹'}</small><table>${row('혜택', bd.perkText)}${row('동맹 조건', bd.need)}${row('체력', Math.ceil(e.hp) + ' / ' + d.hp)}</table><p>N 키로 자유상단을 열어 거래하거나 동맹을 신청합니다.</p>`; }
+    if (e && e.company) { const c = G.market.cos[e.company], co = RTS.defs.companies[e.company];
+      return `<b>${co.name}</b><small class="t-kind">회사 거점 · ${RES_NAME[co.resource]}</small><p>${co.blurb}</p><table>${row('주가', c.price.toFixed(1))}${row('지분', `나 ${c.shares[me] || 0} · 상대 ${c.shares[1 - me] || 0} · 시장 ${c.free}`)}${row('경영권', c.owner < 0 ? '없음' : c.owner === me ? '나' : '상대')}${row('체력', Math.ceil(e.hp) + ' / ' + d.hp + (e.downUntil > G.tick ? ' · 가동 중단' : ''))}</table><p>M 키 거래소에서 사고팝니다. ${RTS.cfg(G).control}주 이상이면 경영권을 얻습니다. 공격하면 주가가 내립니다.</p>`; }
+    if (d.kind === 'resource') return `<b>${d.name}</b><small class="t-kind">자원</small><p>${d.desc || ''}</p><table>${row('남은 양', e ? e.amount : d.amount)}</table>`;
+    const isUnit = d.kind === 'unit', mineE = !e || e.team === me;
+    h += `<b>${d.name}</b><small class="t-kind">${isUnit ? '유닛' : '건물'}${own ? ' · ' + own : ''}${e && !isUnit && !RTS.complete(e) ? ' · 건설 중' : ''}</small>`;
+    if (d.desc) h += `<p>${d.desc}</p>`;
+    h += '<table>';
+    if (e && e.team >= 0) h += row('체력', `${Math.ceil(e.hp)} / ${Math.round(RTS.stat(G, e, 'hp'))}`); else if (d.hp) h += row('체력', d.hp);
+    const w = e ? RTS.weapon(e) : d.weapon, st = (n, base) => e && e.team >= 0 ? RTS.wStat(G, e, w, n) : base;
+    if (w) h += row('공격', `${Math.round(st('damage', w.damage))} · 사거리 ${+st('range', w.range).toFixed(1)} · ${w.air === false ? '지상만' : '지상·공중'}${w.splash ? ' · 범위' : ''}`);
+    if (d.siegeWeapon && !(e && e.sieged)) h += row('포격 모드', `공격 ${d.siegeWeapon.damage} · 사거리 ${d.siegeWeapon.range} · 범위`);
+    const arm = e && e.team >= 0 ? RTS.stat(G, e, 'armor') : d.armor || 0; if (arm) h += row('방어', Math.round(arm));
+    if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'}`);
+    if (isUnit && d.speed) h += row('속도', +(e && e.team >= 0 ? RTS.stat(G, e, 'speed') : d.speed).toFixed(1));
+    if (d.provides) h += row('보급 제공', '+' + d.provides);
+    if (mineE) { h += row('비용', costTxt(d.cost) + (d.supply ? ` · 보급 ${d.supply}` : '')) + row(isUnit ? '생산 시간' : '건설 시간', d.time ? sec(d.time) : '') + row('필요', needList(d, t));
+      if (!e || !isUnit || src.how) h += row('만드는 법', howTo(id).join('<br>')); }
+    h += '</table>';
+    if (mineE && d.trains && d.trains.length) h += `<p class="t-h">생산</p><ul>` + d.trains.map(u => { const x = D[u], ok = !t || RTS.techOk(t, x); return `<li class="${ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} ${costTxt(x.cost)}${ok ? '' : ` <em>필요: ${(x.requires || []).map(nameOf).join(', ')}</em>`}</li>`; }).join('') + '</ul>';
+    if (mineE && d.builds && d.builds.length && e) h += `<p class="t-h">건설 (B)</p><ul>` + d.builds.map(u => { const x = D[u], ok = !t || RTS.techOk(t, x); return `<li class="${ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} ${costTxt(x.cost)}${ok ? '' : ` <em>필요: ${(x.requires || []).map(nameOf).join(', ')}</em>`}</li>`; }).join('') + '</ul>';
+    if (mineE && d.researches && d.researches.length) h += `<p class="t-h">연구</p><ul>` + d.researches.map(u => { const x = RTS.defs.upgrades[u], done = t && t.upgrades[u], doing = t && t.research[u], ok = !t || RTS.techOk(t, x); return `<li class="${done ? 'done' : ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} — ${x.desc}${done ? ' <em>완료</em>' : doing ? ' <em>진행 중</em>' : ' ' + costTxt(x.cost)}${!done && !ok ? ` <em>필요: ${x.requires.map(nameOf).join(', ')}</em>` : ''}</li>`; }).join('') + '</ul>';
+    if (d.abilities && d.abilities.length) h += `<p class="t-h">능력</p><ul>` + d.abilities.map(a => { const ab = RTS.defs.abilities[a], ok = !ab.requires || (t && t.upgrades[ab.requires]); return `<li class="${ok ? '' : 'no'}"><kbd>${ab.key}</kbd>${ab.name} — ${ab.desc}${ok ? '' : ` <em>연구 필요: ${nameOf(ab.requires)}</em>`}</li>`; }).join('') + '</ul>';
+    return h; }
+  // 화면 위 풍선: 마우스는 0.35초 멈추면, 터치는 0.5초 길게 누르면 뜬다
+  const htip = { id: 0, at: 0, el: null, shown: false, timer: 0, long: false };
+  function hideHover() { clearTimeout(htip.timer); htip.timer = 0; htip.id = 0; if (htip.shown) { $('k-htip').hidden = true; htip.shown = false; } }
+  function showHover(e, sx, sy) { const T = $('k-htip'), r = view.getBoundingClientRect(), k = r.width / view.width, sr = $('k-stage').getBoundingClientRect(), rr = root.getBoundingClientRect();
+    T.innerHTML = tipHTML({ ent: e }); T.hidden = false; htip.shown = true; htip.id = e.id; htip.sig = '';
+    const px = sx * k + r.left - rr.left, py = sy * k + r.top - rr.top, W = T.offsetWidth, H = T.offsetHeight, maxX = sr.right - rr.left - 6, maxY = sr.bottom - rr.top - 6;
+    let x = px + 18, y = py + 18; if (x + W > maxX) x = px - W - 14; if (y + H > maxY) y = py - H - 14; T.style.left = Math.max(6, x) + 'px'; T.style.top = Math.max(sr.top - rr.top + 6, y) + 'px'; }
+  function hoverAt(sx, sy, delay) { if (!app.G || app.demo) return; const [wx, wy] = toWorld(sx, sy), e = pick(wx, wy);
+    if (!e) { hideHover(); return; } if (htip.shown && htip.id === e.id) { showHover(e, sx, sy); return; }
+    if (htip.shown) hideHover(); clearTimeout(htip.timer); htip.pend = e.id; htip.timer = setTimeout(() => { const x = app.G.byId[htip.pend]; if (x && !x.dead && canSee(x)) showHover(x, sx, sy); }, delay); }
   const drag = {};
   view.addEventListener('contextmenu', e => e.preventDefault());
   view.addEventListener('pointerenter', () => { app.mouse.inside = true; });
-  view.addEventListener('pointerleave', () => { app.mouse.inside = false; });
+  view.addEventListener('pointerleave', () => { app.mouse.inside = false; hideHover(); });
   view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
+    hideHover(); htip.long = false; if (touch && !app.mode) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
-  view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) return; const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) drag.moved = true;
+  view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; if (drag.touch) { clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } } // 길게 눌러 도움말을 본 뒤에는 탭 명령을 내지 않는다 const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
@@ -266,7 +324,7 @@ RTS.mount = function (root, opts = {}) {
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
     if (drag.shift && t.team === app.team && RTS.defOf(t).kind === 'unit') { app.sel = app.sel.includes(t.id) ? app.sel.filter(i => i !== t.id) : [...app.sel, t.id]; return; }
     app.sel = [t.id]; });
-  view.addEventListener('wheel', e => { e.preventDefault(); if (app.demo) return; setMouse(e); const [wx, wy] = [app.mouse.wx, app.mouse.wy], z = Math.max(.55, Math.min(1.6, cam.z * (e.deltaY < 0 ? 1.1 : .91))); cam.z = z; cam.x = wx * TS - app.mouse.x / z; cam.y = wy * TS - app.mouse.y / z; clampCam(); }, { passive: false });
+  view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); const [wx, wy] = [app.mouse.wx, app.mouse.wy], z = Math.max(.55, Math.min(1.6, cam.z * (e.deltaY < 0 ? 1.1 : .91))); cam.z = z; cam.x = wx * TS - app.mouse.x / z; cam.y = wy * TS - app.mouse.y / z; clampCam(); }, { passive: false });
   const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
   mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
   mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
