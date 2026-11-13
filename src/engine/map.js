@@ -109,7 +109,7 @@ RTS.updateFog = function (G, force) {
     if (t.reveal) { if (!t.vis[0] || force) { t.vis.fill(1); t.seen.fill(1); } continue; } // 핸디캡: 이 팀만 맵 전체 공개
     t.vis.fill(0); const tribeEyes = RTS.tribeAlly && RTS.tribeAlly(G, t.id); // 잿빛 부족 동맹이면 부족 시야를 공유한다
     for (const e of G.ents) {
-      if ((e.team !== t.id && !(tribeEyes && e.team === RTS.TRIBE)) || e.dead) continue;
+      if ((e.team !== t.id && !(tribeEyes && e.team === RTS.TRIBE) && !(G.coop && e.team >= 0 && RTS.ally(G, t.id, e.team))) || e.dead) continue; // 협동: 동료 시야 공유
       const r = RTS.defs.entities[e.def].sight || 8, cx = e.x | 0, cy = e.y | 0, R = r * r;
       for (let y = Math.max(0, cy - r); y <= Math.min(G.h - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(G.w - 1, cx + r); x++) {
         if ((x - cx) ** 2 + (y - cy) ** 2 <= R) { const i = y * G.w + x; t.vis[i] = 1; t.seen[i] = 1; }

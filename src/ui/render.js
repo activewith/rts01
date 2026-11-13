@@ -2,7 +2,9 @@
 // 새 유닛 그림은 RTS.art.units.이름, 건물은 RTS.art.buildings.이름 함수 하나만 추가한다.
 RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
 // 진영 색. 어느 팀 슬롯이든 진영이 같으면 같은 색으로 그린다.
-RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
+RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1], swarm: RTS.TEAM[3] };
+// 협동: 진영이 같아도 나·동료·중립세력이 구분되도록 팀 슬롯 색을 쓴다(파랑·보라·주황)
+RTS.COOP_COLOR = [RTS.TEAM[0], RTS.TEAM[3], RTS.TEAM[1]];
 RTS.TEAM[RTS.TRIBE] = { main: '#7bd65a', dark: '#2f5e22', light: '#d9f7c6' }; // 잿빛 부족
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
@@ -15,11 +17,19 @@ const NEUTRAL = { main: '#b9c2cf', dark: '#566274', light: '#eef2f7' };
 const TS = 32, TAU = Math.PI * 2;
 function shade(ctx, x, y, w, h, c, r = 3) { ctx.fillStyle = c; ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); }
 function circ(ctx, x, y, r, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.arc(x, y, r, 0, TAU); ctx.fill(); }
-const STEEL = ['#8795a8', '#59677b', '#39455a', '#232c3d'], MECH = ['#a0937c', '#6f6655', '#4a4338', '#2e2a24'];
+const STEEL = ['#8795a8', '#59677b', '#39455a', '#232c3d'], MECH = ['#a0937c', '#6f6655', '#4a4338', '#2e2a24'], FLESH = ['#b48f9c', '#7d5766', '#523545', '#2f1e29'];
+// 진영별 재질. 새 진영은 여기에 재질을 추가한다(없으면 STEEL)
+RTS.MAT = { pioneers: STEEL, ironclad: MECH, swarm: FLESH };
+const matOf = f => RTS.MAT[f] || STEEL;
+// 포자군락 공통: 꿈틀대는 몸통 타원과 등딱지 마디
+function blob(c, x, y, rx, ry, col) { c.fillStyle = col; c.beginPath(); c.ellipse(x, y, rx, ry, 0, 0, TAU); c.fill(); }
+function legs(c, n, len, spread, t, moving, col, wid = 2) { c.strokeStyle = col; c.lineWidth = wid; c.lineCap = 'round';
+  for (let i = 0; i < n; i++) { const x = -spread + (2 * spread) * (n === 1 ? .5 : i / (n - 1)), k = moving ? Math.sin(t * .6 + i * 1.7) * 2.5 : 0;
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(x, 3 * b); c.lineTo(x + 2 + k * b, (len * .6) * b); c.lineTo(x + 4 - k * b, len * b); c.stroke(); } } c.lineCap = 'butt'; }
 
 RTS.art = {
   units: {
-    worker(c, p, s) { const m = s.faction === 'ironclad' ? MECH : STEEL;
+    worker(c, p, s) { const m = matOf(s.faction);
       shade(c, -9, -8, 18, 16, m[2], 5); shade(c, -7, -6, 14, 12, p.main, 4); circ(c, 2, 0, 4.2, p.light);
       c.strokeStyle = m[0]; c.lineWidth = 2.6; c.beginPath(); c.moveTo(6, 4); c.lineTo(13, 6 + Math.sin(s.t * .5) * 2); c.stroke(); c.beginPath(); c.moveTo(6, -4); c.lineTo(12, -6); c.stroke();
       if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
@@ -60,6 +70,28 @@ RTS.art = {
       c.fillStyle = f ? MECH[1] : STEEL[1]; c.beginPath(); c.moveTo(f ? 18 : 20, 0); c.lineTo(-12, f ? -16 : -19); c.lineTo(-7, 0); c.lineTo(-12, f ? 16 : 19); c.closePath(); c.fill();
       c.fillStyle = p.dark; c.beginPath(); c.moveTo(12, 0); c.lineTo(-8, -8); c.lineTo(-5, 0); c.lineTo(-8, 8); c.closePath(); c.fill();
       circ(c, 5, 0, 3.8, p.main); circ(c, -11, -7, 2.6 + (s.t % 4 < 2 ? 1 : 0), '#ffd27a'); circ(c, -11, 7, 2.6 + (s.t % 4 < 2 ? 1 : 0), '#ffd27a'); },
+
+    // ── 포자군락 ──
+    sworker(c, p, s) { legs(c, 3, 9, 5, s.t, s.moving, FLESH[3], 1.8); blob(c, -2, 0, 9, 7, FLESH[2]); blob(c, -1, 0, 7, 5.4, p.dark); blob(c, 3, 0, 4.4, 4, FLESH[0]);
+      circ(c, 5.5, -1.8, 1.3, p.light); circ(c, 5.5, 1.8, 1.3, p.light); c.strokeStyle = FLESH[0]; c.lineWidth = 2; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(6, 2.5 * b); c.quadraticCurveTo(11, 4 * b, 12, 1 * b + Math.sin(s.t * .5) * b); c.stroke(); }
+      if (s.cargo) circ(c, -9, 0, 4, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); },
+    claw(c, p, s) { legs(c, 3, 9, 5, s.t, s.moving, FLESH[3], 1.6); blob(c, -3, 0, 8, 5.5, FLESH[2]); blob(c, -2, 0, 6, 4, p.dark); for (let i = 0; i < 3; i++) blob(c, -6 + i * 3, 0, 1.2, 3.6, p.main);
+      blob(c, 4, 0, 4, 3.6, FLESH[1]); circ(c, 6, -1.5, 1.1, '#ffe08a'); circ(c, 6, 1.5, 1.1, '#ffe08a'); const k = Math.sin(s.t * .8) * 1.5;
+      c.fillStyle = '#e8dccb'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(6, 3 * b); c.quadraticCurveTo(14, (6 + k) * b, 15, (1 + k * .3) * b); c.lineTo(9, 1.5 * b); c.closePath(); c.fill(); } },
+    spitter(c, p, s) { const w = s.moving ? Math.sin(s.t * .4) * 3 : 0; c.strokeStyle = FLESH[2]; c.lineWidth = 6; c.lineCap = 'round'; c.beginPath(); c.moveTo(-14, w); c.quadraticCurveTo(-7, -w, -1, 0); c.stroke(); c.lineCap = 'butt';
+      blob(c, 1, 0, 8, 7.5, FLESH[1]); blob(c, 1, 0, 6, 5.6, p.dark); c.fillStyle = p.main; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(-2, 5 * b); c.lineTo(-7, 12 * b); c.lineTo(2, 7 * b); c.closePath(); c.fill(); }
+      blob(c, 7, 0, 4.6, 3.8, FLESH[0]); circ(c, 11, 0, 2.2, '#9be05a'); circ(c, 7.5, -2, 1.1, p.light); circ(c, 7.5, 2, 1.1, p.light); },
+    nurse(c, p, s) { legs(c, 2, 8, 3, s.t, s.moving, FLESH[3], 1.6); blob(c, -1, 0, 10, 9, FLESH[1]); const b = 1 + Math.sin(s.t * .15) * .06; blob(c, -2, 0, 7.5 * b, 7 * b, p.dark);
+      circ(c, -3, -2, 3, '#ffb7d0'); circ(c, -4, 2.5, 2.4, '#ffb7d0'); circ(c, 0, 1, 2, '#ffd6e4'); blob(c, 7, 0, 3.6, 3.2, FLESH[0]); circ(c, 8.5, 0, 1.3, p.light); },
+    brute(c, p, s) { const k = s.moving ? Math.sin(s.t * .3) * 4 : 0; c.fillStyle = FLESH[3]; for (const [x, b] of [[-12, -1], [-12, 1], [2, -1], [2, 1]]) c.fillRect(x + (b > 0 ? k : -k), b > 0 ? 13 : -21, 9, 8);
+      blob(c, -2, 0, 20, 16, FLESH[2]); blob(c, -3, 0, 16, 12.5, p.dark); c.fillStyle = FLESH[1]; for (let i = 0; i < 4; i++) { c.beginPath(); c.ellipse(-13 + i * 7, 0, 2.6, 11, 0, 0, TAU); c.fill(); }
+      c.fillStyle = p.main; for (let i = 0; i < 3; i++) { c.beginPath(); c.moveTo(-14 + i * 8, -9); c.lineTo(-11 + i * 8, -16); c.lineTo(-8 + i * 8, -9); c.closePath(); c.fill(); }
+      blob(c, 14, 0, 7, 8, FLESH[1]); circ(c, 17, -3, 1.6, '#ffe08a'); circ(c, 17, 3, 1.6, '#ffe08a');
+      c.fillStyle = '#efe4d2'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(16, 5 * b); c.quadraticCurveTo(30, 12 * b, 31, 2 * b); c.lineTo(20, 2 * b); c.closePath(); c.fill(); } },
+    drake(c, p, s) { const f = Math.sin(s.t * .5) * 4; c.fillStyle = FLESH[1]; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(2, 2 * b); c.quadraticCurveTo(-4, (18 + f) * b, -14, (16 + f) * b); c.quadraticCurveTo(-8, 8 * b, -6, 2 * b); c.closePath(); c.fill(); }
+      c.fillStyle = p.dark; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(0, 3 * b); c.quadraticCurveTo(-4, (12 + f * .6) * b, -10, (12 + f * .6) * b); c.lineTo(-5, 3 * b); c.closePath(); c.fill(); }
+      c.strokeStyle = FLESH[2]; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.moveTo(-6, 0); c.quadraticCurveTo(-13, 3, -18, -1); c.stroke(); c.lineCap = 'butt';
+      blob(c, 1, 0, 8, 4.5, FLESH[2]); blob(c, 2, 0, 5.5, 3, p.main); circ(c, 8, 0, 3, FLESH[0]); circ(c, 9.5, 0, 1.3, '#ffe08a'); },
   },
   // 건물은 (ctx, w, h, 팔레트, 상태) 로 그린다. 원점은 왼쪽 위, 단위는 px.
   buildings: {
@@ -88,6 +120,21 @@ RTS.art = {
     i_lab(c, w, h, p, s) { hexPad(c, w, h, s); for (const [x, r] of [[26, 17], [48, 13], [70, 17]]) { hex(c, x, h / 2, r, s.m[2]); circ(c, x, h / 2, r * .55, p.main); } c.strokeStyle = p.light; c.lineWidth = 2; c.beginPath(); c.moveTo(26, h / 2); c.lineTo(70, h / 2); c.stroke(); },
     i_factory(c, w, h, p, s) { hexPad(c, w, h, s); const x = w / 2, y = h / 2; c.fillStyle = s.m[3]; c.beginPath(); c.moveTo(14, y); c.lineTo(x, 12); c.lineTo(w - 14, y); c.lineTo(x, h - 12); c.closePath(); c.fill(); hex(c, x, y, 21, p.dark); c.save(); c.translate(x, y); c.rotate(s.t * .03); c.fillStyle = p.main; for (let i = 0; i < 4; i++) { c.rotate(TAU / 4); c.fillRect(3, -3, 16, 6); } c.restore(); circ(c, x, y, 5, p.light); },
     i_turret(c, w, h, p, s) { hexPad(c, w, h, s); hex(c, w / 2, h / 2, 22, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); hex(c, 0, 0, 12, p.dark); c.fillStyle = s.m[3]; c.fillRect(4, -2.5, 27, 5); circ(c, 0, 0, 5, p.main); c.restore(); },
+    // ── 포자군락: 살덩이 바닥(fleshPad) 위에 낭·굴·촉수 ──
+    s_hq(c, w, h, p, s) { fleshPad(c, w, h, s); const x = w / 2, y = h / 2, b = 1 + Math.sin(s.t * .08) * .04; blob(c, x, y, 46 * b, 32 * b, FLESH[2]); blob(c, x, y, 38 * b, 25 * b, p.dark);
+      for (let i = 0; i < 6; i++) { const a = i * TAU / 6 + .3; blob(c, x + Math.cos(a) * 27, y + Math.sin(a) * 15, 8, 6, FLESH[1]); } blob(c, x, y, 16, 12, FLESH[3]); circ(c, x, y, 9, p.main); circ(c, x, y, 4.5 + Math.sin(s.t * .1), p.light); },
+    s_pod(c, w, h, p, s) { fleshPad(c, w, h, s); const x = w / 2, y = h / 2, b = 1 + Math.sin(s.t * .12) * .07; blob(c, x, y + 3, 22, 18, FLESH[2]); blob(c, x, y, 18 * b, 15 * b, p.dark);
+      blob(c, x - 6, y - 5, 6, 4, p.main); blob(c, x + 7, y + 3, 5, 3.5, p.main); circ(c, x - 7, y - 6, 2, p.light); },
+    s_extractor(c, w, h, p, s) { fleshPad(c, w, h, s); const x = w / 2, y = h / 2; blob(c, x, y, 22, 20, FLESH[2]); c.strokeStyle = FLESH[1]; c.lineWidth = 5; for (let i = 0; i < 4; i++) { const a = i * TAU / 4 + .7; c.beginPath(); c.moveTo(x, y); c.quadraticCurveTo(x + Math.cos(a + .5) * 12, y + Math.sin(a + .5) * 12, x + Math.cos(a) * 20, y + Math.sin(a) * 19); c.stroke(); }
+      circ(c, x, y, 10, p.dark); circ(c, x, y, 6 + Math.sin(s.t * .15), '#e06bd8'); },
+    s_pool(c, w, h, p, s) { fleshPad(c, w, h, s); const x = w / 2, y = h / 2; blob(c, x, y, 36, 34, FLESH[2]); blob(c, x, y + 2, 26, 22, FLESH[3]); const b = Math.sin(s.t * .1);
+      blob(c, x, y + 2, 20, 16, p.dark); for (const [dx, dy, r] of [[-8, -3, 5], [7, 4, 4], [2, -7, 3.4]]) circ(c, x + dx, y + dy + b, r, '#9be05a'); c.fillStyle = p.main; for (let i = 0; i < 5; i++) { const a = -2.6 + i * .55; c.beginPath(); c.moveTo(x + Math.cos(a) * 30, y + Math.sin(a) * 28); c.lineTo(x + Math.cos(a) * 41, y + Math.sin(a) * 39); c.lineTo(x + Math.cos(a + .18) * 30, y + Math.sin(a + .18) * 28); c.fill(); } },
+    s_den(c, w, h, p, s) { fleshPad(c, w, h, s); const y = h / 2; for (const [x, r] of [[26, 17], [50, 13], [72, 16]]) { blob(c, x, y, r, r * .9, FLESH[2]); blob(c, x, y, r * .7, r * .62, p.dark); const k = 1 + Math.sin(s.t * .1 + x) * .12; circ(c, x, y, r * .3 * k, p.main); }
+      c.strokeStyle = FLESH[1]; c.lineWidth = 4; c.beginPath(); c.moveTo(36, y); c.lineTo(42, y); c.moveTo(60, y); c.lineTo(64, y); c.stroke(); },
+    s_nest(c, w, h, p, s) { fleshPad(c, w, h, s); const x = w / 2, y = h / 2; c.fillStyle = FLESH[3]; for (let i = 0; i < 9; i++) { const a = i * TAU / 9; c.beginPath(); c.moveTo(x + Math.cos(a) * 18, y + Math.sin(a) * 18); c.lineTo(x + Math.cos(a + .2) * 42, y + Math.sin(a + .2) * 40); c.lineTo(x + Math.cos(a + .45) * 18, y + Math.sin(a + .45) * 18); c.fill(); }
+      blob(c, x, y, 30, 28, FLESH[2]); blob(c, x, y, 22, 20, p.dark); for (const [dx, dy] of [[-8, -5], [7, -6], [0, 7]]) { blob(c, x + dx, y + dy, 6, 7.5, FLESH[0]); blob(c, x + dx, y + dy - 1, 3, 4, p.light); } },
+    s_spine(c, w, h, p, s) { fleshPad(c, w, h, s); blob(c, w / 2, h / 2, 21, 20, FLESH[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); blob(c, 0, 0, 12, 11, p.dark);
+      c.strokeStyle = FLESH[1]; c.lineWidth = 6; c.lineCap = 'round'; c.beginPath(); c.moveTo(0, 0); c.quadraticCurveTo(14, -6, 26, 0); c.stroke(); c.lineCap = 'butt'; c.fillStyle = '#efe4d2'; c.beginPath(); c.moveTo(24, -4); c.lineTo(33, 0); c.lineTo(24, 4); c.fill(); circ(c, 0, 0, 5, p.main); c.restore(); },
     site_ore(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ffc247'); },
     site_gas(c, w, h, p, s) { siteBase(c, w, h, p, s, '#ea7be0'); },
     site_post(c, w, h, p, s) { plate(c, w, h, s); shade(c, 12, 16, w - 24, h - 30, p.dark, 3); c.fillStyle = p.main; c.beginPath(); c.moveTo(cx3(w) - 30, 18); c.lineTo(cx3(w), 2); c.lineTo(cx3(w) + 30, 18); c.fill();
@@ -95,6 +142,9 @@ RTS.art = {
     turret(c, w, h, p, s) { plate(c, w, h, s); circ(c, w / 2, h / 2, 21, s.m[2]); c.save(); c.translate(w / 2, h / 2); c.rotate(s.facing); shade(c, -11, -11, 22, 22, p.dark, 5); c.fillStyle = s.m[3]; c.fillRect(6, -6, 22, 4); c.fillRect(6, 2, 22, 4); circ(c, 0, 0, 6, p.main); c.restore(); },
   },
 };
+// 포자군락 바닥: 둥근 살덩이 + 핏줄
+function fleshPad(c, w, h, s) { blob(c, w / 2, h / 2, w / 2 - 2, h / 2 - 2, FLESH[3]); blob(c, w / 2, h / 2, w / 2 - 5, h / 2 - 5, FLESH[2]);
+  c.strokeStyle = '#8a3f5c'; c.lineWidth = 1.4; for (let i = 0; i < 7; i++) { const a = i * TAU / 7 + .4; c.beginPath(); c.moveTo(w / 2 + Math.cos(a) * w * .18, h / 2 + Math.sin(a) * h * .18); c.quadraticCurveTo(w / 2 + Math.cos(a + .3) * w * .32, h / 2 + Math.sin(a + .3) * h * .32, w / 2 + Math.cos(a) * (w / 2 - 6), h / 2 + Math.sin(a) * (h / 2 - 6)); c.stroke(); } }
 function hex(c, x, y, r, col) { c.fillStyle = col; c.beginPath(); for (let i = 0; i < 6; i++) c.lineTo(x + Math.cos(i * TAU / 6) * r, y + Math.sin(i * TAU / 6) * r); c.closePath(); c.fill(); }
 function hexPad(c, w, h, s) { c.fillStyle = s.m[3]; c.beginPath(); const q = 16; c.moveTo(q, 3); c.lineTo(w - q, 3); c.lineTo(w - 3, h / 2); c.lineTo(w - q, h - 3); c.lineTo(q, h - 3); c.lineTo(3, h / 2); c.closePath(); c.fill(); c.strokeStyle = s.m[1]; c.lineWidth = 2; c.stroke(); }
 function fins(c, w, h, s) { c.fillStyle = s.m[0]; for (let i = 0; i < 3; i++) { c.fillRect(12 + i * 7, h - 15, 4, 8); c.fillRect(w - 26 + i * 7, h - 15, 4, 8); } }
@@ -113,8 +163,8 @@ function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서�
 RTS.Renderer = function (canvas, app) {
   const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], ghosts: {}, pings: [] };
   let bake = null, bakeFor = null; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
-  const ringCol = e => e.team === app.team ? '#7dffa8' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
-  const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: e.team >= 0 && app.G.teams[e.team]?.faction === 'ironclad' ? MECH : STEEL, facing: e.facing });
+  const ringCol = e => e.team === app.team ? '#7dffa8' : app.G.coop && e.team >= 0 && RTS.ally(app.G, app.team, e.team) ? '#8fd3ff' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
+  const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: matOf(e.team >= 0 && app.G.teams[e.team]?.faction), facing: e.facing });
 
   function bakeTerrain(G) {
     const th = RTS.THEMES[RTS.defs.maps[G.mapId].theme] || RTS.THEMES.dusk;
@@ -394,7 +444,7 @@ RTS.Renderer = function (canvas, app) {
   const icons = {};
   R.icon = function (defId, team, faction) {
     const k = defId + team + faction; if (icons[k]) return icons[k];
-    const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = faction === 'ironclad' ? MECH : STEEL;
+    const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = matOf(faction);
     if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
     else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }
     return (icons[k] = cv.toDataURL());

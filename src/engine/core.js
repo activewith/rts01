@@ -45,6 +45,7 @@ RTS.createGame = function (opts) {
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
     over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
   const easy = opts.players.map(p => p.ai && RTS.defs.difficulties[p.ai]).find(d => d && d.reveal);
+  G.coop = !!opts.coop; // 둘이 협동: 사람 둘(편 0)이 동맹해 중립세력 AI(편 1)와 싸운다
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
@@ -55,7 +56,8 @@ RTS.createGame = function (opts) {
     const t = { id: i, faction: p.faction, ai: p.ai || null, name: p.name || RTS.defs.factions[p.faction].name,
       res: { ore: G.cfg.startOre, gas: G.cfg.startGas }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
       stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
-    if (p.ai) t.inc = RTS.defs.difficulties[p.ai].income;
+    if (p.side !== undefined) t.side = p.side; // 같은 편끼리는 동맹(RTS.ally)
+    if (p.ai) { t.boost = p.boost || 1; t.inc = RTS.defs.difficulties[p.ai].income * t.boost; } // boost: 중립세력 AI 성능 배율
     const hc = p.hc && RTS.HANDICAPS && RTS.HANDICAPS[p.hc]; // 2인 대전 팀별 핸디캡
     if (hc && hc.id !== 'none') { t.hc = hc.id; t.res.ore += hc.ore || 0; t.res.gas += hc.gas || 0; t.inc *= hc.income || 1; if (hc.reveal) t.reveal = true; }
     G.teams.push(t);
@@ -64,9 +66,9 @@ RTS.createGame = function (opts) {
     const e = RTS.spawn(G, n.def, -1, n.tx + RTS.defs.entities[n.def].size[0] / 2, n.ty + RTS.defs.entities[n.def].size[1] / 2);
     e.amount = RTS.defs.entities[n.def].amount;
   });
-  const starts = G.bases.filter(b => b.start !== undefined);
+  const starts = G.bases.filter(b => b.start !== undefined), spots = G.coop ? RTS.coopBases(G) : G.teams.length > 2 ? RTS.ffaBases(G) : null;
   G.teams.forEach((t, i) => {
-    const b = starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
+    const b = spots ? spots[i] : starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
     b.owner = i;
     const hs = RTS.defs.entities[f.hq].size, hq = RTS.spawn(G, f.hq, i, Math.round(b.x - hs[0] / 2) + hs[0] / 2, Math.round(b.y - hs[1] / 2) + hs[1] / 2); hq.built = hq.buildT; hq.hp = RTS.stat(G, hq, 'hp');
     const ore = RTS.nearestNode(G, b.x, b.y, 'ore', 30);
@@ -81,6 +83,26 @@ RTS.createGame = function (opts) {
   RTS.initMarket(G); RTS.initDip(G); if (RTS.initTribe) RTS.initTribe(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
   return G;
 };
+
+// 협동 시작 위치: 0번 사람 = 시작 기지 0, 중립세력(2번) = 맞은편 시작 기지 1,
+// 1번 사람 = 시작 기지 0에서 가장 가까운 확장 기지(광맥 있는 곳). 두 사람이 같은 쪽에서 함께 막는다.
+RTS.coopBases = function (G) {
+  const s0 = G.bases.find(b => b.start === 0), s1 = G.bases.find(b => b.start === 1);
+  const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
+  rest.sort((a, b) => Math.hypot(a.x - s0.x, a.y - s0.y) - Math.hypot(b.x - s0.x, b.y - s0.y));
+  return [s0, rest[0], s1];
+};
+// 셋이 서로 싸울 때: 0·1번은 시작 기지, 2번(중립세력)은 두 시작 기지와의 거리 차이가 가장 작은 확장 기지.
+// 대칭 맵에서는 같은 점수의 기지가 짝으로 나오므로 그중 무작위로 고른다(평균적으로 공평).
+RTS.ffaBases = function (G) {
+  const s0 = G.bases.find(b => b.start === 0), s1 = G.bases.find(b => b.start === 1), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12)).map(b => ({ b, k: Math.round(Math.abs(d(b, s0) - d(b, s1))) }));
+  const best = Math.min(...rest.map(r => r.k)), pick = rest.filter(r => r.k === best);
+  return [s0, s1, pick[Math.floor(RTS.rand(G) * pick.length)].b];
+};
+// 같은 편이면 동맹. 편(side)이 없는 일반 게임에서는 자기 팀만 해당한다.
+RTS.ally = (G, a, b) => { if (a === b) return true; if (a < 0 || b < 0) return false; const x = G.teams[a], y = G.teams[b]; return !!(x && y && x.side !== undefined && x.side === y.side); };
+RTS.allyTeams = (G, a) => G.teams.filter(t => t.id !== a && RTS.ally(G, a, t.id));
 
 // 왕초보: 본진 둘레에 완공된 방어탑을 [최소,최대] 사이 무작위 개수만큼 세운다.
 // 적이 올 방향(맵 중앙 쪽)부터 채우고, 광맥·분출구 근처와 사령부→광맥 일꾼 동선은 비워 둔다.

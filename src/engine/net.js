@@ -61,7 +61,16 @@ RTS.Lockstep = function (o) {
 
 // 두 사람 게임 시작 옵션. 호스트가 만들어 상대에게 그대로 보낸다.
 // hc: 팀별 핸디캡 단계 id(RTS.HANDICAPS), 0번 팀이 호스트.
+// 두 사람은 서로 다른 진영을 고르고, 남은 진영이 중립세력(2번 팀 AI)이 된다. 중립세력은 두 방식 모두에 나온다.
+//   coop: 두 사람이 같은 편(side 0), 중립세력은 side 1. 아니면 셋이 모두 서로 적이다(마지막까지 남는 쪽이 승리).
+//   boost: 보통 AI 대비 성능 배율(기본 1.3), level: 기준 난이도
+RTS.COOP = { name: '중립세력', level: 'normal', boost: 1.3, boosts: [1, 1.15, 1.3, 1.5, 1.7] };
+RTS.restFaction = used => Object.keys(RTS.defs.factions).find(f => !used.includes(f)) || used[0];
 RTS.netGameOpts = function (o) {
-  return { map: o.map, seed: o.seed, settings: o.settings, net: true,
-    players: [{ faction: o.factions[0], name: o.names[0], hc: o.hc[0] }, { faction: o.factions[1], name: o.names[1], hc: o.hc[1] }] };
+  const p = [{ faction: o.factions[0], name: o.names[0], hc: o.hc[0] }, { faction: o.factions[1], name: o.names[1], hc: o.hc[1] }];
+  if (o.coop) p.forEach(x => { x.side = 0; });
+  const n = { faction: o.enemy || RTS.restFaction(o.factions), name: RTS.COOP.name, ai: o.level || RTS.COOP.level, boost: o.boost || RTS.COOP.boost };
+  if (o.coop) n.side = 1;
+  p.push(n);
+  return { map: o.map, seed: o.seed, settings: o.settings, net: true, coop: !!o.coop, players: p };
 };

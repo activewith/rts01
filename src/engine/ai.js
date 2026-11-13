@@ -1,7 +1,17 @@
 // ai.js — 데이터 주도 AI. 진영의 ai 블록(빌드 오더, 병력 비율, 연구 순서)만 읽는다.
 // 현재 AI는 안개를 무시하고 상대 건물 위치를 안다. 난이도별 수입 배율은 difficulties에 있다.
+// 성능 배율(t.boost)을 난이도 값에 적용한다. 수입은 createGame에서 이미 곱했다.
+// 판단 주기·첫 공격·확장 시점은 배율만큼 빠르게, 일꾼 수·공격 규모·투자는 배율만큼 크게.
+const aiDiffCache = {};
+RTS.aiDiff = function (t) {
+  const base = RTS.defs.difficulties[t.ai], k = t.boost || 1; if (k === 1) return base;
+  const key = t.ai + '@' + k; if (aiDiffCache[key]) return aiDiffCache[key];
+  return (aiDiffCache[key] = Object.assign({}, base, { income: base.income * k, interval: Math.max(10, Math.round(base.interval / k)), maxWorkers: Math.round(base.maxWorkers * k),
+    waveSize: Math.round(base.waveSize * k), waveGrow: Math.max(1, Math.round(base.waveGrow * k)), firstAttack: Math.round(base.firstAttack / k), expandAt: Math.round(base.expandAt / k),
+    investEvery: Math.max(5, Math.round(base.investEvery / k)), scoutAt: Math.round(base.scoutAt / k), allyArmy: Math.max(4, Math.round(base.allyArmy / k)) }));
+};
 RTS.aiThink = function (G, t) {
-  const diff = RTS.defs.difficulties[t.ai];
+  const diff = RTS.aiDiff(t);
   if ((G.tick + t.id * 3) % diff.interval) return;
   const f = RTS.defs.factions[t.faction], P = f.ai, S = t.aiState, D = RTS.defs.entities;
   const mine = G.ents.filter(e => e.team === t.id && !e.dead);
@@ -61,7 +71,7 @@ RTS.aiThink = function (G, t) {
     if (!opts.length) continue;
     let total = opts.reduce((s, o) => s + o.w, 0), r = RTS.rand(G) * total, pick = opts[0];
     for (const o of opts) { r -= o.w; if (r <= 0) { pick = o; break; } }
-    if (t.sup + (D[pick.u].supply || 0) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
+    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
   }
   // 연구
   for (const id of P.research) {
@@ -78,15 +88,18 @@ RTS.aiThink = function (G, t) {
   S.wave = S.wave || diff.waveSize;
   if (threat && !S.attacking) { cmd({ type: 'order', ids: ids.filter(i => { const o = G.byId[i].order; return !o || o.type !== 'amove' || Math.hypot(o.x - threat.x, o.y - threat.y) > 6; }), order: { type: 'amove', x: threat.x, y: threat.y } }); S.defending = G.tick; return; }
   if (G.tick - (S.defending || -999) > 100 && !S.attacking && !threat) { // 집결
-    const r = S.rally || (S.rally = (() => { const e = G.teams.find(o => o.id !== t.id), c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
+    const r = S.rally || (S.rally = (() => { const c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
     const idle = army.filter(u => !u.order && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
     if (idle.length) cmd({ type: 'order', ids: idle, order: { type: 'amove', x: r.x, y: r.y } });
   }
-  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow); }
+  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow);
+    // 적 팀이 여럿이면(중립세력) 공격 대상을 공격마다 번갈아 정한다. 가까운 쪽만 계속 때리지 않게 한다
+    const foes = G.teams.filter(o => o.id !== t.id && RTS.foe(G, t.id, o.id) && o.alive > 0); S.waves = (S.waves || 0) + 1; S.tgt = foes.length ? foes[S.waves % foes.length].id : -1; }
   if (S.attacking) {
     if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; return; }
     let goal = null, bd = 1e12;
-    for (const e of G.ents) { if (e.dead || e.team === t.id || e.team < 0 || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
+    const tg = S.tgt !== undefined && S.tgt >= 0 && G.teams[S.tgt] && G.teams[S.tgt].alive > 0 ? S.tgt : -1;
+    for (const e of G.ents) { if (e.dead || e.team < 0 || !RTS.foe(G, t.id, e.team) || (tg >= 0 && e.team !== tg) || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
     if (goal) { const go = army.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - goal.x, u.order.y - goal.y) > 3).map(u => u.id);
       if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: goal.x, y: goal.y } }); }
   }
