@@ -22,6 +22,13 @@ RTS.mod({
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
+    // 포자군락
+    frenzy: { short: '광분', name: '광분', key: 'Q', target: 'self', cooldown: 20, desc: '6초간 속도 +40%, 공격 간격 -30%',
+      use(G, u) { RTS.addBuff(G, u, 'frenzy', 6, { speed: 1.4, cooldown: .7 }); },
+      ai(G, u) { if (u.order && u.order.type === 'amove' && RTS.scan(G, u, RTS.weapon(u), 4)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'frenzy' }); } },
+    acid: { short: '산성', name: '산성 분사', key: 'Q', target: 'point', range: 7, cooldown: 20, requires: 's_acid', desc: '지점 반경 2에 피해 25, 4초간 이동 속도 -50%',
+      use(G, u, c) { RTS.query(G, c.x, c.y, 2, o => { if (o.dead || !RTS.foe(G, u.team, o.team) || Math.hypot(o.x - c.x, o.y - c.y) > 2.5) return; RTS.damage(G, o, 25, u); if (RTS.defOf(o).kind === 'unit') RTS.addBuff(G, o, 'acid', 4, { speed: .5 }); }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2 }, team: u.team }); },
+      ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 6.5); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'acid', x: t.x, y: t.y, one: true }); } },
   },
   entities: {
     // ── 중립 자원 ──
@@ -86,6 +93,28 @@ RTS.mod({
     i_core:     { kind: 'building', name: '연산핵', abbr: '핵', key: 'L', art: 'i_lab', size: [3, 2], hp: 700, sight: 8, cost: { ore: 150, gas: 100 }, time: 30, requires: ['i_forge'], researches: ['i_wpn1', 'i_arm1', 'i_servo', 'i_heavy1'], desc: '강화 연구' },
     i_foundry:  { kind: 'building', name: '중공장', abbr: '공', key: 'V', art: 'i_factory', size: [3, 3], hp: 1100, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['i_core'], trains: ['i_colossus', 'i_wasp'], desc: '중장비와 공중기 생산' },
     i_turret:   { kind: 'building', name: '감시포', abbr: '감', key: 'T', art: 'i_turret', size: [2, 2], hp: 400, armor: 1, sight: 10, aggro: 7, cost: { ore: 125 }, time: 22, requires: ['i_forge'], weapon: { damage: 12, range: 7, cooldown: 1, speed: 24, art: 'tracer' }, desc: '지상·공중 자동 방어' },
+
+    // ── 포자군락: 일꾼이 건물로 변태한다(morph, 일꾼 소모). 유닛·건물이 스스로 재생한다(regen) ──
+    s_drone:   { kind: 'unit', name: '포자일꾼', abbr: '포', key: 'W', art: 'sworker', r: .36, hp: 40, speed: 3, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['s_pod', 's_extractor', 's_pool', 's_den', 's_spine', 's_nest', 's_hq'], desc: '자원 채취. 건설하면 그 건물로 변태해 사라진다' },
+    s_claw:    { kind: 'unit', name: '갈퀴충', abbr: '갈', key: 'Z', art: 'claw', r: .34, hp: 38, speed: 3.6, sight: 7, supply: .5, count: 2, cost: { ore: 50 }, time: 14, tags: ['bio'],
+      weapon: { damage: 6, range: .3, cooldown: .6, air: false }, desc: '한 번에 2기씩 태어나는 싸고 빠른 근접 무리. 지상만 공격' },
+    s_spitter: { kind: 'unit', name: '산탄충', abbr: '산', key: 'R', art: 'spitter', r: .42, hp: 80, speed: 2.7, sight: 8, supply: 1, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], abilities: ['acid'],
+      weapon: { damage: 10, range: 5.5, cooldown: 1, speed: 18, art: 'shell' }, desc: '지상·공중 원거리 사격, 산성 분사' },
+    s_nurse:   { kind: 'unit', name: '양육충', abbr: '양', key: 'E', art: 'nurse', r: .4, hp: 60, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 16, tags: ['bio'], requires: ['s_den'], passive: false,
+      heal: { amount: 5, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 생체 유닛을 자동 치료' },
+    s_brute:   { kind: 'unit', name: '거대충', abbr: '거', key: 'T', art: 'brute', r: .85, hp: 340, armor: 2, speed: 2.2, sight: 9, supply: 4, cost: { ore: 250, gas: 150 }, time: 36, tags: ['bio'], abilities: ['frenzy'],
+      weapon: { damage: 24, range: .6, cooldown: 1.4, splash: .9, air: false }, desc: '고체력 근접 범위 공격, 광분' },
+    s_drake:   { kind: 'unit', name: '독침비행체', abbr: '독', key: 'F', art: 'drake', air: true, r: .55, hp: 110, speed: 4, sight: 9, supply: 2, cost: { ore: 100, gas: 100 }, time: 22, tags: ['bio'],
+      weapon: { damage: 8, range: 3.5, cooldown: .9, speed: 22, art: 'tracer' }, desc: '빠른 공중 습격. 지상·공중 공격' },
+
+    s_hq:       { kind: 'building', name: '군락핵', abbr: '핵', key: 'C', art: 's_hq', size: [4, 3], hp: 1500, armor: 1, sight: 11, cost: { ore: 350 }, time: 60, provides: 12, dropoff: true, trains: ['s_drone'], desc: '포자일꾼 생산, 자원 반납' },
+    s_pod:      { kind: 'building', name: '양분낭', abbr: '양', key: 'D', art: 's_pod', size: [2, 2], hp: 300, sight: 7, cost: { ore: 100 }, time: 18, provides: 8, desc: '보급 +8' },
+    s_extractor:{ kind: 'building', name: '흡수관', abbr: '흡', key: 'E', art: 's_extractor', size: [2, 2], hp: 450, sight: 7, cost: { ore: 50 }, time: 16, placeOn: 'vent', desc: '에테르 분출구 위에 변태' },
+    s_pool:     { kind: 'building', name: '번식굴', abbr: '번', key: 'B', art: 's_pool', size: [3, 3], hp: 800, sight: 8, cost: { ore: 150 }, time: 32, requires: ['s_hq'], trains: ['s_claw', 's_spitter', 's_nurse'], desc: '경량 생체 유닛 생산' },
+    s_den:      { kind: 'building', name: '진화굴', abbr: '진', key: 'L', art: 's_den', size: [3, 2], hp: 650, sight: 8, cost: { ore: 125, gas: 75 }, time: 30, requires: ['s_pool'], researches: ['s_claws', 's_carapace', 's_rush', 's_acid'], desc: '진화 연구, 양육충 해금' },
+    s_nest:     { kind: 'building', name: '둥지', abbr: '둥', key: 'V', art: 's_nest', size: [3, 3], hp: 1000, armor: 1, sight: 8, cost: { ore: 200, gas: 150 }, time: 40, requires: ['s_den'], trains: ['s_brute', 's_drake'], desc: '거대충과 비행체 생산' },
+    s_spine:    { kind: 'building', name: '가시촉수', abbr: '가', key: 'T', art: 's_spine', size: [2, 2], hp: 420, armor: 1, sight: 10, aggro: 7, cost: { ore: 100 }, time: 22, requires: ['s_pool'], weapon: { damage: 12, range: 6.5, cooldown: 1, speed: 22, art: 'tracer' }, desc: '지상·공중 자동 방어' },
   },
   upgrades: {
     p_stim:  { short: '충전', name: '과충전 주입기', key: 'Q', cost: { ore: 100, gas: 100 }, time: 40, desc: '소총병 과충전 사용 가능' },
@@ -96,6 +125,10 @@ RTS.mod({
     i_arm1:  { short: '외피', name: '복합 외피 1', key: 'A', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'mech', stat: 'armor', add: 1 }], desc: '전 유닛 방어력 +1' },
     i_servo: { short: '서보', name: '고속 서보', key: 'Q', cost: { ore: 100, gas: 75 }, time: 40, effects: [{ id: 'i_blade', stat: 'speed', mul: 1.25 }], desc: '칼날봇 속도 +25%' },
     i_heavy1:{ short: '조준', name: '장거리 조준', key: 'R', cost: { ore: 150, gas: 150 }, time: 50, requires: ['i_foundry'], effects: [{ id: 'i_striker', stat: 'range', add: 1 }, { id: 'i_colossus', stat: 'range', add: 1 }], desc: '사수봇·중장봇 사거리 +1' },
+    s_claws:   { short: '발톱', name: '강화 발톱', key: 'W', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'bio', stat: 'damage', add: 2 }], desc: '전 유닛 공격력 +2' },
+    s_carapace:{ short: '껍질', name: '두꺼운 껍질', key: 'A', cost: { ore: 100, gas: 100 }, time: 45, effects: [{ tag: 'bio', stat: 'armor', add: 1 }], desc: '전 유닛 방어력 +1' },
+    s_rush:    { short: '질주', name: '근육 질주', key: 'Q', cost: { ore: 100, gas: 75 }, time: 40, effects: [{ id: 's_claw', stat: 'speed', mul: 1.3 }], desc: '갈퀴충 속도 +30%' },
+    s_acid:    { short: '산성', name: '산성 분비샘', key: 'R', cost: { ore: 125, gas: 125 }, time: 45, desc: '산탄충 산성 분사 사용 가능' },
   },
   // 회사: price 상장가(광석), yield 30초당 상장가 대비 배당률, vol 1초 변동성
   companies: {
@@ -146,6 +179,9 @@ RTS.mod({
     ironclad: { name: '철갑회', hq: 'i_hq', worker: 'i_worker', supply: 'i_relay', defense: 'i_turret', selfBuild: true, blurb: '수집봇이 터를 잡으면 건물이 스스로 올라간다. 근접과 중장으로 밀어붙인다.',
       ai: { build: [{ b: 'i_forge', n: 1 }, { b: 'i_extractor', n: 1 }, { b: 'i_forge', n: 2, after: 120 }, { b: 'i_core', n: 1 }, { b: 'i_foundry', n: 1 }, { b: 'i_extractor', n: 2 }, { b: 'i_turret', n: 1 }, { b: 'i_forge', n: 3, after: 420 }, { b: 'i_foundry', n: 2, after: 540 }],
         army: [{ u: 'i_blade', w: 5 }, { u: 'i_striker', w: 4 }, { u: 'i_mender', w: 1 }, { u: 'i_colossus', w: 2 }, { u: 'i_wasp', w: 2 }], research: ['i_wpn1', 'i_servo', 'i_arm1', 'i_heavy1'] } },
+    swarm: { name: '포자군락', hq: 's_hq', worker: 's_drone', supply: 's_pod', defense: 's_spine', morph: true, regen: .6, blurb: '일꾼이 건물로 변태하고, 유닛과 건물이 스스로 재생한다. 싼 무리로 몰아친다.',
+      ai: { build: [{ b: 's_pool', n: 1 }, { b: 's_extractor', n: 1 }, { b: 's_pool', n: 2, after: 120 }, { b: 's_den', n: 1 }, { b: 's_nest', n: 1 }, { b: 's_extractor', n: 2 }, { b: 's_spine', n: 1 }, { b: 's_pool', n: 3, after: 420 }, { b: 's_nest', n: 2, after: 540 }],
+        army: [{ u: 's_claw', w: 6 }, { u: 's_spitter', w: 4 }, { u: 's_nurse', w: 1 }, { u: 's_brute', w: 2 }, { u: 's_drake', w: 2 }], research: ['s_claws', 's_rush', 's_carapace', 's_acid'] } },
   },
   maps: {
     ridge: { name: '쌍둥이 능선', gen: 'symmetric', w: 72, h: 72, theme: 'dusk', desc: '72×72 · 기지 4 · 중앙이 트인 대각 대치',

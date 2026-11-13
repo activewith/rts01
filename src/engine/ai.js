@@ -71,7 +71,7 @@ RTS.aiThink = function (G, t) {
     if (!opts.length) continue;
     let total = opts.reduce((s, o) => s + o.w, 0), r = RTS.rand(G) * total, pick = opts[0];
     for (const o of opts) { r -= o.w; if (r <= 0) { pick = o; break; } }
-    if (t.sup + (D[pick.u].supply || 0) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
+    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
   }
   // 연구
   for (const id of P.research) {
@@ -92,11 +92,14 @@ RTS.aiThink = function (G, t) {
     const idle = army.filter(u => !u.order && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
     if (idle.length) cmd({ type: 'order', ids: idle, order: { type: 'amove', x: r.x, y: r.y } });
   }
-  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow); }
+  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow);
+    // 적 팀이 여럿이면(중립세력) 공격 대상을 공격마다 번갈아 정한다. 가까운 쪽만 계속 때리지 않게 한다
+    const foes = G.teams.filter(o => o.id !== t.id && RTS.foe(G, t.id, o.id) && o.alive > 0); S.waves = (S.waves || 0) + 1; S.tgt = foes.length ? foes[S.waves % foes.length].id : -1; }
   if (S.attacking) {
     if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; return; }
     let goal = null, bd = 1e12;
-    for (const e of G.ents) { if (e.dead || e.team < 0 || !RTS.foe(G, t.id, e.team) || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
+    const tg = S.tgt !== undefined && S.tgt >= 0 && G.teams[S.tgt] && G.teams[S.tgt].alive > 0 ? S.tgt : -1;
+    for (const e of G.ents) { if (e.dead || e.team < 0 || !RTS.foe(G, t.id, e.team) || (tg >= 0 && e.team !== tg) || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
     if (goal) { const go = army.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - goal.x, u.order.y - goal.y) > 3).map(u => u.id);
       if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: goal.x, y: goal.y } }); }
   }

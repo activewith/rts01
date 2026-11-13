@@ -66,7 +66,7 @@ RTS.createGame = function (opts) {
     const e = RTS.spawn(G, n.def, -1, n.tx + RTS.defs.entities[n.def].size[0] / 2, n.ty + RTS.defs.entities[n.def].size[1] / 2);
     e.amount = RTS.defs.entities[n.def].amount;
   });
-  const starts = G.bases.filter(b => b.start !== undefined), spots = G.coop ? RTS.coopBases(G) : null;
+  const starts = G.bases.filter(b => b.start !== undefined), spots = G.coop ? RTS.coopBases(G) : G.teams.length > 2 ? RTS.ffaBases(G) : null;
   G.teams.forEach((t, i) => {
     const b = spots ? spots[i] : starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
     b.owner = i;
@@ -91,6 +91,14 @@ RTS.coopBases = function (G) {
   const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
   rest.sort((a, b) => Math.hypot(a.x - s0.x, a.y - s0.y) - Math.hypot(b.x - s0.x, b.y - s0.y));
   return [s0, rest[0], s1];
+};
+// 셋이 서로 싸울 때: 0·1번은 시작 기지, 2번(중립세력)은 두 시작 기지와의 거리 차이가 가장 작은 확장 기지.
+// 대칭 맵에서는 같은 점수의 기지가 짝으로 나오므로 그중 무작위로 고른다(평균적으로 공평).
+RTS.ffaBases = function (G) {
+  const s0 = G.bases.find(b => b.start === 0), s1 = G.bases.find(b => b.start === 1), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+  const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12)).map(b => ({ b, k: Math.round(Math.abs(d(b, s0) - d(b, s1))) }));
+  const best = Math.min(...rest.map(r => r.k)), pick = rest.filter(r => r.k === best);
+  return [s0, s1, pick[Math.floor(RTS.rand(G) * pick.length)].b];
 };
 // 같은 편이면 동맹. 편(side)이 없는 일반 게임에서는 자기 팀만 해당한다.
 RTS.ally = (G, a, b) => { if (a === b) return true; if (a < 0 || b < 0) return false; const x = G.teams[a], y = G.teams[b]; return !!(x && y && x.side !== undefined && x.side === y.side); };

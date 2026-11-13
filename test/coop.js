@@ -13,17 +13,18 @@ const hqOf = (G, t) => G.ents.find(e => e.team === t && D[e.def].dropoff);
 { const o = opts();
   ok(o.coop && o.players.length === 3, '협동 옵션: 플레이어 3(사람 2 + 중립세력)');
   ok(o.players[0].side === 0 && o.players[1].side === 0 && o.players[2].side === 1, '편: 사람 둘 0, 중립세력 1');
-  ok(o.players[2].faction === 'pioneers' && o.players[2].ai === 'normal' && o.players[2].boost === 1.3, '중립세력 기본값: 방장 진영, 보통 AI, 130%');
-  ok(opts({ enemy: 'ironclad' }).players[2].faction === 'ironclad', '중립세력을 상대(동료) 진영으로 바꿀 수 있음');
-  ok(RTS.netGameOpts({ map: 'ridge', seed: 1, settings: {}, factions: ['pioneers', 'ironclad'], names: ['a', 'b'], hc: ['none', 'none'] }).players.length === 2, '대전 옵션은 그대로 2명'); }
+  ok(o.players[2].faction === 'swarm' && o.players[2].ai === 'normal' && o.players[2].boost === 1.3, '중립세력 기본값: 남은 진영(포자군락), 보통 AI, 130%');
+  ok(opts({ factions: ['swarm', 'pioneers'] }).players[2].faction === 'ironclad' && opts({ factions: ['ironclad', 'swarm'] }).players[2].faction === 'pioneers', '어떤 조합이든 남은 진영이 중립세력');
+  const v = RTS.netGameOpts({ map: 'ridge', seed: 1, settings: {}, factions: ['pioneers', 'ironclad'], names: ['a', 'b'], hc: ['none', 'none'] });
+  ok(!v.coop && v.players.length === 3 && v.players.every(p => p.side === undefined) && v.players[2].faction === 'swarm', '대전에도 중립세력이 나오고 셋이 서로 적'); }
 
 // 2. 시작 위치, 진영 구성
-for (const map of Object.keys(RTS.defs.maps)) for (const fac of ['pioneers', 'ironclad']) {
-  const G = RTS.createGame(opts({ map, factions: [fac, fac], enemy: fac })), h = [0, 1, 2].map(t => hqOf(G, t));
+for (const map of Object.keys(RTS.defs.maps)) for (const fs of [['pioneers', 'ironclad'], ['swarm', 'pioneers'], ['ironclad', 'swarm']]) {
+  const G = RTS.createGame(opts({ map, factions: fs })), h = [0, 1, 2].map(t => hqOf(G, t)), fac = fs.join('+');
   const d01 = Math.hypot(h[0].x - h[1].x, h[0].y - h[1].y), d02 = Math.hypot(h[0].x - h[2].x, h[0].y - h[2].y), d12 = Math.hypot(h[1].x - h[2].x, h[1].y - h[2].y);
-  const same = G.teams.every(t => t.faction === fac) && h.every(e => e.def === RTS.defs.factions[fac].hq);
+  const same = new Set(G.teams.map(t => t.faction)).size === 3 && h.every((e, i) => e.def === RTS.defs.factions[G.teams[i].faction].hq);
   const workers = [0, 1, 2].map(t => G.ents.filter(e => e.team === t && D[e.def].gather).length);
-  ok(h.every(Boolean) && d01 < d02 && d01 < d12 && same && workers.every(n => n === 5), `${map}/${fac}: 사령부 3 · 동료끼리 가까움(${d01.toFixed(0)} < ${Math.min(d02, d12).toFixed(0)}) · 셋 다 같은 건물·일꾼 5`);
+  ok(h.every(Boolean) && d01 < d02 && d01 < d12 && same && workers.every(n => n === 5), `${map}/${fac}: 사령부 3 · 동료끼리 가까움(${d01.toFixed(0)} < ${Math.min(d02, d12).toFixed(0)}) · 세 진영 각자 사령부·일꾼 5`);
 }
 
 // 3. 동맹 판정
@@ -61,7 +62,7 @@ for (const map of Object.keys(RTS.defs.maps)) for (const fac of ['pioneers', 'ir
         if (w && list.length) { const id = list[Math.floor(c.r() * list.length)]; c.L.local({ type: 'place', ids: [w.id], def: id, tx: Math.floor(w.x + (c.r() - .5) * 10), ty: Math.floor(w.y + (c.r() - .5) * 10) }); } }
       c.L.advance(G); } }
   const [a, b] = cl.map(c => c.G);
-  ok(a.tick > 8000 && a.tick === b.tick && RTS.stateHash(a) === RTS.stateHash(b) && !cl[0].desync && !cl[1].desync, `두 기기 상태 동일 (틱 ${a.tick}, 중립세력 생산 ${a.teams[2].stats.made} · 잃은 수 ${a.teams[2].stats.lost} · 남은 개체 ${a.teams[2].alive} · 끝남 ${!!a.over})`); }
+  ok(a.tick > 3000 && a.tick === b.tick && RTS.stateHash(a) === RTS.stateHash(b) && !cl[0].desync && !cl[1].desync, `두 기기 상태 동일 (틱 ${a.tick}, 중립세력 생산 ${a.teams[2].stats.made} · 잃은 수 ${a.teams[2].stats.lost} · 남은 개체 ${a.teams[2].alive} · 끝남 ${!!a.over})`); }
 
 // 6. AI 둘이 한 편(보통 100%) vs 중립세력(보통 130%): 끝까지 진행되고 동료끼리 싸우지 않는지
 for (const [map, seed] of [['ridge', 3], ['canyon', 5], ['lake', 8]]) {

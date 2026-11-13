@@ -285,7 +285,9 @@ Object.assign(RTS.orders, {
       nextOrder(G, u); if (!u.order && !G.teams[u.team].ai) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } return; }
     moveToEnt(G, u, s);
     if (RTS.edgeDist(u, s) < .7) { stopMove(u);
-      if (RTS.defs.factions[G.teams[u.team].faction].selfBuild) { s.active = true; if (defOf(s).placeOn) { RTS.issue(G, u, { type: 'gather', node: s.id }); return; } nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
+      const fac = RTS.defs.factions[G.teams[u.team].faction];
+      if (fac.morph) { s.active = true; RTS.emit(G, 'morph', { e: u, site: s }); RTS.kill(G, u, null, true); return; } // 포자군락: 일꾼이 건물로 변태(소모)
+      if (fac.selfBuild) { s.active = true; if (defOf(s).placeOn) { RTS.issue(G, u, { type: 'gather', node: s.id }); return; } nextOrder(G, u); if (!u.order) { const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; } }
       else { s.builder = G.tick; u.building = G.tick; }
     } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
   },
@@ -321,7 +323,7 @@ function runBuilding(G, b) {
   const d = defOf(b), t = G.teams[b.team];
   if (!t) { if (d.weapon) { if (b.cd > 0) b.cd--; const tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, d.weapon, 'range') && b.cd <= 0) fire(G, b, d.weapon, tg); } return; } // 잿빛 부족 건물: 사격만 한다
   if (b.built < b.buildT) {
-    const on = RTS.defs.factions[t.faction].selfBuild ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
+    const f = RTS.defs.factions[t.faction], on = f.selfBuild || f.morph ? b.active : b.builder === G.tick || b.builder === G.tick - 1;
     if (on) { b.built++; b.hp = Math.min(RTS.stat(G, b, 'hp'), b.hp + d.hp * .9 / b.buildT);
       if (b.built >= b.buildT) { RTS.emit(G, 'built', { e: b }); if (d.placeOn && !t.ai) staffExtractor(G, b); say(G, b.team, d.name + ' 건설 완료', 'ok'); if (d.placeOn) assignGas(G, b); } }
     return;
@@ -329,7 +331,7 @@ function runBuilding(G, b) {
   if (d.weapon) { if (b.cd > 0) b.cd--; const w = d.weapon, tg = autoTarget(G, b); if (tg && RTS.edgeDist(b, tg) <= RTS.wStat(G, b, w, 'range') && b.cd <= 0) fire(G, b, w, tg); }
   const p = b.prod[0]; if (!p) return;
   if (!p.started) {
-    const need = D()[p.id].supply || 0;
+    const need = (D()[p.id].supply || 0) * (D()[p.id].count || 1); // count: 한 번에 여러 기(포자군락 갈퀴충 2기)
     if (t.sup + need > t.cap) { if (G.tick % 100 === 0) say(G, b.team, '보급이 부족합니다. 보급 건물을 지으세요', 'warn'); return; }
     p.started = true; t.sup += need;
   }
@@ -338,8 +340,12 @@ function runBuilding(G, b) {
   if (p.kind === 'upgrade') { t.upgrades[p.id] = 1; delete t.research[p.id]; t.mods = {}; say(G, b.team, RTS.defs.upgrades[p.id].name + ' 연구 완료', 'ok'); RTS.emit(G, 'researched', { team: b.team, id: p.id }); return; }
   const r = RTS.rectOf(b), side = b.rally ? Math.atan2(b.rally.y - b.y, b.rally.x - b.x) : 1.57;
   const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.nearestFree(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
-  const u = RTS.spawn(G, p.id, b.team, pos.x, pos.y); t.stats.made++;
-  const ud = D()[p.id]; RTS.emit(G, 'trained', { e: u });
+  const ud = D()[p.id];
+  for (let k = 0; k < (ud.count || 1); k++) { const q = k ? RTS.nearestFree(G, pos.x + .6, pos.y + .6) : pos; trainedOne(G, b, t, p.id, ud, q); }
+}
+function trainedOne(G, b, t, id, ud, pos) {
+  const u = RTS.spawn(G, id, b.team, pos.x, pos.y); t.stats.made++;
+  RTS.emit(G, 'trained', { e: u });
   if (ud.gather) { const n = (b.rally && b.rally.ent && G.byId[b.rally.ent]) || RTS.nearestNode(G, b.x, b.y, 'ore', 16); if (n && !n.dead) u.order = { type: 'gather', node: n.id }; else if (b.rally) u.order = { type: 'move', x: b.rally.x, y: b.rally.y }; }
   else if (b.rally) u.order = { type: 'amove', x: b.rally.x, y: b.rally.y };
 }
@@ -416,7 +422,7 @@ RTS.census = function (G) {
     if (d.site) continue; // 회사 거점은 승패와 보급에 포함하지 않는다
     if (d.kind === 'unit') t.sup += d.supply || 0;
     else { t.alive++;
-      for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += D()[p.id].supply || 0;
+      for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += (D()[p.id].supply || 0) * (D()[p.id].count || 1);
       if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += d.provides || 0; } }
   }
   for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), RTS.cfg(G).supplyCap);
@@ -425,6 +431,9 @@ RTS.systems.push(
   { id: 'commands', run(G) { const q = G.cmds; G.cmds = []; for (const c of q) (RTS.commands[c.type] || (() => {}))(G, c.team, c); } },
   { id: 'census', run: G => RTS.census(G) },
   { id: 'ai', run(G) { for (const t of G.teams) if (t.ai) RTS.aiThink(G, t); } },
+  { id: 'regen', run(G) { // 진영 regen: 1초마다 완공 건물과 유닛의 체력을 회복한다(포자군락)
+    if (G.tick % RTS.HZ) return; const R = G.teams.map(t => RTS.defs.factions[t.faction].regen || 0); if (!R.some(Boolean)) return;
+    for (const e of G.ents) { if (e.dead || e.team < 0 || !R[e.team] || (e.buildT && e.built < e.buildT)) continue; const m = RTS.stat(G, e, 'hp'); if (e.hp < m) e.hp = Math.min(m, e.hp + R[e.team]); } } },
   { id: 'entities', run(G) {
     for (const e of G.ents) {
       if (e.dead) continue;
