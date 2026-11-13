@@ -1,7 +1,17 @@
 // ai.js — 데이터 주도 AI. 진영의 ai 블록(빌드 오더, 병력 비율, 연구 순서)만 읽는다.
 // 현재 AI는 안개를 무시하고 상대 건물 위치를 안다. 난이도별 수입 배율은 difficulties에 있다.
+// 성능 배율(t.boost)을 난이도 값에 적용한다. 수입은 createGame에서 이미 곱했다.
+// 판단 주기·첫 공격·확장 시점은 배율만큼 빠르게, 일꾼 수·공격 규모·투자는 배율만큼 크게.
+const aiDiffCache = {};
+RTS.aiDiff = function (t) {
+  const base = RTS.defs.difficulties[t.ai], k = t.boost || 1; if (k === 1) return base;
+  const key = t.ai + '@' + k; if (aiDiffCache[key]) return aiDiffCache[key];
+  return (aiDiffCache[key] = Object.assign({}, base, { income: base.income * k, interval: Math.max(10, Math.round(base.interval / k)), maxWorkers: Math.round(base.maxWorkers * k),
+    waveSize: Math.round(base.waveSize * k), waveGrow: Math.max(1, Math.round(base.waveGrow * k)), firstAttack: Math.round(base.firstAttack / k), expandAt: Math.round(base.expandAt / k),
+    investEvery: Math.max(5, Math.round(base.investEvery / k)), scoutAt: Math.round(base.scoutAt / k), allyArmy: Math.max(4, Math.round(base.allyArmy / k)) }));
+};
 RTS.aiThink = function (G, t) {
-  const diff = RTS.defs.difficulties[t.ai];
+  const diff = RTS.aiDiff(t);
   if ((G.tick + t.id * 3) % diff.interval) return;
   const f = RTS.defs.factions[t.faction], P = f.ai, S = t.aiState, D = RTS.defs.entities;
   const mine = G.ents.filter(e => e.team === t.id && !e.dead);
@@ -78,7 +88,7 @@ RTS.aiThink = function (G, t) {
   S.wave = S.wave || diff.waveSize;
   if (threat && !S.attacking) { cmd({ type: 'order', ids: ids.filter(i => { const o = G.byId[i].order; return !o || o.type !== 'amove' || Math.hypot(o.x - threat.x, o.y - threat.y) > 6; }), order: { type: 'amove', x: threat.x, y: threat.y } }); S.defending = G.tick; return; }
   if (G.tick - (S.defending || -999) > 100 && !S.attacking && !threat) { // 집결
-    const r = S.rally || (S.rally = (() => { const e = G.teams.find(o => o.id !== t.id), c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
+    const r = S.rally || (S.rally = (() => { const c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
     const idle = army.filter(u => !u.order && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
     if (idle.length) cmd({ type: 'order', ids: idle, order: { type: 'amove', x: r.x, y: r.y } });
   }
@@ -86,7 +96,7 @@ RTS.aiThink = function (G, t) {
   if (S.attacking) {
     if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; return; }
     let goal = null, bd = 1e12;
-    for (const e of G.ents) { if (e.dead || e.team === t.id || e.team < 0 || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
+    for (const e of G.ents) { if (e.dead || e.team < 0 || !RTS.foe(G, t.id, e.team) || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
     if (goal) { const go = army.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - goal.x, u.order.y - goal.y) > 3).map(u => u.id);
       if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: goal.x, y: goal.y } }); }
   }

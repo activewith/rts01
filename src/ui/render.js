@@ -3,6 +3,8 @@
 RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff7350', dark: '#8a2b1c', light: '#ffd5c6' }, { main: '#c6e05a', dark: '#5c6e1c', light: '#eefac0' }, { main: '#d58cff', dark: '#5f2c86', light: '#f1dcff' }];
 // 진영 색. 어느 팀 슬롯이든 진영이 같으면 같은 색으로 그린다.
 RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1] };
+// 협동: 진영이 같아도 나·동료·중립세력이 구분되도록 팀 슬롯 색을 쓴다(파랑·보라·주황)
+RTS.COOP_COLOR = [RTS.TEAM[0], RTS.TEAM[3], RTS.TEAM[1]];
 RTS.TEAM[RTS.TRIBE] = { main: '#7bd65a', dark: '#2f5e22', light: '#d9f7c6' }; // 잿빛 부족
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
@@ -113,7 +115,7 @@ function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서�
 RTS.Renderer = function (canvas, app) {
   const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], ghosts: {}, pings: [] };
   let bake = null, bakeFor = null; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
-  const ringCol = e => e.team === app.team ? '#7dffa8' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
+  const ringCol = e => e.team === app.team ? '#7dffa8' : app.G.coop && e.team >= 0 && RTS.ally(app.G, app.team, e.team) ? '#8fd3ff' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
   const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: e.team >= 0 && app.G.teams[e.team]?.faction === 'ironclad' ? MECH : STEEL, facing: e.facing });
 
   function bakeTerrain(G) {

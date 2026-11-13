@@ -46,7 +46,7 @@ RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
   return Math.max(0, dist(a, b) - ra - (db.r || 0));
 };
 // 적대 판정. 같은 팀과 -1(자원·거점)은 적이 아니다. 잿빛 부족(RTS.TRIBE)은 플레이어마다 관계가 다르다(tribe.js)
-RTS.foe = (G, a, b) => { if (a === b || a === -1 || b === -1) return false; if (a === RTS.TRIBE || b === RTS.TRIBE) return !!(G.tribe && RTS.tribeFoe && RTS.tribeFoe(G, a === RTS.TRIBE ? b : a)); return true; };
+RTS.foe = (G, a, b) => { if (a === b || a === -1 || b === -1) return false; if (G.coop && RTS.ally(G, a, b)) return false; if (a === RTS.TRIBE || b === RTS.TRIBE) return !!(G.tribe && RTS.tribeFoe && RTS.tribeFoe(G, a === RTS.TRIBE ? b : a)); return true; };
 RTS.canHit = (w, t) => { const air = !!defOf(t).air; return air ? w.air !== false : w.ground !== false; };
 
 // ── 명령 ───────────────────────────────────────────────────
@@ -165,6 +165,7 @@ RTS.hit = function (G, t, x, y, dmg, w, src) {
 };
 RTS.damage = function (G, t, dmg, src) {
   if (t.dead) return;
+  if (G.coop && src && src.team !== t.team && RTS.ally(G, src.team, t.team)) return; // 협동: 동맹은 맞지 않는다
   const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
@@ -459,6 +460,11 @@ RTS.systems.push(
     if (G.tick % 10) return;
     RTS.census(G);
     const live = G.teams.filter(t => t.alive > 0);
+    if (G.coop) { // 협동: 편 단위로 판정. 사람 둘 중 하나만 남아도 계속한다
+      const sides = [...new Set(live.map(t => t.side))];
+      if (sides.length <= 1) { G.over = { winner: live[0] ? live[0].id : -1, side: sides.length ? sides[0] : -1, tick: G.tick }; RTS.emit(G, 'gameover', G.over); }
+      return;
+    }
     if (live.length <= 1) { G.over = { winner: live[0] ? live[0].id : -1, tick: G.tick }; RTS.emit(G, 'gameover', G.over); }
   } },
 );
