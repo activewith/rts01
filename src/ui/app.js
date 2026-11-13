@@ -88,7 +88,7 @@ RTS.mount = function (root, opts = {}) {
     const G = RTS.createGame({ map: app.cfg.map, seed: 40 + (Date.now() % 1000), nofog: true, settings: app.settings, players: [{ faction: fs[0], ai: 'hard' }, { faction: fs[1], ai: 'hard' }] });
     for (let i = 0; i < 20 * 100; i++) RTS.step(G); // 메뉴 뒤 배경이 이미 진행 중인 기지가 되도록 미리 돌린다
     bind(G); cam.z = 1; root.querySelector('.k-game').classList.add('demo'); layout(); const base = G.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff) || { x: G.w / 2, y: G.h / 2 }; centerOn(base.x - (view.width > 900 ? 5 : 0), base.y); }
-  app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions).filter(x => x !== app.cfg.faction), foe = f[Math.floor(Math.random() * f.length)]; // 상대 AI 진영: 남은 진영 중 무작위 app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
+  app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions).filter(x => x !== app.cfg.faction), foe = f[Math.floor(Math.random() * f.length)]; /* 상대 AI 진영: 남은 진영 중 무작위 */ app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
     const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
     showGame(G); };
   function showGame(G) { hideHover(); bind(G); $('k-chatbtn').hidden = $('k-voicebtn').hidden = !app.net; $('k-chatbox').hidden = true; renderChat(); app.heat = 0; $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
@@ -400,7 +400,7 @@ RTS.mount = function (root, opts = {}) {
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
   $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); applyMusic(); };
-  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } app.toMenu(); }; // 전멸 후 관전 계속 $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
+  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-netopen').onclick = () => { unlock(); netOpen(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
   $('k-idle').onclick = () => { if (app.idle && app.idle.length) { app.sel = app.idle.map(e => e.id); const u = app.idle[0]; centerOn(u.x, u.y); } };
