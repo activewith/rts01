@@ -53,6 +53,9 @@ RTS.SETTINGS = [
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
+    { id: 'depth', label: '입체감', desc: '건물 높이·그림자, 유닛 명암', type: 'toggle', def: true, client: true },
+    { id: 'fxRich', label: '화려한 특수 효과', desc: '파편·불씨·포탄 연기. 느린 기기에서는 끈다', type: 'toggle', def: true, client: true },
+    { id: 'shake', label: '폭발 화면 흔들림', type: 'toggle', def: true, client: true },
   ] },
 ];
 RTS.PRESETS = {
