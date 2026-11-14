@@ -2,7 +2,7 @@
 // 두 '기기'가 각자 게임을 만들고, 무작위 입력을 지연·순서 뒤섞임이 있는 가짜 네트워크로 주고받는다.
 // 끝에 두 게임 상태가 완전히 같은지, 일부러 어긋나게 하면 해시 검사가 잡아내는지 본다.
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fail++; };
 
 // 시뮬레이션 밖의 난수(봇·네트워크용). G.rng를 건드리지 않는다.
@@ -19,6 +19,9 @@ function bot(G, L, r) {
   else if (roll < .75) { const cos = Object.keys(G.market.cos); L.local({ type: 'trade', company: cos[Math.floor(r() * cos.length)], qty: r() < .6 ? 5 : -5 }); }
   else if (roll < .8) { const bs = Object.keys(G.dip.list); L.local({ type: 'barter', branch: bs[Math.floor(r() * bs.length)], buy: r() < .5 }); }
   else if (roll < .85 && units.length) { const u = units[Math.floor(r() * units.length)]; L.local({ type: 'order', ids: [u.id], order: { type: 'move', x: r() * G.w, y: r() * G.h } }); }
+  else if (roll < .9 && blds.length) { L.local({ type: 'levelup', building: blds[Math.floor(r() * blds.length)].id }); } // 건물 강화
+  else if (roll < .93 && units.length) { L.local({ type: 'rankup', ids: units.slice(0, 4).map(u => u.id) }); } // 유닛 강화 ★
+  else if (roll < .96 && units.length) { const u = units[Math.floor(r() * units.length)], ms = RTS.mergesOf(G, me, u.def); if (ms.length) L.local({ type: 'merge', unit: u.id, recipe: ms[0].id }); } // 합체
 }
 
 function play({ seed, ticks, jitter, settings, hc, factions, breakAt }) {

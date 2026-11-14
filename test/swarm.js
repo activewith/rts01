@@ -1,7 +1,7 @@
 // node test/swarm.js — 포자군락(세 번째 진영)과 셋이 대전 검사.
 // 변태 건설(일꾼 소모), 재생, 산성·광분 능력, 세 진영 AI 맞대결, 셋이 대전 시작 위치·승패·나만 전멸, 두 기기 동일.
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fail++; };
 const D = RTS.defs.entities, hqOf = (G, t) => G.ents.find(e => e.team === t && D[e.def].dropoff && !e.dead);
 const run = (G, n) => { for (let i = 0; i < n && !G.over; i++) RTS.step(G); };
