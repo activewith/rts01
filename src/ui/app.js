@@ -58,6 +58,8 @@ RTS.mount = function (root, opts = {}) {
   const $ = id => root.querySelector('#' + id), view = $('k-view'), mini = $('k-mini'), TS = 32;
   const store = { get(k) { try { return localStorage.getItem('kjh-rts:' + k); } catch (e) { return null; } }, set(k, v) { try { localStorage.setItem('kjh-rts:' + k, v); } catch (e) {} }, del(k) { try { localStorage.removeItem('kjh-rts:' + k); } catch (e) {} } };
   const app = { G: null, team: -1, sel: [], groups: {}, mode: null, menu: 'main', box: null, frame: 0, speed: 1, paused: false, demo: true, mouse: { x: 0, y: 0, wx: 0, wy: 0, inside: false }, boxTouch: false, cfg: JSON.parse(store.get('cfg') || 'null') || { faction: 'pioneers', map: 'ridge', difficulty: 'normal' }, settings: Object.assign(RTS.defaultSettings(), JSON.parse(store.get('settings') || '{}')) };
+  app.store = store; app.saveSettings = () => store.set('settings', JSON.stringify(app.settings));
+  if (!store.get('lowChecked')) { store.set('lowChecked', '1'); if (RTS.lowSpecGuess && RTS.lowSpecGuess()) { app.settings.lowSpec = true; app.saveSettings(); app.lowAutoMsg = '느린 기기로 판단해 저사양 모드를 켰습니다. 설정에서 끌 수 있습니다'; } } // 처음 한 번 기기 성능 추정
   const R = app.R = RTS.Renderer(view, app), cam = R.cam;
   // 내 입력: 혼자 할 때는 바로 큐에, 둘이 할 때는 lockstep을 거쳐 두 기기에 같은 턴에 들어간다
   const send = c => { if (!app.G) return; if (app.net && app.net.L) app.net.L.local(c); else RTS.command(app.G, app.team, c); };
@@ -110,6 +112,7 @@ RTS.mount = function (root, opts = {}) {
     $('k-end').hidden = false; if (opts.onEnd && !out) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
 
   // ── 메시지와 HUD ──────────────────────────────────────
+  app.notice = (t, k) => notice(t, k);
   function notice(text, kind) { const box = $('k-msgs'), d = document.createElement('div'); if (box.lastChild && box.lastChild.textContent === text) return; d.textContent = text; d.className = 'k-msg ' + (kind || ''); box.appendChild(d); while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => d.remove(), 3800); if (kind === 'warn') app.sfx('warn'); }
   const cost = c => Object.keys(c || {}).map(k => `<span class="c-${k}">${k === 'ore' ? '광석' : '에테르'} ${c[k]}</span>`).join(' ');
   function selected() { return app.sel.map(i => app.G.byId[i]).filter(e => e && !e.dead); }

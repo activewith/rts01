@@ -1,6 +1,6 @@
 // node build.js → 저장소 맨 위 index.html 생성. GitHub Pages가 이 파일을 그대로 서비스한다.
 const fs = require('fs');
-const order = ['engine/core', 'engine/map', 'engine/sim', 'engine/market', 'engine/war', 'engine/diplomacy', 'engine/tribe', 'engine/ai', 'engine/net', 'data/content', 'data/settings', 'ui/render', 'ui/music', 'ui/app'];
+const order = ['engine/core', 'engine/map', 'engine/sim', 'engine/market', 'engine/war', 'engine/diplomacy', 'engine/tribe', 'engine/ai', 'engine/net', 'data/content', 'data/settings', 'ui/terrain', 'ui/render', 'ui/buildart', 'ui/glfx', 'ui/music', 'ui/app'];
 const src = order.map(f => fs.readFileSync(`src/${f}.js`, 'utf8')).join('\n');
 // 빌드 버전: 소스 내용의 해시. 둘이 대전 대기실에서 두 기기의 버전이 같은지 비교한다.
 const build = require('crypto').createHash('sha1').update(src).digest('hex').slice(0, 7);
