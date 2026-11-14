@@ -397,7 +397,7 @@ RTS.mount = function (root, opts = {}) {
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
     const t = pick(wx, wy);
-    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && !RTS.complete(t))) && context(wx, wy, false)) return;
+    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, false)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
     if (!t) { app.sel = []; app.menu = 'main'; return; }
     app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
