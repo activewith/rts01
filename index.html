@@ -194,7 +194,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '57d4fbf';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'a80f6b7';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -3513,8 +3513,8 @@ RTS.mount = function (root, opts = {}) {
   // 직접 연결이 안 되는 망(LTE·5G 등)에서는 TURN 중계 서버가 데이터를 대신 전달한다. 중계를 거쳐도 WebRTC 암호화(DTLS)는 그대로라 중계 서버는 내용을 볼 수 없다.
   // TURN_URL: Metered(Open Relay) 무료 계정의 자격 증명 주소. 비워 두면 PeerJS 기본 설정을 쓴다.
   //   형식: https://앱이름.metered.live/api/v1/turn/credentials?apiKey=키
-  //   키가 공개 코드에 들어가 남이 쓸 수도 있다. 카드를 등록하지 않은 무료 계정이면 과금될 수 없고, 최악의 경우 그달 무료 사용량(20GB)이 바닥나 중계만 안 된다(직접 연결은 계속 된다).
-  const TURN_URL = '';
+  //   키가 공개 코드에 들어가 남이 쓸 수도 있다. 카드를 등록하지 않은 무료 계정이면 과금될 수 없고, 최악의 경우 그달 무료 사용량(500MB)이 바닥나 중계만 안 된다(직접 연결은 계속 된다).
+  const TURN_URL = 'https://activewith.metered.live/api/v1/turn/credentials?apiKey=32e536f66c0e0d31bf2b6d5eda04ff5e39f0';
   const STUN = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }];
   let ICE = null, iceAt = 0;
   // 중계 서버 목록을 받아 둔다(1시간 재사용). 실패하면 null → PeerJS 기본 설정으로 연결한다
