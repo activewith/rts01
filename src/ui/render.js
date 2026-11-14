@@ -380,7 +380,7 @@ RTS.Renderer = function (canvas, app) {
     let ox = 0, oy = 0; if (R.shake > .3) { ox = rnd(-R.shake, R.shake); oy = rnd(-R.shake, R.shake); R.shake *= .86; } else R.shake = 0; // 폭발 흔들림(화면만)
     c.setTransform(cam.z, 0, 0, cam.z, -cam.x * cam.z + ox, -cam.y * cam.z + oy);
     c.imageSmoothingEnabled = true;
-    const vw = W / cam.z, vh = H / cam.z, sx = Math.max(0, cam.x), sy = Math.max(0, cam.y), sw = Math.min(bake.width - sx, vw), sh = Math.min(bake.height - sy, vh);
+    const vw = W / cam.z, vh = H / cam.z, sx = Math.max(0, cam.x), sy = Math.max(0, cam.y), sw = Math.min(G.w * TS - sx, vw), sh = Math.min(G.h * TS - sy, vh); // 월드 px 기준(저사양 굽기는 절반 크기라 bake.width를 쓰면 지형이 반만 그려진다)
     const bk = bake.width / (G.w * TS); if (sw > 0 && sh > 0) c.drawImage(bake, sx * bk, sy * bk, sw * bk, sh * bk, sx, sy, sw, sh);
     for (const d of R.decals) if (R.onScreen(d.x, d.y)) { const X = d.x * TS, Y = d.y * TS; glowAt(c, X, Y, d.s * 1.25, '#0a0806', .5); // 그을음 + 잔해
       if (d.rub) for (const [dx, dy, w, h, r, col] of d.rub) { c.save(); c.translate(X + dx, Y + dy); c.rotate(r); c.fillStyle = col; c.fillRect(-w / 2, -h / 2, w, h); c.fillStyle = 'rgba(255,255,255,.1)'; c.fillRect(-w / 2, -h / 2, w, 1); c.restore(); } }
