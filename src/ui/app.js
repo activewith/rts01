@@ -110,6 +110,7 @@ RTS.mount = function (root, opts = {}) {
     $('k-end').hidden = false; if (opts.onEnd && !out) opts.onEnd({ win, ticks: G.tick, stats: a.stats, cfg: app.cfg }); }
 
   // ── 메시지와 HUD ──────────────────────────────────────
+  app.notice = (t, k) => notice(t, k);
   function notice(text, kind) { const box = $('k-msgs'), d = document.createElement('div'); if (box.lastChild && box.lastChild.textContent === text) return; d.textContent = text; d.className = 'k-msg ' + (kind || ''); box.appendChild(d); while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => d.remove(), 3800); if (kind === 'warn') app.sfx('warn'); }
   const cost = c => Object.keys(c || {}).map(k => `<span class="c-${k}">${k === 'ore' ? '광석' : '에테르'} ${c[k]}</span>`).join(' ');
   function selected() { return app.sel.map(i => app.G.byId[i]).filter(e => e && !e.dead); }

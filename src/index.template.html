@@ -158,6 +158,16 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 #k-stats th{font:400 14px var(--body);text-align:left;color:var(--dim)}#k-stats td{text-align:right;padding:4px 0 4px 18px}
 #k-stats thead td{color:var(--brass);font-family:var(--body)}
 .k-end .k-panel{background:var(--panel);border:1px solid var(--brass);padding:24px;width:min(92%,420px)}
+/* 금속 콘솔 질감: 위아래 조작부에 빛 반사와 그늘, 버튼은 눌리는 느낌 */
+.k-top{background:linear-gradient(180deg,#2c374b 0%,#1a2231 55%,#141b27 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.09),0 3px 12px rgba(0,0,0,.55);position:relative;z-index:2}
+.k-bottom{background:linear-gradient(180deg,#2a3549 0%,#1a2231 18%,#131a26 100%);box-shadow:inset 0 2px 0 rgba(255,255,255,.07),0 -4px 16px rgba(0,0,0,.6);position:relative;z-index:2}
+.k-bottom::before{content:"";position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(90deg,rgba(255,255,255,.012) 0 2px,transparent 2px 5px)}
+.k-mapbox{border:1px solid #070a10;box-shadow:0 0 0 2px #3a4a66,0 0 0 3px rgba(210,168,90,.45),inset 0 0 14px rgba(0,0,0,.9)}
+.k-info{background:radial-gradient(120% 90% at 30% 0%,#1b2435 0%,#0c111a 70%);box-shadow:inset 0 0 22px rgba(0,0,0,.75)}
+.k-game button{background:linear-gradient(180deg,#33415e 0%,#232d43 100%);box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 1px 2px rgba(0,0,0,.55);transition:border-color .12s,box-shadow .12s,filter .12s}
+.k-game button:hover{box-shadow:inset 0 1px 0 rgba(255,255,255,.16),0 0 8px rgba(210,168,90,.35);filter:brightness(1.08)}
+.k-game button:active{transform:translateY(1px);box-shadow:inset 0 2px 4px rgba(0,0,0,.5)}
+.k-stage::after{content:"";position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 0 1px rgba(0,0,0,.6),inset 0 10px 18px -12px rgba(0,0,0,.8),inset 0 -10px 18px -12px rgba(0,0,0,.8);z-index:1}
 @media (max-width:760px){
   .k-bottom{grid-template-columns:104px minmax(0,1fr);min-height:0;gap:6px}
   .k-mapbox{width:104px;height:104px}
