@@ -469,7 +469,10 @@ RTS.Renderer = function (canvas, app) {
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
-      if (e.merging) { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } }
+      if (e.merging) { const j = RTS.mergeJob(G, e);
+        if (j && j.at) { if (e.id === j.host) { const f = Math.min(1, (G.tick - j.at) / j.total), rr = d.r * TS + 9; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd25a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); }
+          else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }
+        else { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } } }
     // 투사체
     for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기

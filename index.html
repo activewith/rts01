@@ -194,7 +194,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '9000d1f';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '4798938';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -992,7 +992,7 @@ RTS.systems.push(
 RTS.LEVEL = { max: 2, hp: .25, armor: 1, rate: .25, dmg: .25, range: .5, supply: 4,
   cost: [.6, 1], oreMin: [75, 150], gasMin: [50, 100], time: [.6, 1], timeMin: [20, 30] };
 RTS.RANK = { max: 2, hp: .2, dmg: .15, cost: [.4, .6] };
-RTS.MERGE = { range: 10, dmg: .75, wait: 20 }; // range: 재료를 찾는 거리(칸), wait: 모이는 제한 시간(초)
+RTS.MERGE = { range: 10, dmg: .75, wait: 20, time: .4, timeMin: 12, timeMax: 45 }; // range: 재료를 찾는 거리(칸), wait: 모이는 제한 시간(초), time: 합체 시간 = 재료 생산 시간 합 × time(초, 최소·최대)
 
 const r25 = v => Math.round(v / 25) * 25, r5 = v => Math.round(v / 5) * 5;
 
@@ -1077,6 +1077,9 @@ RTS.fuseDef = function (parts, extra = {}) {
   const rest = Object.assign({}, extra); delete rest.weapon;
   return Object.assign(out, rest);
 };
+// 합체에 걸리는 시간(초). 재료가 다 모인 뒤부터 센다. merges[].time으로 따로 정할 수 있다
+RTS.mergeTime = m => { if (m.time) return m.time; const D = RTS.defs.entities, M = RTS.MERGE; let s = 0; for (const k of Object.keys(m.parts)) s += (D[k].time || 0) * m.parts[k]; return Math.max(M.timeMin, Math.min(M.timeMax, Math.round(s * M.time))); };
+RTS.mergeJob = (G, e) => e && e.merging && G.merges ? G.merges.find(j => j.id === e.merging) || null : null;
 // 이 유닛이 재료로 쓰이는 합체(같은 진영). 일꾼처럼 곁다리 재료인 유닛에서는 main=true인 것만 고르면 된다
 RTS.mergesOf = (G, team, defId) => { const t = G.teams[team]; return t ? Object.values(RTS.defs.merges).filter(m => m.faction === t.faction && m.parts[defId]) : []; };
 RTS.mergeBlock = function (G, u, m) { const t = G.teams[u.team];
@@ -1123,11 +1126,15 @@ RTS.addSystem({ id: 'merge', run(G) {
   G.merges = G.merges.filter(j => {
     const parts = j.parts.map(id => G.byId[id]), host = G.byId[j.host];
     const live = parts.every(e => e && !e.dead && e.order && e.order.type === 'merge' && e.order.job === j.id);
-    if (!live || G.tick > j.until) {
+    if (!live || (!j.at && G.tick > j.until)) {
       for (const e of parts) if (e && !e.dead && e.merging === j.id) { e.merging = 0; if (e.order && e.order.type === 'merge') RTS.issue(G, e, null); }
       RTS.say(G, j.team, live ? '재료가 제때 모이지 못해 합체가 취소되었습니다' : '합체가 취소되었습니다', 'warn'); return false;
     }
-    if (!parts.every(e => Math.hypot(e.x - host.x, e.y - host.y) <= RTS.defOf(e).r + RTS.defOf(host).r + 1)) return true;
+    if (!j.at) { // 1단계: 재료가 모인다
+      if (!parts.every(e => Math.hypot(e.x - host.x, e.y - host.y) <= RTS.defOf(e).r + RTS.defOf(host).r + 1)) return true;
+      const m = RTS.defs.merges[j.recipe]; j.at = G.tick; j.total = RTS.mergeTime(m) * RTS.HZ;
+      RTS.say(G, j.team, `${RTS.defs.entities[m.into].name} 합체 시작: ${RTS.mergeTime(m)}초`, 'ok'); RTS.emit(G, 'mergeStart', { job: j }); return true; }
+    if (G.tick - j.at < j.total) return true; // 2단계: 합체 중. 재료가 죽거나 다른 명령을 받으면 취소
     RTS.fuse(G, j, parts, host); return false;
   });
 } }, { after: 'entities' });
@@ -2603,7 +2610,10 @@ RTS.Renderer = function (canvas, app) {
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
-      if (e.merging) { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } }
+      if (e.merging) { const j = RTS.mergeJob(G, e);
+        if (j && j.at) { if (e.id === j.host) { const f = Math.min(1, (G.tick - j.at) / j.total), rr = d.r * TS + 9; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd25a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); }
+          else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }
+        else { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } } }
     // 투사체
     for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기
@@ -3210,7 +3220,7 @@ RTS.mount = function (root, opts = {}) {
       out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, 즉시 적용` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
     if (!d.gather) RTS.mergesOf(G, app.team, L.def).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
       let why = RTS.mergeBlock(G, L, m); if (!why) { const miss = RTS.mergePick(G, L, m).miss; if (miss.length) why = `재료 부족(${RTS.MERGE.range}칸 안): ` + miss.map(([k, c]) => D[k].name + ' ' + c + '기').join(', '); }
-      out.push({ key: 'JK'[i] || '', img: R.icon(m.into, app.team, t.faction), text: '합체', pl: `합체 → ${into.name}`, name: `합체: ${into.name}`, desc: `${parts} → 체력 ${into.hp}, 공격 ${into.weapon.damage}, 사거리 ${into.weapon.range}. 재료가 모이면 합쳐집니다`, note: `${parts} · 체력 ${into.hp}`, ok: !why, why, run: () => send({ type: 'merge', unit: L.id, recipe: m.id }) }); });
+      const sec = RTS.mergeTime(m); out.push({ key: 'JK'[i] || '', img: R.icon(m.into, app.team, t.faction), text: '합체', pl: `합체 → ${into.name}`, name: `합체: ${into.name}`, desc: `${parts} → 체력 ${into.hp}, 공격 ${into.weapon.damage}, 사거리 ${into.weapon.range}. 재료가 모인 뒤 ${sec}초 걸립니다(그동안 다른 명령을 주면 취소)`, note: `${parts} · 체력 ${into.hp} · ${sec}초`, ok: !why, why, run: () => send({ type: 'merge', unit: L.id, recipe: m.id }) }); });
     return out; }
   // 길게 누르기 팝업 메뉴
   function popItems(e) { if (!app.G || app.demo || e.team !== app.team || e.dead) return []; const items = upgradeItems(e, app.sel.includes(e.id) ? app.sel : [e.id]);
@@ -3294,7 +3304,7 @@ RTS.mount = function (root, opts = {}) {
       if (d.resource) stats.push(`남은 양 ${e.amount}`);
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
-      if (e.merging) stats.push('합체 대기'); let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
+      if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
     } else { const sum = {}; h = '<div class="k-many">' + list.slice(0, 32).map(u => { const k = Math.max(0, u.hp / RTS.stat(G, u, 'hp')); return `<button data-id="${u.id}" title="${RTS.defOf(u).name}"><img src="${R.icon(u.def, u.team, f)}" alt=""><i style="width:${Math.round(k * 100)}%;background:${k > .55 ? 'var(--ok)' : k > .28 ? 'var(--warn)' : 'var(--bad)'}"></i></button>`; }).join('') + '</div>'; }
@@ -3407,7 +3417,7 @@ RTS.mount = function (root, opts = {}) {
     if (d.provides) h += row('보급 제공', '+' + (e && e.team >= 0 ? RTS.provides(e) : d.provides));
     if (!isUnit && RTS.canLevel(d) && mineE) h += row('강화', e ? `${e.lv || 0} / ${RTS.LEVEL.max}단계${e.lv ? ' · ' + RTS.levelFx(d, e.lv).join(' · ') : ''}` : `최대 ${RTS.LEVEL.max}단계`);
     if (isUnit && e && e.rank) h += row('강화', '★'.repeat(e.rank) + ` · 체력 +${pct(RTS.RANK.hp * e.rank)}% · 공격 +${pct(RTS.RANK.dmg * e.rank)}%`);
-    const fm = d.fused && Object.values(RTS.defs.merges).find(m => m.into === id); if (fm) h += row('합체 재료', Object.keys(fm.parts).map(k => `${D[k].name} ${fm.parts[k]}`).join(' + ')) + row('합체 조건', `${D[fm.at].name} 강화 2단계`);
+    const fm = d.fused && Object.values(RTS.defs.merges).find(m => m.into === id); if (fm) h += row('합체 재료', Object.keys(fm.parts).map(k => `${D[k].name} ${fm.parts[k]}`).join(' + ')) + row('합체 조건', `${D[fm.at].name} 강화 2단계 · ${RTS.mergeTime(fm)}초`);
     if (mineE && !d.fused) { h += row('비용', costTxt(d.cost) + (d.supply ? ` · 보급 ${d.supply * (d.count || 1)}` + (d.count > 1 ? ` (한 번에 ${d.count}기)` : '') : '')) + row(isUnit ? '생산 시간' : '건설 시간', d.time ? sec(d.time) : '') + row('필요', needList(d, t));
       if (!e || !isUnit || src.how) h += row('만드는 법', howTo(id).join('<br>')); }
     h += '</table>';

@@ -6,7 +6,7 @@
 RTS.LEVEL = { max: 2, hp: .25, armor: 1, rate: .25, dmg: .25, range: .5, supply: 4,
   cost: [.6, 1], oreMin: [75, 150], gasMin: [50, 100], time: [.6, 1], timeMin: [20, 30] };
 RTS.RANK = { max: 2, hp: .2, dmg: .15, cost: [.4, .6] };
-RTS.MERGE = { range: 10, dmg: .75, wait: 20 }; // range: 재료를 찾는 거리(칸), wait: 모이는 제한 시간(초)
+RTS.MERGE = { range: 10, dmg: .75, wait: 20, time: .4, timeMin: 12, timeMax: 45 }; // range: 재료를 찾는 거리(칸), wait: 모이는 제한 시간(초), time: 합체 시간 = 재료 생산 시간 합 × time(초, 최소·최대)
 
 const r25 = v => Math.round(v / 25) * 25, r5 = v => Math.round(v / 5) * 5;
 
@@ -91,6 +91,9 @@ RTS.fuseDef = function (parts, extra = {}) {
   const rest = Object.assign({}, extra); delete rest.weapon;
   return Object.assign(out, rest);
 };
+// 합체에 걸리는 시간(초). 재료가 다 모인 뒤부터 센다. merges[].time으로 따로 정할 수 있다
+RTS.mergeTime = m => { if (m.time) return m.time; const D = RTS.defs.entities, M = RTS.MERGE; let s = 0; for (const k of Object.keys(m.parts)) s += (D[k].time || 0) * m.parts[k]; return Math.max(M.timeMin, Math.min(M.timeMax, Math.round(s * M.time))); };
+RTS.mergeJob = (G, e) => e && e.merging && G.merges ? G.merges.find(j => j.id === e.merging) || null : null;
 // 이 유닛이 재료로 쓰이는 합체(같은 진영). 일꾼처럼 곁다리 재료인 유닛에서는 main=true인 것만 고르면 된다
 RTS.mergesOf = (G, team, defId) => { const t = G.teams[team]; return t ? Object.values(RTS.defs.merges).filter(m => m.faction === t.faction && m.parts[defId]) : []; };
 RTS.mergeBlock = function (G, u, m) { const t = G.teams[u.team];
@@ -137,11 +140,15 @@ RTS.addSystem({ id: 'merge', run(G) {
   G.merges = G.merges.filter(j => {
     const parts = j.parts.map(id => G.byId[id]), host = G.byId[j.host];
     const live = parts.every(e => e && !e.dead && e.order && e.order.type === 'merge' && e.order.job === j.id);
-    if (!live || G.tick > j.until) {
+    if (!live || (!j.at && G.tick > j.until)) {
       for (const e of parts) if (e && !e.dead && e.merging === j.id) { e.merging = 0; if (e.order && e.order.type === 'merge') RTS.issue(G, e, null); }
       RTS.say(G, j.team, live ? '재료가 제때 모이지 못해 합체가 취소되었습니다' : '합체가 취소되었습니다', 'warn'); return false;
     }
-    if (!parts.every(e => Math.hypot(e.x - host.x, e.y - host.y) <= RTS.defOf(e).r + RTS.defOf(host).r + 1)) return true;
+    if (!j.at) { // 1단계: 재료가 모인다
+      if (!parts.every(e => Math.hypot(e.x - host.x, e.y - host.y) <= RTS.defOf(e).r + RTS.defOf(host).r + 1)) return true;
+      const m = RTS.defs.merges[j.recipe]; j.at = G.tick; j.total = RTS.mergeTime(m) * RTS.HZ;
+      RTS.say(G, j.team, `${RTS.defs.entities[m.into].name} 합체 시작: ${RTS.mergeTime(m)}초`, 'ok'); RTS.emit(G, 'mergeStart', { job: j }); return true; }
+    if (G.tick - j.at < j.total) return true; // 2단계: 합체 중. 재료가 죽거나 다른 명령을 받으면 취소
     RTS.fuse(G, j, parts, host); return false;
   });
 } }, { after: 'entities' });
