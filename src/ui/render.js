@@ -300,21 +300,29 @@ RTS.Renderer = function (canvas, app) {
     const r = RTS.rectOf(e), P = RTS.TEAM[e.team] || NEUTRAL, w = d.size[0] * TS, h = d.size[1] * TS, st = stateOf(d, e, app.frame); st.down = e.downUntil > G.tick;
     c.save(); c.translate(r.x0 * TS, r.y0 * TS);
     if (ghost) c.globalAlpha = .55;
-    const prog = e.buildT ? Math.min(1, e.built / e.buildT) : 1, art = RTS.art.buildings[d.art] || plate, base = c.globalAlpha;
+    const prog = e.buildT ? Math.min(1, e.built / e.buildT) : 1, art0 = RTS.art.buildings[d.art] || plate, base = c.globalAlpha;
+    // 그림 상태: 생산 중·체력·빛·연기(buildart.js). 빛과 연기는 건물 안 좌표 → 월드 px
+    const ox0 = r.x0 * TS, oy0 = r.y0 * TS; let hzUse = 0;
+    if (!ghost && e.id) { st.id = e.id; st.busy = !!(e.prod && e.prod.length); st.hp = prog < 1 ? 1 : e.hp / (RTS.stat(G, e, 'hp') || d.hp);
+      if (LON && prog >= 1 && !st.down) st.glow = (x, y, rr, col, i) => light(ox0 + x, oy0 + y - hzUse, rr, col3(col), i);
+      if (prog >= 1 && R.onScreen(e.x, e.y)) st.emit = (k, x, y) => { const wx = (ox0 + x) / TS, wy = (oy0 + y) / TS, z = hzUse;
+        if (k === 'smoke') fx({ k: 'smoke', x: wx, y: wy, z, s: 5, vx: .004, life: 40 }); else if (k === 'steam') fx({ k: 'steam', x: wx, y: wy, z, s: 6, life: 30 }); else if (k === 'spark' && rich()) sparks(wx, wy, 3, '#ffd27a', undefined, 0, z); }; }
+    const art = (cc, ww, hh, PP, ss) => { art0(cc, ww, hh, PP, ss); if (ss.hp < .66 && RTS.artDamage) RTS.artDamage(cc, ww, hh, ss); };
     if (depthOn()) { // 지붕(그림+조명) → 벽(실루엣을 쌓아 올림) → 그림자. 짓는 중이면 높이가 같이 자란다.
-      const hz = Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1));
+      const hz = Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1)); hzUse = hz;
       st.hit = !ghost && e.hitAt && G.tick - e.hitAt < 2;
       const sp = sprite(art, w, h, P, st, hz, WALL[d.art] || st.m[3], d.art + '|' + st.faction + '|' + (/turret/.test(d.art) ? Math.round((st.facing || 0) * 4) : ''));
       c.globalAlpha = base * .34; c.drawImage(sp.shadow, 0, 0, sp.sw, sp.sh, -sp.pad, -sp.pad, sp.sw / sp.k, sp.sh / sp.k);
       const put = () => { c.drawImage(sp.walls, 0, 0, sp.rw, sp.bh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.bh / sp.k); c.drawImage(sp.roof, 0, 0, sp.rw, sp.rh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); };
       c.globalAlpha = base * (prog < 1 ? .5 : 1); put();
       if (prog < 1) { c.globalAlpha = base; const y0 = -hz + (h + hz) * (1 - prog); c.save(); c.beginPath(); c.rect(-sp.pad, y0, w + sp.pad * 2, h + hz); c.clip(); put(); c.restore();
+        if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, -hz);
         c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]); c.fillStyle = '#ffcb5c'; c.fillRect(0, y0 - 1.5, w, 3); }
     } else {
       c.fillStyle = 'rgba(0,0,0,.32)'; c.fillRect(4, 8, w, h);
       if (prog < 1) { c.globalAlpha = base * .5; }
       art(c, w, h, P, st);
-      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); art(c, w, h, P, st); c.restore();
+      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); art(c, w, h, P, st); c.restore(); if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, 0);
         c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]);
         c.fillStyle = '#ffcb5c'; c.fillRect(0, h * (1 - prog) - 1.5, w, 3); }
     }
@@ -328,10 +336,10 @@ RTS.Renderer = function (canvas, app) {
         sparks(sx, sy, 3, '#ffe39a', -Math.PI / 2, 1.4, z); fx({ k: 'hit', x: sx, y: sy, z, life: 3 }); } }
     if (LON && !ghost && e.id) { const big = Math.max(w, h), z = depthOn() ? heightOf(d) : 0; // 건물 불빛
       if (prog < 1) light(e.x * TS, e.y * TS, big * .75, [1, .8, .42], .3 + .12 * Math.sin(app.frame * .5 + e.id));
-      else if (!st.down) { light(e.x * TS, e.y * TS - z, big * .9, col3(P.main), d.dropoff ? .45 : d.weapon ? .22 : .18);
+      else if (!st.down) { light(e.x * TS, e.y * TS - z, big * .9, col3(P.main), d.dropoff ? .24 : d.weapon ? .18 : .14);
         if (/extractor/.test(d.art)) light(e.x * TS, e.y * TS - z, big * 1.1, [1, .42, .95], .5);
         if (e.tribeHall) light(e.x * TS, e.y * TS + h * .3, big * 1.2, [1, .6, .25], .6 + .12 * Math.sin(app.frame * .3));
-        if (e.hp < d.hp * .25) light(e.x * TS, e.y * TS - z, big * 1.1, [1, .45, .15], .5 + .2 * Math.sin(app.frame * .7)); } }
+        if (e.hp < d.hp * .25) light(e.x * TS, e.y * TS - z, big * 1.1, [1, .45, .15], .22 + .1 * Math.sin(app.frame * .7)); } }
     if (e.hp < d.hp * .45 && prog >= 1 && app.frame % 7 === 0 && !ghost) R.fx.push({ k: 'smoke', x: e.x + (Math.random() - .5) * d.size[0] * .6, y: e.y + (Math.random() - .5) * d.size[1] * .6, life: 24, max: 24, s: 8 });
     c.restore();
   }
@@ -475,7 +483,7 @@ RTS.Renderer = function (canvas, app) {
     c.globalCompositeOperation = 'lighter';
     for (const f of add) { const k = (f.life + 1) / f.max, X = f.x * TS, Y = f.y * TS - (f.z || 0);
       if (LON) { if (f.k === 'muzzle') light(X, Y, f.s * 10, [1, .75, .4], 1.2 * k); else if (f.k === 'hit') light(X, Y, 30, [1, .85, .55], .6 * k); else if (f.k === 'fireball') light(X, Y, f.r * 4.5, [1, .55, .2], 1.1 * k);
-        else if (f.k === 'flashwide') light(X, Y, f.s * TS * 4, [1, .92, .75], 1.2 * k); else if (f.k === 'fire') light(X, Y - f.rise, 55, [1, .55, .2], .6 * k); else if (f.k === 'beam') light(f.x2 * TS, f.y2 * TS, 34, [.5, 1, .75], .7 * k); else if (f.k === 'ember') light(X, Y, 12, [1, .6, .3], .45 * k); }
+        else if (f.k === 'flashwide') light(X, Y, f.s * TS * 4, [1, .92, .75], 1.2 * k); else if (f.k === 'fire') light(X, Y - f.rise, 50, [1, .55, .2], .35 * k); else if (f.k === 'beam') light(f.x2 * TS, f.y2 * TS, 34, [.5, 1, .75], .7 * k); else if (f.k === 'ember') light(X, Y, 12, [1, .6, .3], .45 * k); }
       if (f.k === 'muzzle') glowAt(c, X, Y, f.s * 4, '#ffb347', k);
       else if (f.k === 'hit') glowAt(c, X, Y, 9, '#ffd98a', k);
       else if (f.k === 'fireball') glowAt(c, X, Y, f.r * 2.6, '#ff7a1a', k * .9);
