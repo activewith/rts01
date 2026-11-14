@@ -4,7 +4,7 @@
 //   s.glow(x, y, 반경, 색, 세기) — 고급 그래픽 빛을 낸다(건물 안 좌표)
 //   s.emit('smoke'|'spark'|'steam', x, y) — 연기·불꽃을 뿜는다(건물 안 좌표)
 (function () {
-  const B = RTS.art.buildings, nop = () => {};
+  const B = RTS.art.buildings, nop = () => {}, BASE = Object.assign({}, B);
   const G = s => s.glow || nop, EM = s => s.emit || nop;
   // ── 공통 부품 ──
   function rivets(c, pts, col = 'rgba(255,255,255,.35)') { for (const [x, y] of pts) { c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(x, y + .6, 1.8, 1.8); c.fillStyle = col; c.fillRect(x, y, 1.6, 1.6); } }
@@ -149,6 +149,8 @@
     c.fillStyle = '#efe4d2'; c.beginPath(); c.moveTo(24, -4); c.lineTo(34, 0); c.lineTo(24, 4); c.fill(); for (const a of [-1, 1]) { c.beginPath(); c.moveTo(-4, 8 * a); c.lineTo(-12, 15 * a); c.lineTo(0, 10 * a); c.fill(); }
     circ(c, 0, 0, 5, p.main); circ(c, -1, -1, 2, BIO); c.restore(); G(s)(w / 2, h / 2, 22, BIO, .25); };
 
+  // 저사양 모드: render.js의 가벼운 기본 그림을 쓴다
+  for (const k of Object.keys(B)) { const rich = B[k], base = BASE[k]; if (rich !== base && base) B[k] = function (c, w, h, p, s) { return (s && s.low ? base : rich)(c, w, h, p, s); }; }
   // ── 피해 표현: 체력에 따라 균열·그을음, 많이 다치면 구멍과 불씨 ──
   RTS.artDamage = function (c, w, h, s) { const hp = s.hp ?? 1; if (hp >= .66) return; let q = ((s.id || 1) * 2654435761) >>> 0; const r = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296;
     const n = hp < .33 ? 7 : 3; for (let i = 0; i < n; i++) { const x0 = 10 + r() * (w - 20), y0 = 10 + r() * (h - 20); c.fillStyle = 'rgba(15,10,8,.4)'; c.beginPath(); c.ellipse(x0, y0, 5 + r() * 9, 4 + r() * 6, r() * 3, 0, TAU); c.fill();

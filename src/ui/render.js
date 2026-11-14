@@ -168,20 +168,20 @@ RTS.Renderer = function (canvas, app) {
   const lights = [], rgbC = {}, col3 = h => rgbC[h] || (rgbC[h] = h[0] === '#' && h.length >= 7 ? [parseInt(h.slice(1, 3), 16) / 255, parseInt(h.slice(3, 5), 16) / 255, parseInt(h.slice(5, 7), 16) / 255] : [1, 1, 1]);
   const light = (x, y, r, col, i) => { if (LON && i > .01) lights.push(x, y, r, col[0] * i, col[1] * i, col[2] * i); }; // 월드 px
   const fogGL = R.fogGL = { data: null, w: 0, h: 0, v: 0 };
-  let bake = null, bakeFor = null; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
+  let bake = null, bakeFor = null, bakeLow = false; const fog = document.createElement('canvas'); const fogC = fog.getContext('2d'); let fogImg = null;
   const ringCol = e => e.team === app.team ? '#7dffa8' : app.G.coop && e.team >= 0 && RTS.ally(app.G, app.team, e.team) ? '#8fd3ff' : e.team === RTS.TRIBE ? (RTS.foe(app.G, app.team, e.team) ? '#ff6a5a' : '#ffe27a') : e.team < 0 ? '#ffe27a' : '#ff6a5a';
-  const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: matOf(e.team >= 0 && app.G.teams[e.team]?.faction), facing: e.facing });
+  const stateOf = (d, e, t) => ({ t, faction: e.team >= 0 && app.G.teams[e.team] ? app.G.teams[e.team].faction : 'pioneers', tint: d.tint, moving: !!e.path, cargo: e.cargo ? e.cargoType : null, sieged: e.sieged, m: matOf(e.team >= 0 && app.G.teams[e.team]?.faction), facing: e.facing, low: !!app.settings.lowSpec });
 
   function bakeTerrain(G) {
     const tid = RTS.defs.maps[G.mapId].theme, th = RTS.THEMES[tid] || RTS.THEMES.dusk;
-    const c = RTS.bakeTerrainHD(G, th, RTS.THEMES[tid] ? tid : 'dusk'); // 높이맵·햇빛·그림자로 굽는다(terrain.js)
+    bakeLow = !!app.settings.lowSpec; const c = RTS.bakeTerrainHD(G, th, RTS.THEMES[tid] ? tid : 'dusk', bakeLow); // 높이맵·햇빛·그림자로 굽는다(terrain.js). 저사양은 절반 해상도
     bake = c; bakeFor = G; R.tracks = []; built.clear();
     fog.width = G.w; fog.height = G.h; fogImg = fogC.createImageData(G.w, G.h); R.decals = []; R.fx = []; R.ghosts = {};
   }
   R.terrain = () => bake;
 
   // ── 특수 효과. 화면 전용이라 Math.random을 써도 된다(게임 상태에는 손대지 않는다). ──
-  const rich = () => app.settings.fxRich !== false, depthOn = () => app.settings.depth !== false, rnd = (a, b) => a + Math.random() * (b - a);
+  const rich = () => app.settings.fxRich !== false && !app.settings.lowSpec, depthOn = () => app.settings.depth !== false, rnd = (a, b) => a + Math.random() * (b - a);
   const fx = o => { o.max = o.life; R.fx.push(o); return o; };
   const shake = (x, y, amt) => { if (app.settings.shake === false || !R.onScreen(x, y)) return; R.shake = Math.min(14, Math.max(R.shake || 0, amt)); };
   const zOf = e => { const d = RTS.defOf(e); return d.air ? 20 : d.size && depthOn() ? heightOf(d) : 0; };
@@ -227,6 +227,16 @@ RTS.Renderer = function (canvas, app) {
   };
   R.onScreen = (x, y) => { const c = R.cam, w = canvas.width / c.z, h = canvas.height / c.z, px = x * TS, py = y * TS; return px > c.x - 64 && py > c.y - 64 && px < c.x + w + 64 && py < c.y + h + 64; };
 
+  // 프레임 수: 표시(설정 '프레임 수 표시')와 첫 게임 자동 저사양 판단. 시작 3초 뒤부터 15초 동안 평균이 32fps보다 낮으면 한 번만 저사양 모드를 켠다.
+  const PF = { last: 0, fps: 60, g: null, t0: 0, n: 0 };
+  function perf(G, now, o, W, H) { const dt = PF.last ? now - PF.last : 16; PF.last = now; if (dt > 0 && dt < 500) PF.fps += (1000 / dt - PF.fps) * .05; R.fps = PF.fps;
+    if (G !== PF.g) { PF.g = G; PF.t0 = now; PF.n = 0; }
+    if (app.lowAutoMsg && !app.demo) { app.notice && app.notice(app.lowAutoMsg); app.lowAutoMsg = null; }
+    const st = app.store; if (st && !app.demo && !app.paused && !G.over && !app.settings.lowSpec && !st.get('lowRun')) { const e = now - PF.t0;
+      if (e > 3000 && dt < 500) PF.n++; if (e > 18000) { const avg = PF.n / 15; st.set('lowRun', '1'); if (avg < 32) { app.settings.lowSpec = true; app.saveSettings && app.saveSettings();
+          app.notice && app.notice(`평균 ${Math.round(avg)}프레임이라 저사양 모드를 켰습니다. 설정에서 끌 수 있습니다`); } } }
+    if (app.settings.fps) { o.save(); o.setTransform(1, 0, 0, 1, 0, 0); const f = Math.round(PF.fps), txt = f + ' fps' + (app.settings.lowSpec ? ' · 저사양' : R.gl ? (gfx && gfx.low ? ' · GL 낮춤' : ' · GL') : '');
+      o.font = '700 13px "Chakra Petch",monospace'; const tw = o.measureText(txt).width; o.fillStyle = 'rgba(8,12,22,.75)'; o.fillRect(8, H - 28, tw + 14, 20); o.fillStyle = f >= 50 ? '#7dffa8' : f >= 30 ? '#f2c14e' : '#ff6a5a'; o.fillText(txt, 15, H - 13); o.restore(); } }
   function updateFogGL(G, team) { // 고급 그래픽 안개: 타일마다 0 보임, 140 본 적 있음, 255 처음
     const t = G.teams[team], N = G.w * G.h; if (!fogGL.data || fogGL.data.length !== N) fogGL.data = new Uint8Array(N);
     for (let i = 0; i < N; i++) fogGL.data[i] = t.vis[i] ? 0 : t.seen[i] ? 140 : 255; fogGL.w = G.w; fogGL.h = G.h; fogGL.v++;
@@ -359,8 +369,8 @@ RTS.Renderer = function (canvas, app) {
 
   R.draw = function (alpha) {
     const G = app.G, me = app.team; if (!G) return;
-    if (bakeFor !== G) bakeTerrain(G);
-    const wantGL = app.settings.gl !== false;
+    if (bakeFor !== G || bakeLow !== !!app.settings.lowSpec) bakeTerrain(G);
+    const wantGL = app.settings.gl !== false && !app.settings.lowSpec;
     if (wantGL && !gfxTried && canvas.parentNode) { gfxTried = true; try { gfx = RTS.GLFX(canvas.parentNode, canvas); } catch (err) { gfx = null; } }
     const glOn = !!(wantGL && gfx && gfx.ok); if (gfx) gfx.show(glOn); R.gl = LON = glOn; lights.length = 0;
     if (glOn && (world.width !== canvas.width || world.height !== canvas.height)) { world.width = canvas.width; world.height = canvas.height; }
@@ -371,7 +381,7 @@ RTS.Renderer = function (canvas, app) {
     c.setTransform(cam.z, 0, 0, cam.z, -cam.x * cam.z + ox, -cam.y * cam.z + oy);
     c.imageSmoothingEnabled = true;
     const vw = W / cam.z, vh = H / cam.z, sx = Math.max(0, cam.x), sy = Math.max(0, cam.y), sw = Math.min(bake.width - sx, vw), sh = Math.min(bake.height - sy, vh);
-    if (sw > 0 && sh > 0) c.drawImage(bake, sx, sy, sw, sh, sx, sy, sw, sh);
+    const bk = bake.width / (G.w * TS); if (sw > 0 && sh > 0) c.drawImage(bake, sx * bk, sy * bk, sw * bk, sh * bk, sx, sy, sw, sh);
     for (const d of R.decals) if (R.onScreen(d.x, d.y)) { const X = d.x * TS, Y = d.y * TS; glowAt(c, X, Y, d.s * 1.25, '#0a0806', .5); // 그을음 + 잔해
       if (d.rub) for (const [dx, dy, w, h, r, col] of d.rub) { c.save(); c.translate(X + dx, Y + dy); c.rotate(r); c.fillStyle = col; c.fillRect(-w / 2, -h / 2, w, h); c.fillStyle = 'rgba(255,255,255,.1)'; c.fillRect(-w / 2, -h / 2, w, 1); c.restore(); } }
 
@@ -440,6 +450,7 @@ RTS.Renderer = function (canvas, app) {
     R.pings = R.pings.filter(p => { p.life--; const k = p.life / p.max; o.strokeStyle = p.c; o.lineWidth = 2; o.globalAlpha = k; o.beginPath(); o.arc(p.x * TS, p.y * TS, (1 - k) * 22 + 4, 0, TAU); o.stroke(); o.globalAlpha = 1; return p.life > 0; });
     o.setTransform(1, 0, 0, 1, 0, 0);
     if (glOn) gfx.render({ src: world, lights: screenLights(cam, ox, oy), amb: amb().amb, tint: amb().tint, cam, shake: [ox, oy], map: [G.w * TS, G.h * TS], fog: fogOn ? fogGL : null, shocks: shocks(cam, ox, oy), time: now / 1000, clouds: app.settings.clouds === false ? 0 : 1 });
+    perf(G, now, o, W, H);
     if (app.box) { const b = app.box; o.strokeStyle = '#7dffa8'; o.lineWidth = 1.5; o.fillStyle = 'rgba(125,255,168,.1)'; o.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); o.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
   };
   function selBox(c, e, d) { const r = RTS.rectOf(e); c.strokeStyle = ringCol(e); c.lineWidth = 2; c.strokeRect(r.x0 * TS - 2, r.y0 * TS - 2, r.w * TS + 4, r.h * TS + 4); }

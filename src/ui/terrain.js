@@ -7,8 +7,8 @@ RTS.TERRAIN_DECOR = { // 테마별 장식: 풀(grass), 얼음 조각(ice), 마�
   frost: { kind: 'ice', tuft: ['#d8e6f0', '#eef6fb', '#b6cada'], pebble: ['#3a4a5e', '#8fa3b6'] },
   moss: { kind: 'grass', tuft: ['#5d8a4e', '#6f9c5c', '#3f6538'], pebble: ['#232c25', '#4b5a48'] },
 };
-RTS.bakeTerrainHD = function (G, th, themeId) {
-  const TS = 32, SC = 2, W = G.w * TS / SC, H = G.h * TS / SC, N = W * H;
+RTS.bakeTerrainHD = function (G, th, themeId, low) {
+  const TS = 32, SC = low ? 4 : 2, OUT = low ? .5 : 1, W = G.w * TS / SC, H = G.h * TS / SC, N = W * H;
   let s = (G.seed * 9301 + 49297) >>> 0; const r = () => (s = (s * 1664525 + 1013904223) >>> 0) / 4294967296;
   const hex = c => [parseInt(c.slice(1, 3), 16), parseInt(c.slice(3, 5), 16), parseInt(c.slice(5, 7), 16)];
   const gP = th.ground.map(hex), sP = th.sand.map(hex), rP = th.rock.map(hex).map(c => { const g = (c[0] + c[1] + c[2]) / 3; return c.map(v => v + (g - v) * .4); }); // 암벽은 채도를 조금 뺀다
@@ -37,7 +37,7 @@ RTS.bakeTerrainHD = function (G, th, themeId) {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, n = cg(nC, x, y) - .5;
     rock[i] = ss(.42, .58, rockV[i] + n * .3); sand[i] = ss(.25, .75, sandV[i] + n * .5); }
   // 높이: 암벽 윗면(남쪽 절벽면 띠만큼 위로 깎음) + 울퉁불퉁 + 모래 물결
-  const FB = 9, HC = 30, Hf = new Float32Array(N), top = new Float32Array(N);
+  const FB = Math.round(18 / SC), HC = 30, Hf = new Float32Array(N), top = new Float32Array(N);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, b = cg(nB, x, y), a = cg(nA, x, y);
     const tp = y + FB < H ? rock[i + FB * W] * rock[i] : rock[i]; top[i] = tp;
     const c2 = cg(nC, x, y), hz = T[((y * 7 + x * 13) & 65535)] - .5; // 암벽 윗면: 능선(ridged) + 거친 결
@@ -54,7 +54,7 @@ RTS.bakeTerrainHD = function (G, th, themeId) {
     let sh = ((-gx * L[0] - gy * L[1] + SC * L[2]) / nl) / L[2]; sh = Math.min(1.55, Math.max(.35, 1 + (sh - 1) * 1.25));
     // 그림자: 햇빛 쪽으로 걸어가며 더 높은 지형이 있으면 가림(부드럽게)
     let occ = 0; if (ro < .5) { const h0 = Hf[i];
-      for (let k = 2; k <= 26; k += 2) { const qx = Math.round(x + sx * k), qy = Math.round(y + sy * k); if (qx < 0 || qy < 0 || qx >= W || qy >= H) break;
+      for (let k = 4 / SC; k <= 52 / SC; k += 4 / SC) { const qx = Math.round(x + sx * k), qy = Math.round(y + sy * k); if (qx < 0 || qy < 0 || qx >= W || qy >= H) break;
         const d = Hf[qy * W + qx] - (h0 + k * SC * tanE); if (d > 0) { occ = Math.max(occ, Math.min(1, d / 6)); if (occ >= 1) break; } } }
     const ao = 1 - .4 * Math.min(1, Math.max(0, (rockV[i] - ro) * 2.4)) * (1 - ro); // 절벽 기슭
     // 색: 땅(얼룩·마른 땅·짙은 곳) → 모래 → 암벽 윗면 / 절벽면. 표본마다 배열을 만들지 않도록 채널별로 계산한다.
@@ -68,21 +68,21 @@ RTS.bakeTerrainHD = function (G, th, themeId) {
       D[i * 4 + ch] = v * k > 255 ? 255 : v * k; }
     D[i * 4 + 3] = 255; }
   const lo = document.createElement('canvas'); lo.width = W; lo.height = H; lo.getContext('2d').putImageData(img, 0, 0);
-  const cv = document.createElement('canvas'); cv.width = G.w * TS; cv.height = G.h * TS; const x = cv.getContext('2d');
+  const cv = document.createElement('canvas'); cv.width = G.w * TS * OUT; cv.height = G.h * TS * OUT; const x = cv.getContext('2d');
   x.imageSmoothingEnabled = true; x.imageSmoothingQuality = 'high'; x.drawImage(lo, 0, 0, cv.width, cv.height);
   // 고운 질감: 무작위 점 타일을 겹침 합성으로 덮는다
   const gr = document.createElement('canvas'); gr.width = gr.height = 128; const gx2 = gr.getContext('2d'), gi = gx2.createImageData(128, 128);
   for (let i = 0; i < 128 * 128; i++) { const v = 128 + (r() - .5) * 70; gi.data[i * 4] = gi.data[i * 4 + 1] = gi.data[i * 4 + 2] = v; gi.data[i * 4 + 3] = 255; }
   gx2.putImageData(gi, 0, 0); x.globalCompositeOperation = 'overlay'; x.globalAlpha = .32; x.fillStyle = x.createPattern(gr, 'repeat'); x.fillRect(0, 0, cv.width, cv.height);
-  x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1;
+  x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.setTransform(OUT, 0, 0, OUT, 0, 0); const CW2 = G.w * TS, CH2 = G.h * TS; // 장식은 월드 px 좌표로
   // 장식: 자잘한 돌, 풀·얼음·덤불, 암벽 균열. 통행 판정과 무관하게 아주 작게만 그린다.
-  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, py / SC | 0) * W + Math.min(W - 1, px / SC | 0); return { ro: rock[i], tp: top[i], sa: sand[i] }; };
-  for (let n = 0; n < G.w * G.h * .5; n++) { const px = r() * cv.width, py = r() * cv.height, q = at(px, py); if (q.ro > .05) continue;
+  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: rock[i], tp: top[i], sa: sand[i] }; };
+  for (let n = 0; n < G.w * G.h * (low ? .25 : .5); n++) { const px = r() * CW2, py = r() * CH2, q = at(px, py); if (q.ro > .05) continue;
     const z = 1 + r() * 2.2; x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(px + 1, py + 1, z * 1.2, z * .8, 0, 0, Math.PI * 2); x.fill();
     x.fillStyle = dec.pebble[0]; x.beginPath(); x.ellipse(px, py, z * 1.1, z * .75, r() * 3, 0, Math.PI * 2); x.fill();
     x.fillStyle = dec.pebble[1]; x.beginPath(); x.ellipse(px - z * .3, py - z * .3, z * .5, z * .32, 0, 0, Math.PI * 2); x.fill(); }
   x.lineCap = 'round';
-  for (let n = 0; n < G.w * G.h * .32; n++) { const px = r() * cv.width, py = r() * cv.height, q = at(px, py); if (q.ro > .05 || (dec.kind === 'grass' && q.sa > .4)) continue;
+  for (let n = 0; n < G.w * G.h * (low ? .16 : .32); n++) { const px = r() * CW2, py = r() * CH2, q = at(px, py); if (q.ro > .05 || (dec.kind === 'grass' && q.sa > .4)) continue;
     const c = dec.tuft[(r() * 3) | 0], m = 3 + (r() * 4 | 0);
     if (dec.kind === 'grass' || dec.kind === 'dry') { x.strokeStyle = 'rgba(0,0,0,.25)'; x.lineWidth = 1.2; x.beginPath(); x.ellipse(px + 1.5, py + 1, 4, 1.6, 0, 0, Math.PI * 2); x.stroke();
       x.strokeStyle = c; x.lineWidth = dec.kind === 'dry' ? 1 : 1.3; for (let j = 0; j < m; j++) { const a = -Math.PI / 2 + (r() - .5) * 1.6, l = 3 + r() * (dec.kind === 'dry' ? 6 : 5); x.beginPath(); x.moveTo(px + (r() - .5) * 3, py); x.quadraticCurveTo(px + Math.cos(a) * l * .5, py + Math.sin(a) * l * .6, px + Math.cos(a) * l, py + Math.sin(a) * l); x.stroke(); } }
@@ -90,7 +90,7 @@ RTS.bakeTerrainHD = function (G, th, themeId) {
       x.fillStyle = c; x.beginPath(); x.moveTo(px - 3, py + 1); x.lineTo(px - 1, py - 3 - r() * 3); x.lineTo(px + 1, py - 1); x.lineTo(px + 3, py - 4 - r() * 2); x.lineTo(px + 4, py + 1); x.closePath(); x.fill();
       x.fillStyle = 'rgba(255,255,255,.7)'; x.fillRect(px - 1, py - 2, 1, 1); } }
   x.strokeStyle = 'rgba(0,0,0,.28)'; x.lineWidth = 1; // 암벽 윗면 균열
-  for (let n = 0; n < G.w * G.h * .25; n++) { let px = r() * cv.width, py = r() * cv.height; if (at(px, py).tp < .9) continue; x.beginPath(); x.moveTo(px, py);
+  for (let n = 0; n < G.w * G.h * .25; n++) { let px = r() * CW2, py = r() * CH2; if (at(px, py).tp < .9) continue; x.beginPath(); x.moveTo(px, py);
     for (let j = 0; j < 4; j++) { px += (r() - .5) * 14; py += (r() - .5) * 10; if (at(px, py).tp < .8) break; x.lineTo(px, py); } x.stroke(); }
   return cv;
 };

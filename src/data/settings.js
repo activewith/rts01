@@ -53,6 +53,8 @@ RTS.SETTINGS = [
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
+    { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },
+    { id: 'fps', label: '프레임 수 표시', desc: '화면 왼쪽 아래에 초당 프레임 수를 보입니다', type: 'toggle', def: false, client: true },
     { id: 'gl', label: '고급 그래픽', desc: 'WebGL 조명·불빛·빛 번짐·부드러운 안개. 지원하지 않는 기기에서는 자동으로 꺼집니다', type: 'toggle', def: true, client: true },
     { id: 'clouds', label: '구름 그림자', desc: '고급 그래픽에서 구름 그림자가 지나갑니다', type: 'toggle', def: true, client: true },
     { id: 'weather', label: '날씨 입자', desc: '눈·먼지·포자가 날립니다(화려한 특수 효과가 켜져 있을 때)', type: 'toggle', def: true, client: true },

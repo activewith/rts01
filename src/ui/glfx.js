@@ -96,3 +96,11 @@ RTS.GLFX = function (stage, before) {
   F.destroy = () => { const x = gl.getExtension('WEBGL_lose_context'); if (x) x.loseContext(); cv.remove(); };
   return F;
 };
+
+// 처음 실행 때 한 번: 느린 기기인지 추정한다. 램 2GB 이하, 하급 GPU 이름, 짧은 계산 시간 측정 중 하나라도 걸리면 저사양.
+RTS.lowSpecGuess = function () {
+  try { const mem = navigator.deviceMemory; if (mem && mem <= 2) return true; } catch (e) {}
+  let r = ''; try { const g = document.createElement('canvas').getContext('webgl'); if (!g) return true; const x = g.getExtension('WEBGL_debug_renderer_info'); r = x ? String(g.getParameter(x.UNMASKED_RENDERER_WEBGL)) : ''; const l = g.getExtension('WEBGL_lose_context'); if (l) l.loseContext(); } catch (e) {}
+  RTS.gpuName = r; if (/PowerVR|Mali-(400|450|T6|T7|T8|G31|G51|G52)|Adreno \(TM\) (3\d\d|4\d\d|50\d|51\d)/i.test(r)) return true;
+  const t0 = performance.now(); let s = 0; for (let i = 0; i < 2e6; i++) s += Math.sqrt(i + s % 7); RTS.cpuBench = performance.now() - t0; return RTS.cpuBench > 80 && s > 0;
+};
