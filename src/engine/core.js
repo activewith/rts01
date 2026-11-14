@@ -6,7 +6,7 @@
 const RTS = (globalThis.RTS = globalThis.RTS || {});
 RTS.version = '0.1.0';
 RTS.HZ = 20;
-RTS.defs = { terrain: {}, entities: {}, upgrades: {}, abilities: {}, factions: {}, maps: {}, mapgens: {}, difficulties: {}, companies: {}, marketEvents: {}, branches: {}, tribeMissions: {} };
+RTS.defs = { terrain: {}, entities: {}, upgrades: {}, abilities: {}, factions: {}, maps: {}, mapgens: {}, difficulties: {}, companies: {}, marketEvents: {}, branches: {}, tribeMissions: {}, merges: {} };
 RTS.TRIBE = -2;       // 잿빛 부족(AI 중립 세력)의 팀 번호. -1은 자원·거점 같은 비활성 중립
 RTS.orders = {};      // 유닛 명령 핸들러: RTS.orders.move = (G,u,o)=>...
 RTS.systems = [];     // 틱 파이프라인: [{id, run(G)}]
@@ -18,6 +18,7 @@ RTS.mod = function (pack) {
     if (!RTS.defs[k]) throw new Error('알 수 없는 콘텐츠 종류: ' + k);
     for (const id of Object.keys(pack[k])) RTS.defs[k][id] = Object.assign({ id }, pack[k][id]);
   }
+  RTS._prod = null; // 유닛→생산 건물 캐시(upgrade.js)
 };
 // 기존 정의 일부만 수정: RTS.patch('entities','p_rifle',{hp:60})
 RTS.patch = (kind, id, change) => Object.assign(RTS.defs[kind][id], change);

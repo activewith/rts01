@@ -210,3 +210,23 @@ RTS.mod({
       lanes: [[11, 32, 32, 24, 3], [32, 24, 48, 17, 3], [11, 32, 26, 44, 3], [26, 44, 48, 50, 3], [13, 9, 18, 24, 2.5]] },
   },
 });
+
+// ── 합체 유닛 ──────────────────────────────────────────────
+// at 건물이 강화 2단계면, 재료 유닛 하나를 길게 누르거나 명령 카드 '합체'로 주변 재료를 모아 합친다(upgrade.js).
+// 스탯은 RTS.fuseDef가 재료에서 계산한다: 체력 합, 초당 피해 합 × 0.75(두 기면 1.5배), 속도는 가장 느린 재료.
+RTS.mod({ entities: {
+  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim'], desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전' }),
+  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock'], weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
+  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사' }),
+  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock'], desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
+  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid'], desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
+  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy'], desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
+}, merges: {
+  // parts: 재료와 수, at: 강화 2단계가 필요한 건물, into: 결과 유닛
+  commando:   { faction: 'pioneers', at: 'p_barracks', parts: { p_rifle: 1, p_gren: 1 }, into: 'p_commando' },
+  titan:      { faction: 'pioneers', at: 'p_factory', parts: { p_tank: 2, p_gunship: 2, p_worker: 1 }, into: 'p_titan' },
+  duelist:    { faction: 'ironclad', at: 'i_forge', parts: { i_blade: 2, i_striker: 1 }, into: 'i_duelist' },
+  juggernaut: { faction: 'ironclad', at: 'i_foundry', parts: { i_colossus: 2, i_wasp: 1, i_worker: 1 }, into: 'i_juggernaut' },
+  venom:      { faction: 'swarm', at: 's_pool', parts: { s_claw: 2, s_spitter: 1 }, into: 's_venom' },
+  behemoth:   { faction: 'swarm', at: 's_nest', parts: { s_brute: 2, s_drake: 2 }, into: 's_behemoth' },
+} });

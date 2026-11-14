@@ -31,12 +31,16 @@ function modded(G, teamId, d, name, base) {
 }
 RTS.stat = function (G, e, name) {
   const d = defOf(e); let v = modded(G, e.team, d, name, d[name] || 0);
+  if (e.lv) { if (name === 'hp') v *= 1 + RTS.LEVEL.hp * e.lv; else if (name === 'armor') v += RTS.LEVEL.armor * e.lv; } // 건물 강화(upgrade.js)
+  if (e.rank && name === 'hp') v *= 1 + RTS.RANK.hp * e.rank; // 유닛 강화 ★
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
   return v;
 };
 RTS.weapon = e => { const d = defOf(e); return (e.sieged && d.siegeWeapon) || d.weapon || null; };
 RTS.wStat = function (G, e, w, name) {
   let v = modded(G, e.team, defOf(e), name, w[name] || 0);
+  if (e.lv) { if (name === 'damage') v *= 1 + RTS.LEVEL.dmg * e.lv; else if (name === 'range') v += RTS.LEVEL.range * e.lv; }
+  if (e.rank && name === 'damage') v *= 1 + RTS.RANK.dmg * e.rank;
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
   return v;
 };
@@ -57,6 +61,7 @@ RTS.issue = function (G, u, order, queue) {
 };
 function nextOrder(G, u) { releaseNode(G, u); u.order = u.queue.shift() || null; if (!u.order) stopMove(u); }
 function stopMove(u) { u.path = null; u.dest = null; u.destEnt = 0; u.needPath = false; }
+RTS.stopMove = stopMove;
 function moveTo(G, u, x, y) {
   if (u.dest && !u.destEnt && Math.abs(u.dest.x - x) + Math.abs(u.dest.y - y) < .2) return;
   u.dest = { x, y }; u.destEnt = 0; u.needPath = true;
@@ -76,9 +81,10 @@ const mine = (G, team, ids) => ids.map(i => G.byId[i]).filter(e => e && !e.dead 
 function say(G, team, text, kind) { RTS.emit(G, 'notice', { team, text, kind }); }
 const canPay = (t, c = {}) => Object.keys(c).every(k => (t.res[k] || 0) >= c[k]);
 const pay = (t, c = {}, s = 1) => { for (const k of Object.keys(c)) t.res[k] = (t.res[k] || 0) - c[k] * s; };
-RTS.canPay = canPay;
+RTS.canPay = canPay; RTS.pay = pay; RTS.say = say;
 RTS.techOk = (t, d) => (d.requires || []).every(r => t.have[r] > 0 || t.upgrades[r]);
 function lack(G, team, t, c = {}) { for (const k of Object.keys(c)) if ((t.res[k] || 0) < c[k]) { say(G, team, k === 'ore' ? '광석이 부족합니다' : '에테르가 부족합니다', 'warn'); return true; } return false; }
+RTS.lack = lack;
 
 RTS.commands.order = function (G, team, c) {
   for (const u of mine(G, team, c.ids)) {
@@ -107,7 +113,7 @@ RTS.commands.cancel = function (G, team, c) {
   const t = G.teams[team], b = G.byId[c.building]; if (!b || b.team !== team) return;
   if (!RTS.complete(b)) { pay(t, defOf(b).cost, -.75); RTS.kill(G, b, null, true); return; }
   const p = b.prod.pop(); if (!p) return;
-  pay(t, (p.kind === 'unit' ? D()[p.id] : RTS.defs.upgrades[p.id]).cost, -1);
+  pay(t, p.kind === 'unit' ? D()[p.id].cost : p.kind === 'level' ? RTS.levelCost(D()[p.id], p.lv) : RTS.defs.upgrades[p.id].cost, -1);
   if (p.kind === 'upgrade') delete t.research[p.id];
 };
 RTS.commands.rally = function (G, team, c) { for (const b of mine(G, team, c.ids)) b.rally = { x: c.x, y: c.y, ent: c.ent || 0 }; };
@@ -335,8 +341,9 @@ function runBuilding(G, b) {
     if (t.sup + need > t.cap) { if (G.tick % 100 === 0) say(G, b.team, '보급이 부족합니다. 보급 건물을 지으세요', 'warn'); return; }
     p.started = true; t.sup += need;
   }
-  if (++p.t < p.total) return;
+  p.t += RTS.prodRate(b); if (p.t < p.total) return; // 강화한 건물은 생산·연구가 빠르다
   b.prod.shift();
+  if (p.kind === 'level') { RTS.levelDone(G, b, p.lv); return; }
   if (p.kind === 'upgrade') { t.upgrades[p.id] = 1; delete t.research[p.id]; t.mods = {}; say(G, b.team, RTS.defs.upgrades[p.id].name + ' 연구 완료', 'ok'); RTS.emit(G, 'researched', { team: b.team, id: p.id }); return; }
   const r = RTS.rectOf(b), side = b.rally ? Math.atan2(b.rally.y - b.y, b.rally.x - b.x) : 1.57;
   const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.nearestFree(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
@@ -415,7 +422,7 @@ function fixPos(G, u) {
 
 // ── 시스템 파이프라인 등록 ─────────────────────────────────
 RTS.census = function (G) {
-  for (const t of G.teams) { t.sup = 0; t.cap = 0; t.have = {}; t.alive = 0; }
+  for (const t of G.teams) { t.sup = 0; t.cap = 0; t.have = {}; t.lvl = {}; t.alive = 0; }
   for (const e of G.ents) {
     if (e.dead || e.team < 0) continue;
     const d = defOf(e), t = G.teams[e.team];
@@ -423,7 +430,7 @@ RTS.census = function (G) {
     if (d.kind === 'unit') t.sup += d.supply || 0;
     else { t.alive++;
       for (const p of e.prod) if (p.kind === 'unit' && p.started) t.sup += (D()[p.id].supply || 0) * (D()[p.id].count || 1);
-      if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += d.provides || 0; } }
+      if (RTS.complete(e)) { t.have[e.def] = (t.have[e.def] || 0) + 1; t.cap += RTS.provides(e); if (e.lv && e.lv > (t.lvl[e.def] || 0)) t.lvl[e.def] = e.lv; } }
   }
   for (const t of G.teams) t.cap = Math.min(t.cap + RTS.allyPerk(G, t.id, 'supply'), RTS.cfg(G).supplyCap);
 };

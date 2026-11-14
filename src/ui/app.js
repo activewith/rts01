@@ -17,13 +17,13 @@ const HTML = `
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-away" id="k-away" hidden role="alert"></div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
     <div class="k-card" id="k-card"></div>
   </footer>
-  <div class="k-tip" id="k-tip" hidden></div><div class="k-tip k-htip" id="k-htip" hidden role="tooltip"></div>
+  <div class="k-tip" id="k-tip" hidden></div><div class="k-tip k-htip" id="k-htip" hidden role="tooltip"></div><div class="k-pop" id="k-pop" hidden role="menu"></div>
   <section class="k-overlay k-start" id="k-start">
     <div class="k-panel">
       <h1>광맥전선</h1>
@@ -31,7 +31,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-netopen" title="같은 와이파이의 다른 기기와 대전하거나 협동">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-setopen">설정</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-netopen" title="같은 와이파이의 다른 기기와 대전하거나 협동">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-rejoin" hidden title="끊긴 둘이 대전에 다시 들어갑니다">대전 다시 접속</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
@@ -43,6 +43,8 @@ const HTML = `
         <dt>N</dt><dd>자유상단. 맵에 숨은 지부를 찾아 조건을 채우고 동맹금을 걸어 신청합니다. 거절되면 동맹금을 잃습니다</dd>
         <dt>회사 거점 공격</dt><dd>우클릭으로 공격하면 주가가 내리고, 무너지면 40초간 가동이 멈추며 배당도 끊깁니다</dd>
         <dt>터치</dt><dd>한 손가락은 지도 이동, 탭은 선택 또는 명령. 범위 선택 버튼을 켜면 드래그로 묶습니다</dd>
+        <dt>길게 누르기</dt><dd>내 유닛·건물을 0.5초 누르면 강화·합체 메뉴가 뜹니다. 명령 카드의 U(강화)·J(합체)와 같습니다</dd>
+        <dt>강화·합체</dt><dd>건물은 강화 2단계까지. 유닛 ★는 만든 건물의 단계까지. 건물 2단계에서 재료 유닛을 합체해 새 유닛을 만듭니다</dd>
       </dl></details>
       <p class="k-ver" id="k-ver"></p>
     </div>
@@ -62,7 +64,7 @@ RTS.mount = function (root, opts = {}) {
   if (!store.get('lowChecked')) { store.set('lowChecked', '1'); if (RTS.lowSpecGuess && RTS.lowSpecGuess()) { app.settings.lowSpec = true; app.saveSettings(); app.lowAutoMsg = '느린 기기로 판단해 저사양 모드를 켰습니다. 설정에서 끌 수 있습니다'; } } // 처음 한 번 기기 성능 추정
   const R = app.R = RTS.Renderer(view, app), cam = R.cam;
   // 내 입력: 혼자 할 때는 바로 큐에, 둘이 할 때는 lockstep을 거쳐 두 기기에 같은 턴에 들어간다
-  const send = c => { if (!app.G) return; if (app.net && app.net.L) app.net.L.local(c); else RTS.command(app.G, app.team, c); };
+  const send = c => { if (!app.G) return; if (app.net && (app.net.L || app.net.match)) { if (app.net.L) app.net.L.local(c); } else RTS.command(app.G, app.team, c); };
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
   let ac = null, music = null, muted = store.get('mute') === '1'; const last = {};
@@ -75,12 +77,14 @@ RTS.mount = function (root, opts = {}) {
 
   // ── 메뉴 ──────────────────────────────────────────────
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
-  function renderMenu() { const d = RTS.defs; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
+  function renderMenu() { const d = RTS.defs, rec = loadResume(); $('k-rejoin').hidden = !rec; if (rec) $('k-rejoin').textContent = `대전 다시 접속 (방 ${rec.code})`; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
   function bind(G) { app.G = G; app.outShown = false; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
     RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
+    RTS.on(G, 'merged', ({ e, from }) => { if (e.team !== app.team) return; app.sfx('ok'); if (from.some(i => app.sel.includes(i))) app.sel = [...app.sel.filter(i => !from.includes(i)), e.id]; });
+    RTS.on(G, 'leveled', ({ e }) => { if (e.team === app.team) app.sfx('ok'); }); closePop();
     RTS.on(G, 'gameover', o => { if (!app.demo) finish(o); else setTimeout(demo, 2500); });
   }
   function centerOn(x, y) { cam.x = x * TS - view.width / cam.z / 2; cam.y = y * TS - view.height / cam.z / 2; clampCam(); }
@@ -95,7 +99,7 @@ RTS.mount = function (root, opts = {}) {
     showGame(G); };
   function showGame(G) { hideHover(); bind(G); $('k-chatbtn').hidden = $('k-voicebtn').hidden = !app.net; $('k-chatbox').hidden = true; renderChat(); app.heat = 0; $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
-  app.toMenu = () => { if (app.net) netClose(true); else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
+  app.toMenu = () => { if (app.net) { if (app.net.match && (app.net.away || (app.G && app.G.over))) dropResume(); netClose(true); } else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
   app.saveState = () => (app.G && !app.demo ? RTS.serialize(app.G) : null);
   app.loadState = json => { app.demo = false; app.team = 0; const G = RTS.deserialize(json); showGame(G); };
   // 회사 지분 합계: mates=true면 동료, false면 상대 팀들
@@ -105,7 +109,7 @@ RTS.mount = function (root, opts = {}) {
     const cols = [a, ...RTS.allyTeams(G, app.team), ...foes], neu = G.teams.find(t => t.ai && t.boost), neuTxt = neu ? `${neu.name} ${RTS.defs.factions[neu.faction].name} (${RTS.defs.difficulties[neu.ai].name} AI의 ${Math.round(neu.boost * 100)}%)` : '';
     store.del('save'); $('k-endt').textContent = win ? '승리' : '패배';
     $('k-ends').textContent = `${m}분 ${s}초 · ` + (out ? `${G.coop ? '협동' : '셋이 대전'} · 내 건물과 유닛이 모두 없어졌습니다. 게임은 계속 진행되며 관전할 수 있습니다` : G.coop ? `협동 · ${neuTxt}` : neu ? `셋이 대전 · ${neuTxt}` : b.ai ? `${b.name} AI ${RTS.defs.difficulties[b.ai].name}` : `${b.name} (사람)`);
-    if (app.net) { $('k-again').hidden = true; app.net.endShown = true; }
+    if (app.net) { $('k-again').hidden = true; app.net.endShown = true; if (!out) dropResume(); }
     if (out) $('k-tomenu').textContent = '관전 계속'; else $('k-tomenu').textContent = '메뉴로';
     const row = (l, f) => `<tr><th scope="row">${l}</th>${cols.map(t => `<td>${f(t)}</td>`).join('')}</tr>`;
     $('k-stats').innerHTML = `<thead><tr><th></th>${cols.map(t => `<td>${esc(t.name)}</td>`).join('')}</tr></thead>` + row('캔 광석', t => t.stats.ore) + row('캔 에테르', t => t.stats.gas) + row('누적 배당', t => Math.round(t.stats.div || 0)) + row('전쟁 피해액', t => Math.round(t.stats.warLoss || 0)) + row('약탈 획득', t => Math.round(t.stats.loot || 0)) + row('생산한 유닛', t => t.stats.made) + row('파괴한 수', t => t.stats.kills) + row('잃은 수', t => t.stats.lost);
@@ -137,13 +141,47 @@ RTS.mount = function (root, opts = {}) {
       items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
       for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
         items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
+      items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
+      items.push(...upgradeItems(L));
       if (L.prod.length) items.push({ key: 'X', text: '취소', name: '마지막 대기 취소', desc: '비용을 돌려받습니다', ok: true, run: () => send({ type: 'cancel', building: L.id }) });
     }
     return items; }
+  // 강화·합체 항목: 명령 카드와 길게 누르기 팝업이 같이 쓴다. ids: 함께 강화할 같은 종류 유닛(선택 묶음)
+  const pct = v => Math.round(v * 100);
+  function upgradeItems(L, ids) { const G = app.G, t = G.teams[app.team], d = RTS.defOf(L), D = RTS.defs.entities, out = [];
+    if (!t || L.team !== app.team) return out;
+    if (d.kind === 'building') { if (!RTS.canLevel(d) || !RTS.complete(L)) return out; const lv = (L.lv || 0) + 1;
+      if (lv > RTS.LEVEL.max) { out.push({ key: 'U', text: '강화', pl: '강화 완료', name: '강화 완료', desc: `강화 ${L.lv}단계: ` + RTS.levelFx(d, L.lv).join(' · '), ok: false, why: '이미 최고 단계입니다' }); return out; }
+      const why = RTS.levelBlock(G, L), fx = RTS.levelFx(d, lv).join(' · '), unlock = lv === 2 ? Object.values(RTS.defs.merges).filter(m => m.at === L.def).map(m => D[m.into].name) : [], un = unlock.length ? ` · 합체 해금: ${unlock.join(', ')}` : '';
+      out.push({ key: 'U', text: '강화', pl: `강화 ${lv}단계`, name: `${d.name} 강화 ${lv}단계`, desc: `${fx}${un} · ${RTS.levelTime(d, lv)}초`, note: fx + un, cost: RTS.levelCost(d, lv), ok: !why, why, run: () => send({ type: 'levelup', building: L.id }) });
+      return out; }
+    if (d.kind !== 'unit' || d.uncontrollable) return out;
+    const r = (L.rank || 0) + 1;
+    if (RTS.producerOf(L.def) && r <= RTS.RANK.max) { const group = (ids || [L.id]).map(i => G.byId[i]).filter(u => u && !u.dead && u.team === app.team && u.def === L.def && (u.rank || 0) === (L.rank || 0)), n = group.length || 1, why = RTS.rankBlock(G, L), fx = `체력 +${pct(RTS.RANK.hp)}% · 공격 +${pct(RTS.RANK.dmg)}%`;
+      out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, 즉시 적용` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
+    if (!d.gather) RTS.mergesOf(G, app.team, L.def).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
+      let why = RTS.mergeBlock(G, L, m); if (!why) { const miss = RTS.mergePick(G, L, m).miss; if (miss.length) why = `재료 부족(${RTS.MERGE.range}칸 안): ` + miss.map(([k, c]) => D[k].name + ' ' + c + '기').join(', '); }
+      out.push({ key: 'JK'[i] || '', img: R.icon(m.into, app.team, t.faction), text: '합체', pl: `합체 → ${into.name}`, name: `합체: ${into.name}`, desc: `${parts} → 체력 ${into.hp}, 공격 ${into.weapon.damage}, 사거리 ${into.weapon.range}. 재료가 모이면 합쳐집니다`, note: `${parts} · 체력 ${into.hp}`, ok: !why, why, run: () => send({ type: 'merge', unit: L.id, recipe: m.id }) }); });
+    return out; }
+  // 길게 누르기 팝업 메뉴
+  function popItems(e) { if (!app.G || app.demo || e.team !== app.team || e.dead) return []; const items = upgradeItems(e, app.sel.includes(e.id) ? app.sel : [e.id]);
+    return items.length ? items.concat({ pl: '정보 보기', ok: true, info: true }) : []; }
+  function closePop() { if (!app.pop) return; app.pop = null; $('k-pop').hidden = true; }
+  function openPop(e, sx, sy) { hideHover(); const G = app.G, t = G.teams[app.team], d = RTS.defOf(e), items = popItems(e); if (!items.length) return;
+    if (!app.sel.includes(e.id)) app.sel = [e.id]; app.menu = 'main'; app.pop = { id: e.id }; app.sfx('click');
+    const P = $('k-pop'), title = d.name + (e.lv ? ` · 강화 ${e.lv}단계` : '') + (e.rank ? ' ' + '★'.repeat(e.rank) : '');
+    P.innerHTML = `<h3>${esc(title)}</h3>` + items.map((it, i) => `<button data-i="${i}" role="menuitem" class="${it.ok ? '' : 'off'}${it.cost && !RTS.canPay(t, it.cost) ? ' poor' : ''}"><b>${esc(it.pl)}</b>${it.cost ? `<span class="k-popc">${cost(it.cost)}</span>` : ''}${!it.ok && it.why ? `<small class="why">${esc(it.why)}</small>` : it.note ? `<small>${esc(it.note)}</small>` : ''}</button>`).join('');
+    P.querySelectorAll('button').forEach(b => { b.onclick = ev => { ev.stopPropagation(); const it = items[+b.dataset.i]; closePop();
+      if (it.info) { const x = app.G.byId[e.id]; if (x) { showHover(x, sx, sy); htip.long = false; } return; }
+      if (!it.ok) { notice(it.why || '아직 사용할 수 없습니다', 'warn'); return; } unlock(); app.sfx('click'); it.run(); app.cardSig = ''; }; });
+    P.hidden = false; const r = view.getBoundingClientRect(), k = r.width / view.width, sr = $('k-stage').getBoundingClientRect(), rr = root.getBoundingClientRect();
+    const px = sx * k + r.left - rr.left, py = sy * k + r.top - rr.top, W = P.offsetWidth, H = P.offsetHeight, top = sr.top - rr.top + 6, bot = sr.bottom - rr.top - 6;
+    let x = px - W / 2, y = py - H - 26; if (y < top) y = Math.min(bot - H, py + 26);
+    P.style.left = Math.max(sr.left - rr.left + 6, Math.min(sr.right - rr.left - W - 6, x)) + 'px'; P.style.top = Math.max(top, y) + 'px'; }
   function setMode(m) { app.mode = m; }
   function trade(company, qty) { send({ type: 'trade', company, qty }); app.sfx('click'); app.cardSig = ''; }
   // ── 거래소 패널: 행은 한 번 만들고 값만 갱신해 클릭이 끊기지 않게 한다 ──
@@ -211,9 +249,9 @@ RTS.mount = function (root, opts = {}) {
       if (d.resource) stats.push(`남은 양 ${e.amount}`);
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
-      let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
+      if (e.merging) stats.push('합체 대기'); let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
-      h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
+      h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
     } else { const sum = {}; h = '<div class="k-many">' + list.slice(0, 32).map(u => { const k = Math.max(0, u.hp / RTS.stat(G, u, 'hp')); return `<button data-id="${u.id}" title="${RTS.defOf(u).name}"><img src="${R.icon(u.def, u.team, f)}" alt=""><i style="width:${Math.round(k * 100)}%;background:${k > .55 ? 'var(--ok)' : k > .28 ? 'var(--warn)' : 'var(--bad)'}"></i></button>`; }).join('') + '</div>'; }
     if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(b => { b.onclick = () => { app.sel = [+b.dataset.id]; }; }); } }
   function renderHud() { const G = app.G, t = G.teams[app.team]; if (!t) return; if (app.exOpen) updateExchange(); if (app.dipOpen) updateDip();
@@ -321,13 +359,17 @@ RTS.mount = function (root, opts = {}) {
     const arm = e && e.team >= 0 ? RTS.stat(G, e, 'armor') : d.armor || 0; if (arm) h += row('방어', Math.round(arm));
     if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'}`);
     if (isUnit && d.speed) h += row('속도', +(e && e.team >= 0 ? RTS.stat(G, e, 'speed') : d.speed).toFixed(1));
-    if (d.provides) h += row('보급 제공', '+' + d.provides);
-    if (mineE) { h += row('비용', costTxt(d.cost) + (d.supply ? ` · 보급 ${d.supply * (d.count || 1)}` + (d.count > 1 ? ` (한 번에 ${d.count}기)` : '') : '')) + row(isUnit ? '생산 시간' : '건설 시간', d.time ? sec(d.time) : '') + row('필요', needList(d, t));
+    if (d.provides) h += row('보급 제공', '+' + (e && e.team >= 0 ? RTS.provides(e) : d.provides));
+    if (!isUnit && RTS.canLevel(d) && mineE) h += row('강화', e ? `${e.lv || 0} / ${RTS.LEVEL.max}단계${e.lv ? ' · ' + RTS.levelFx(d, e.lv).join(' · ') : ''}` : `최대 ${RTS.LEVEL.max}단계`);
+    if (isUnit && e && e.rank) h += row('강화', '★'.repeat(e.rank) + ` · 체력 +${pct(RTS.RANK.hp * e.rank)}% · 공격 +${pct(RTS.RANK.dmg * e.rank)}%`);
+    const fm = d.fused && Object.values(RTS.defs.merges).find(m => m.into === id); if (fm) h += row('합체 재료', Object.keys(fm.parts).map(k => `${D[k].name} ${fm.parts[k]}`).join(' + ')) + row('합체 조건', `${D[fm.at].name} 강화 2단계`);
+    if (mineE && !d.fused) { h += row('비용', costTxt(d.cost) + (d.supply ? ` · 보급 ${d.supply * (d.count || 1)}` + (d.count > 1 ? ` (한 번에 ${d.count}기)` : '') : '')) + row(isUnit ? '생산 시간' : '건설 시간', d.time ? sec(d.time) : '') + row('필요', needList(d, t));
       if (!e || !isUnit || src.how) h += row('만드는 법', howTo(id).join('<br>')); }
     h += '</table>';
     if (mineE && d.trains && d.trains.length) h += `<p class="t-h">생산</p><ul>` + d.trains.map(u => { const x = D[u], ok = !t || RTS.techOk(t, x); return `<li class="${ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} ${costTxt(x.cost)}${ok ? '' : ` <em>필요: ${(x.requires || []).map(nameOf).join(', ')}</em>`}</li>`; }).join('') + '</ul>';
     if (mineE && d.builds && d.builds.length && e) h += `<p class="t-h">건설 (B)</p><ul>` + d.builds.map(u => { const x = D[u], ok = !t || RTS.techOk(t, x); return `<li class="${ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} ${costTxt(x.cost)}${ok ? '' : ` <em>필요: ${(x.requires || []).map(nameOf).join(', ')}</em>`}</li>`; }).join('') + '</ul>';
     if (mineE && d.researches && d.researches.length) h += `<p class="t-h">연구</p><ul>` + d.researches.map(u => { const x = RTS.defs.upgrades[u], done = t && t.upgrades[u], doing = t && t.research[u], ok = !t || RTS.techOk(t, x); return `<li class="${done ? 'done' : ok ? '' : 'no'}"><kbd>${x.key}</kbd>${x.name} — ${x.desc}${done ? ' <em>완료</em>' : doing ? ' <em>진행 중</em>' : ' ' + costTxt(x.cost)}${!done && !ok ? ` <em>필요: ${x.requires.map(nameOf).join(', ')}</em>` : ''}</li>`; }).join('') + '</ul>';
+    const ms = Object.values(RTS.defs.merges).filter(m => m.at === id); if (mineE && ms.length) h += `<p class="t-h">합체 (강화 2단계)</p><ul>` + ms.map(m => `<li class="${e && (e.lv || 0) >= 2 ? '' : 'no'}">${Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ')} → <b>${D[m.into].name}</b></li>`).join('') + '</ul>';
     if (d.abilities && d.abilities.length) h += `<p class="t-h">능력</p><ul>` + d.abilities.map(a => { const ab = RTS.defs.abilities[a], ok = !ab.requires || (t && t.upgrades[ab.requires]); return `<li class="${ok ? '' : 'no'}"><kbd>${ab.key}</kbd>${ab.name} — ${ab.desc}${ok ? '' : ` <em>연구 필요: ${nameOf(ab.requires)}</em>`}</li>`; }).join('') + '</ul>';
     return h; }
   // 화면 위 풍선: 마우스는 0.35초 멈추면, 터치는 0.5초 길게 누르면 뜬다
@@ -344,13 +386,13 @@ RTS.mount = function (root, opts = {}) {
   view.addEventListener('contextmenu', e => e.preventDefault());
   view.addEventListener('pointerenter', e => { setMouse(e); app.mouse.inside = true; }); // 위치를 먼저 잡아야 (0,0)으로 남은 좌표 때문에 가장자리 스크롤이 일어나지 않는다
   view.addEventListener('pointerleave', () => { app.mouse.inside = false; hideHover(); });
-  view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
-    hideHover(); htip.long = false; if (touch && !app.mode) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
+  view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over || performance.now() - (app.popShut || 0) < 80) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
+    hideHover(); closePop(); htip.long = false; if (!app.mode && e.button === 0) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved && !app.box) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t && popItems(t).length) { openPop(t, sx, sy); htip.long = true; } else if (t && touch) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
   view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; if (drag.touch) { clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } } /* 길게 눌러 도움말을 본 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
@@ -405,6 +447,7 @@ RTS.mount = function (root, opts = {}) {
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); applyMusic(); };
   $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); app.start(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-netopen').onclick = () => { unlock(); netOpen(); };
+  $('k-rejoin').onclick = () => { unlock(); const r = loadResume(); if (r) netRejoin(r); else renderMenu(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
   $('k-idle').onclick = () => { if (app.idle && app.idle.length) { app.sel = app.idle.map(e => e.id); const u = app.idle[0]; centerOn(u.x, u.y); } };
   $('k-boxbtn').onclick = () => { app.boxTouch = !app.boxTouch; $('k-boxbtn').classList.toggle('on', app.boxTouch); };
@@ -422,51 +465,162 @@ RTS.mount = function (root, opts = {}) {
   function netStatus(text, bad) { if (!app.net) return; app.net.status = text; app.net.bad = !!bad; renderNet(); }
   function netFail(err) { const N = app.net; if (!N) return; const ty = err && err.type;
     const msg = ty === 'peer-unavailable' ? '그 번호의 방이 없습니다. 방장 화면의 번호를 다시 확인하세요.' : ty === 'network' || ty === 'server-error' || ty === 'socket-error' || (err && err.message === 'load') ? '연결 서버에 닿지 않습니다. 인터넷 연결을 확인하세요.' : ty === 'browser-incompatible' ? '이 브라우저는 기기 간 연결을 지원하지 않습니다. Chrome을 쓰세요.' : '연결 오류: ' + (ty || (err && err.message) || '알 수 없음');
-    if (N.L && app.G && !app.G.over) netLost(); else { N.stage = N.role === 'host' && N.stage === 'lobby' ? 'host' : N.stage; netStatus(msg, true); } }
+    if (N.match) { renderAway(); return; } if (N.stage === 'rejoin') { netStatus(msg, true); return; } if (N.L && app.G && !app.G.over) netLost(); else { N.stage = N.role === 'host' && N.stage === 'lobby' ? 'host' : N.stage; netStatus(msg, true); } }
   function wireConn(conn) { const N = app.net; N.conn = conn;
     conn.on('open', () => { if (app.net !== N) return; N.stage = 'lobby'; N.status = ''; if (N.role === 'guest') conn.send({ t: 'hello', name: myName(), build: RTS.BUILD }); else sendLobby(); renderNet(); });
-    conn.on('data', m => { if (app.net === N) netMsg(m); });
-    conn.on('close', () => { if (app.net !== N) return; voiceReset(); if (N.L) netLost(); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
-    conn.on('error', netFail); }
+    conn.on('data', m => { if (app.net === N && N.conn === conn) netMsg(m); });
+    conn.on('close', () => { if (app.net !== N || N.conn !== conn) return; voiceReset(); if (N.match) netAway('상대 기기와 연결이 끊겼습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
+    conn.on('error', e => { if (N.conn === conn) netFail(e); }); }
   async function netHost() { const N = app.net; N.role = 'host'; N.stage = 'host'; netStatus('연결 준비 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
     const tryCode = left => { N.code = String(1000 + Math.floor(Math.random() * 9000)); const peer = N.peer = new Peer(PEER_PREFIX + N.code, { debug: 0 });
       peer.on('open', () => { if (app.net === N) netStatus('상대 기기에서 이 번호를 입력하세요.'); });
       peer.on('call', call => onCall(N, call));
-      peer.on('connection', conn => { if (app.net !== N || N.conn) { conn.on('open', () => conn.close()); return; } wireConn(conn); });
-      peer.on('error', err => { if (app.net !== N) return; if (err.type === 'unavailable-id' && left > 0) { peer.destroy(); tryCode(left - 1); } else netFail(err); });
-      peer.on('disconnected', () => { if (app.net === N && !N.conn) try { peer.reconnect(); } catch (e) {} }); };
+      peer.on('connection', conn => onConnection(N, conn));
+      peer.on('error', err => { if (app.net !== N) return; if (err.type === 'unavailable-id' && left > 0 && !N.match) { peer.destroy(); tryCode(left - 1); } else if (err.type === 'peer-unavailable') rejoinMiss(N); else netFail(err); });
+      peer.on('disconnected', () => { if (app.net === N && (!N.conn || N.match) && !peer.destroyed) try { peer.reconnect(); } catch (e) {} });
+      peer.on('close', () => { if (app.net === N && N.peer === peer) N.peer = null; }); };
     tryCode(4); }
   async function netJoin(code) { const N = app.net; if (!/^\d{4}$/.test(code)) return netStatus('방 번호 숫자 4자리를 입력하세요.', true); N.role = 'guest'; N.code = code; N.stage = 'joining'; netStatus('방을 찾는 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
-    const peer = N.peer = new Peer({ debug: 0 }); peer.on('call', call => onCall(N, call)); peer.on('error', err => { if (app.net === N) { N.stage = 'choose'; netFail(err); } });
+    const peer = N.peer = new Peer({ debug: 0 }); peerCommon(N, peer); peer.on('error', err => { if (app.net !== N) return; if (N.match) { if (err.type === 'peer-unavailable') rejoinMiss(N); else netFail(err); return; } N.stage = 'choose'; netFail(err); });
     peer.on('open', () => { if (app.net !== N) return; const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); wireConn(conn); setTimeout(() => { if (app.net === N && N.stage === 'joining') { N.stage = 'choose'; netStatus('방에 연결하지 못했습니다. 두 기기가 같은 와이파이인지 확인하세요.', true); } }, 15000); }); }
   // 방장이 정하는 내용: 전장, 진영(상대는 다른 진영), 팀별 핸디캡
   // 두 사람은 서로 다른 진영을 고른다. 남은 진영이 중립세력(AI)이 된다. 협동이면 중립세력과 둘이 싸우고, 대전이면 셋이 서로 싸운다
   const lobbyOf = () => { const N = app.net, fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, coop = N.mode === 'coop', other = N.fac1 && N.fac1 !== mine ? N.fac1 : fs.find(x => x !== mine);
     return { map: app.cfg.map, factions: [mine, other], hc: N.hc.slice(), names: [myName(), N.peerName || '상대'], build: RTS.BUILD, coop, enemy: RTS.restFaction([mine, other]), boost: N.boost, level: RTS.COOP.level }; };
   function sendLobby() { if (app.net && app.net.role === 'host') netSend({ t: 'lobby', lobby: lobbyOf() }); }
-  function netMsg(m) { const N = app.net; if (!m || typeof m !== 'object') return;
-    if (m.t === 'turn') { if (N.L) N.L.receive(m); else (N.early = N.early || []).push(m); return; }
+  function netMsg(m) { const N = app.net; if (!m || typeof m !== 'object') return; N.lastRx = performance.now();
+    if (m.t === 'turn') { if (N.L) N.L.receive(m); else if (!N.match && !N.resync) (N.early = N.early || []).push(m); return; }
+    if (m.t === 'ping') return;
+    if (m.t === 'sync' || m.t === 'sync-end' || m.t === 'rejoin-no') { rejoinMsg(N, m); return; }
     if (m.t === 'hello' && N.role === 'host') { N.peerName = String(m.name || '상대').slice(0, 12); N.peerBuild = String(m.build || '이전 버전'); sendLobby(); renderNet(); return; }
     if (m.t === 'lobby' && N.role === 'guest') { N.lobby = m.lobby; renderNet(); return; }
     if (m.t === 'start' && N.role === 'guest') { netStart(m.opts, 1); return; }
     if (m.t === 'pause') { togglePause(!!m.on); return; }
     if (m.t === 'chat') { chatAdd(false, peerName(), String(m.text || '').slice(0, 80)); return; }
     if (m.t === 'voice') { notice(m.on ? peerName() + ' 님이 마이크를 켰습니다' + (voice.stream ? '' : ' · 음성 켜기로 내 마이크도 켤 수 있습니다') : peerName() + ' 님이 마이크를 껐습니다', 'ok'); return; }
-    if (m.t === 'bye') { if (N.L && app.G && !app.G.over) netLost('상대가 게임을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
+    if (m.t === 'bye') { if (N.match && app.G && !app.G.over) netAway('상대가 대전 화면을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
   function netBegin() { const N = app.net, lb = lobbyOf(); const opts = RTS.netGameOpts({ map: lb.map, seed: 1 + Math.floor(Math.random() * 99999), settings: app.settings, factions: lb.factions, names: lb.names, hc: lb.hc, coop: lb.coop, enemy: lb.enemy, boost: lb.boost, level: lb.level });
     netSend({ t: 'start', opts }); netStart(opts, 0); }
   function netStart(opts, team) { const N = app.net, o = JSON.parse(JSON.stringify(opts)); // 두 기기가 똑같은 값으로 만들도록 방장도 같은 직렬화를 거친다
     app.demo = false; app.team = team; app.speed = 1; app.paused = false; N.waitMs = 0;
-    N.L = RTS.Lockstep({ team, send: netSend, onDesync: () => notice('두 기기의 게임 상태가 어긋났습니다. 두 기기 모두 새로고침한 뒤 방을 새로 만드세요.', 'warn') });
+    N.L = RTS.Lockstep({ team, send: netSend, onDesync }); N.match = true; N.team = team; N.lastRx = performance.now(); N.other = N.conn && N.conn.peer; saveResume();
     for (const m of N.early || []) N.L.receive(m); N.early = null;
     $('k-net').hidden = true; $('k-again').hidden = true; showGame(RTS.createGame(o)); notice(o.coop ? `협동 시작. 동료 ${o.players[1 - team].name}와 함께 ${o.players[2].name}을 무찌르세요` : team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
+  // ── 둘이 대전 재접속 ─────────────────────────────────
+  // 한쪽 기기가 나가거나 연결이 끊기면, 남은 기기는 게임을 멈춘 채 기다린다(대전 중단으로 끝내지 않는다).
+  // 나간 기기는 시작 화면의 '대전 다시 접속'으로 남은 기기의 peer에 다시 연결한다(방장이 나갔어도 같은 방식).
+  // 남은 기기는 턴 경계에서 게임 상태를 보내고, 두 기기 모두 그 상태를 복원해 새 Lockstep으로 이어 간다.
+  // 둘 다 화면에 남아 있는데 연결만 끊긴 경우에는 1번(참가자) 기기가 몇 초마다 다시 연결을 시도한다.
+  const RESUME_MS = 30 * 60 * 1000;
+  function saveResume() { const N = app.net; if (!N || !N.match || !N.conn) return; N.other = N.conn.peer;
+    store.set('netResume', JSON.stringify({ code: N.code, team: N.team, role: N.role, other: N.other, build: RTS.BUILD, at: Date.now(), peerName: peerName() })); }
+  function loadResume() { try { const r = JSON.parse(store.get('netResume') || 'null'); return r && r.build === RTS.BUILD && Date.now() - r.at < RESUME_MS && /^\d{4}$/.test(r.code) ? r : null; } catch (e) { return null; } }
+  function dropResume() { store.del('netResume'); }
+  // 내 기기를 다시 찾을 수 있는 예비 peer 이름: 방장은 방 번호 그대로, 참가자는 방 번호 + g
+  const homeId = (N, role) => PEER_PREFIX + N.code + (role === 'host' ? '' : 'g');
+  const rejoinIds = N => { const fb = homeId(N, N.role === 'host' ? 'guest' : 'host'); return N.other && N.other !== fb ? [N.other, fb] : [fb]; };
+  function peerCommon(N, peer) {
+    peer.on('call', call => onCall(N, call));
+    peer.on('connection', conn => onConnection(N, conn));
+    peer.on('disconnected', () => { if (app.net === N && (N.match || N.stage === 'rejoin') && !peer.destroyed) try { peer.reconnect(); } catch (e) {} });
+    peer.on('close', () => { if (app.net === N && N.peer === peer) N.peer = null; }); }
+  function onConnection(N, conn) {
+    if (app.net !== N) { conn.on('open', () => conn.close()); return; }
+    if (N.match) { // 대전 중: 'rejoin'을 보내는 연결만 받는다
+      conn.on('data', m => { if (app.net !== N) return; if (N.conn === conn) { netMsg(m); return; } if (m && m.t === 'rejoin') acceptRejoin(N, conn, m); });
+      conn.on('close', () => { if (app.net === N && N.conn === conn) { voiceReset(); netAway('상대 기기와 연결이 끊겼습니다'); } });
+      conn.on('error', () => {}); return; }
+    if (N.conn || N.role !== 'host') { conn.on('open', () => conn.close()); return; }
+    wireConn(conn); }
+  function acceptRejoin(N, conn, m) {
+    const G = app.G, over = !G || G.over || app.demo;
+    const why = over ? '대전이 이미 끝났습니다' : m.build !== RTS.BUILD ? '두 기기의 버전이 다릅니다. 새로고침해 같은 버전으로 맞추세요' : m.team !== 1 - N.team ? '이 대전의 참가자가 아닙니다' : '';
+    if (why) { try { conn.send({ t: 'rejoin-no', why, over }); } catch (e) {} setTimeout(() => { try { conn.close(); } catch (e) {} }, 400); return; }
+    const old = N.conn; N.conn = conn; if (old && old !== conn) try { old.close(); } catch (e) {}
+    if (m.name) N.peerName = String(m.name).slice(0, 12);
+    voiceReset(); N.away = null; N.lastRx = performance.now(); app.paused = false; N.syncTo = { team: m.team };
+    if (RTS.syncPoint(G)) doSync(); else renderAway(); // 멈춰 기다리던 기기는 항상 턴 경계에 있다. 아니면 루프가 경계까지 진행한 뒤 보낸다
+  }
+  function doSync() { const N = app.net, G = app.G, team = N.syncTo.team; N.syncTo = null;
+    const n = G.tick / RTS.NET.TURN, carry = N.L ? N.L.carry() : [], json = RTS.serialize(G), CH = 30000, parts = Math.ceil(json.length / CH);
+    for (let i = 0; i < parts; i++) netSend({ t: 'sync', i, n: parts, d: json.slice(i * CH, (i + 1) * CH) });
+    netSend({ t: 'sync-end', start: n, team });
+    resumeMatch(RTS.deserialize(json), N.team, n, carry); // 받는 쪽과 똑같이 복원한 상태에서 시작해야 두 기기가 같다
+    notice(peerName() + ' 님이 다시 접속했습니다. 이어서 진행합니다', 'ok'); saveResume(); }
+  function resumeMatch(G, team, start, carry) { const N = app.net;
+    N.L = RTS.Lockstep({ team, send: netSend, onDesync, start, carry }); N.match = true; N.team = team; N.away = null; N.resync = false; N.syncTo = null; N.waitMs = 0; N.endShown = false;
+    const keep = app.G && !app.demo && app.team === team ? { x: cam.x, y: cam.y, z: cam.z, sel: app.sel.slice(), out: app.outShown } : null;
+    app.team = team; app.demo = false; app.speed = 1; app.paused = false; $('k-net').hidden = true; $('k-again').hidden = true;
+    showGame(G); if (keep) { cam.z = keep.z; cam.x = keep.x; cam.y = keep.y; clampCam(); app.sel = keep.sel.filter(i => G.byId[i]); app.outShown = keep.out; }
+    renderAway(); updateSpeed(); }
+  function netAway(why) { const N = app.net; if (!N || !N.match || !app.G || app.G.over) return;
+    const old = N.conn; N.conn = null; if (old) try { old.close(); } catch (e) {}
+    voiceReset(); N.resync = false; N.syncTo = null; N.syncBuf = null; if (!N.away) N.away = { at: performance.now() }; N.away.why = why || N.away.why; $('k-wait').hidden = true;
+    ensurePeer(N); renderAway(); }
+  function renderAway() { const N = app.net, el = $('k-away'); if (!N || !N.match || !N.away || (app.G && app.G.over)) { el.hidden = true; return; }
+    const sec = Math.floor((performance.now() - N.away.at) / 1000), t = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+    const sig = (N.away.why || '') + '|' + !!N.resync + '|' + (N.peer ? 1 : 0); if (el.hidden || el.dataset.sig !== sig) { el.dataset.sig = sig;
+      el.innerHTML = `<b>${esc(peerName())} 님과 연결이 끊겼습니다</b><p>${esc(N.away.why || '')}</p><p>${N.resync ? '다시 연결하는 중…' : `상대가 시작 화면의 <b>대전 다시 접속</b>을 누르면 지금 상태에서 이어서 합니다.${N.team === 1 ? ' 이 기기도 몇 초마다 다시 연결을 시도합니다.' : ''}`}</p><p class="k-small">기다린 시간 <span id="k-awayt">${t}</span>${N.peer ? '' : ' · 연결 서버에 다시 붙는 중'}</p><div class="k-go"><button id="k-awayquit">대전 끝내기</button></div>`;
+      el.querySelector('#k-awayquit').onclick = () => { dropResume(); app.toMenu(); }; el.hidden = false; }
+    else { const x = el.querySelector('#k-awayt'); if (x) x.textContent = t; } }
+  // 남은 기기의 peer가 없어졌으면(연결 서버 오류 등) 예비 이름으로 다시 만든다. 나간 기기는 예비 이름으로도 찾아온다
+  async function ensurePeer(N) { if (N.peer && !N.peer.destroyed) { if (N.peer.disconnected) try { N.peer.reconnect(); } catch (e) {} return; }
+    if (N.making) return; N.making = true; let Peer; try { Peer = await peerLib(); } catch (e) { N.making = false; return; } if (app.net !== N) return;
+    const peer = N.peer = new Peer(homeId(N, N.role), { debug: 0 }); peerCommon(N, peer);
+    peer.on('open', () => { N.making = false; renderAway(); });
+    peer.on('error', err => { if (app.net !== N) return; if (err.type === 'peer-unavailable') { rejoinMiss(N); return; } if (err.type === 'unavailable-id') { N.making = false; try { peer.destroy(); } catch (e) {} if (N.peer === peer) N.peer = null; setTimeout(() => { if (app.net === N && N.away) ensurePeer(N); }, 5000); } }); }
+  // 다시 연결: 상대 peer(이전 연결 상대, 없으면 예비 이름)에 연결하고 'rejoin'을 보낸다
+  function tryRejoin(N) { const P = N.peer; N.lastTry = performance.now();
+    if (!P || P.destroyed || !P.open) { if (N.stage === 'rejoin' && !P) netStatus('연결 서버에 접속하는 중…'); if (N.match) ensurePeer(N); return; }
+    const ids = rejoinIds(N), id = ids[(N.tryI = (N.tryI || 0) + 1) % ids.length];
+    let conn; try { conn = P.connect(id, { reliable: true, serialization: 'json' }); } catch (e) { return; } N.tryConn = conn;
+    const to = setTimeout(() => { if (N.tryConn === conn) { N.tryConn = null; try { conn.close(); } catch (e) {} rejoinMiss(N); } }, 8000);
+    conn.on('open', () => { if (app.net !== N || N.tryConn !== conn) return; clearTimeout(to); N.tryConn = null;
+      const old = N.conn; N.conn = conn; if (old && old !== conn) try { old.close(); } catch (e) {}
+      N.L = null; N.resync = true; N.syncBuf = []; N.lastRx = performance.now(); // 받은 상태로 갈아탄다. 그 전까지는 게임을 진행하지 않는다
+      conn.send({ t: 'rejoin', team: N.team, build: RTS.BUILD, name: myName() });
+      if (N.match) renderAway(); else netStatus('연결됨. 게임 상태를 받는 중…'); });
+    conn.on('data', m => { if (app.net === N && N.conn === conn) netMsg(m); });
+    conn.on('close', () => { if (app.net !== N || N.conn !== conn) return; N.conn = null; N.resync = false;
+      if (N.match && app.G && !app.G.over) netAway('다시 연결하는 중에 끊겼습니다'); else if (N.stage === 'rejoin') { N.match = false; netStatus('연결이 끊겼습니다. 다시 시도하세요.', true); } });
+    conn.on('error', () => {}); }
+  function rejoinMiss(N) { if (app.net !== N) return; N.tryConn = null; N.miss = (N.miss || 0) + 1;
+    if (N.stage === 'rejoin' && !N.match) { if (N.miss < 6) { netStatus(`상대 기기를 찾는 중… (${N.miss}/6)`); setTimeout(() => { if (app.net === N && N.stage === 'rejoin' && !N.conn) tryRejoin(N); }, 1500); }
+      else { N.stage = 'rejoin'; netStatus('상대 기기를 찾지 못했습니다. 상대 기기에 게임 화면이 켜져 있는지 확인하고 다시 시도하세요. 상대가 대전을 끝냈다면 이어서 할 수 없습니다.', true); } } }
+  // 시작 화면에서 다시 접속(나간 기기). 게임 상태가 없으므로 상대에게서 받는다
+  async function netRejoin(rec) { if (app.net) netClose(false);
+    const N = app.net = { stage: 'rejoin', role: rec.role, code: rec.code, team: rec.team, other: rec.other, peerName: rec.peerName, hc: ['none', 'none'], mode: 'vs', boost: RTS.COOP.boost, miss: 0 };
+    $('k-start').hidden = true; $('k-net').hidden = false; netStatus('연결 서버에 접속하는 중…');
+    let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
+    const peer = N.peer = new Peer({ debug: 0 }); peerCommon(N, peer);
+    peer.on('open', () => { if (app.net === N) { netStatus('상대 기기를 찾는 중…'); tryRejoin(N); } });
+    peer.on('error', err => { if (app.net !== N) return; if (err.type === 'peer-unavailable') rejoinMiss(N); else if (!N.match) netFail(err); }); }
+  function rejoinMsg(N, m) {
+    if (m.t === 'sync') { if (!N.resync) return; (N.syncBuf = N.syncBuf || [])[m.i] = m.d; N.syncParts = m.n; if (!N.match) netStatus(`게임 상태를 받는 중… ${Math.round(N.syncBuf.filter(x => x !== undefined).length / m.n * 100)}%`); return; }
+    if (m.t === 'sync-end') { if (!N.resync) return; const buf = N.syncBuf || []; N.syncBuf = null; let G = null;
+      if (buf.length === N.syncParts && !buf.includes(undefined)) try { G = RTS.deserialize(buf.join('')); } catch (e) { G = null; }
+      if (!G) { N.resync = false; try { N.conn.close(); } catch (e) {} if (N.match) netAway('게임 상태를 받지 못했습니다'); else netStatus('게임 상태를 받지 못했습니다. 다시 시도하세요.', true); return; }
+      $('k-start').hidden = true; resumeMatch(G, m.team, m.start, []); notice('다시 접속했습니다. 대전을 이어 갑니다', 'ok'); saveResume(); return; }
+    if (m.t === 'rejoin-no') { N.resync = false; if (m.over) dropResume(); try { N.conn.close(); } catch (e) {} N.conn = null;
+      if (N.match && app.G && !app.G.over) { netAway(m.why); } else { N.stage = 'rejoin'; N.match = false; netStatus(m.why, true); } } }
+  // 대전 중 매 프레임: 생존 신호, 무응답 감지, 재연결 시도, 재접속 기록 갱신
+  function netTick(N, G) { const now = performance.now();
+    if (N.conn && N.conn.open && now - (N.pingT || 0) > 2000) { N.pingT = now; netSend({ t: 'ping' }); }
+    if (N.conn && !N.away && !N.resync && !N.syncTo && now - (N.lastRx || now) > 12000) netAway('상대 기기가 응답하지 않습니다');
+    if (N.syncTo && RTS.syncPoint(G)) doSync();
+    if (N.away) { if (N.team === 1 && !N.tryConn && !N.conn && now - (N.lastTry || 0) > 5000) tryRejoin(N); if (app.frame % 30 === 0) renderAway(); }
+    if (!N.away && N.conn && now - (N.saveT || 0) > 15000) { N.saveT = now; saveResume(); } }
+  const onDesync = () => notice('두 기기의 게임 상태가 어긋났습니다. 두 기기 모두 새로고침한 뒤 방을 새로 만드세요.', 'warn');
   function netLost(why) { const N = app.net; if (!N || N.endShown) return; N.endShown = true; app.paused = true; $('k-wait').hidden = true;
     $('k-endt').textContent = '대전 중단'; $('k-ends').textContent = why || '상대 기기와 연결이 끊겼습니다.'; $('k-stats').innerHTML = ''; $('k-again').hidden = true; $('k-end').hidden = false; }
   function renderNet() { const N = app.net, el = $('k-netp'); if (!N) return; const d = RTS.defs, st = N.status ? `<p class="k-netst${N.bad ? ' bad' : ''}" role="status">${esc(N.status)}</p>` : '';
     const opt = (id, on, b, sub) => `<button class="k-opt${on ? ' on' : ''}" aria-pressed="${on}" data-v="${id}"><b>${esc(b)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</button>`;
     const coopNow = N.stage === 'lobby' && (N.role === 'host' ? N.mode === 'coop' : !!(N.lobby && N.lobby.coop));
-    let h = `<h1>${coopNow ? '둘이 협동' : N.stage === 'lobby' ? '둘이 대전' : '둘이 하기'}</h1>`;
-    if (N.stage === 'choose' || N.stage === 'joining') {
+    let h = `<h1>${N.stage === 'rejoin' ? '대전 다시 접속' : coopNow ? '둘이 협동' : N.stage === 'lobby' ? '둘이 대전' : '둘이 하기'}</h1>`;
+    if (N.stage === 'rejoin') {
+      h += `<p class="k-sub">방 <b>${esc(N.code)}</b> 대전에 다시 들어갑니다. ${esc(N.peerName || '상대')} 님 기기에 게임 화면이 켜져 있어야 합니다. 들어가면 상대 기기의 지금 상태에서 이어서 합니다.</p>${st}`;
+    } else if (N.stage === 'choose' || N.stage === 'joining') { const rec = loadResume();
+      if (rec) h += `<div class="k-go"><button class="k-primary" id="n-rejoin">진행 중이던 대전 다시 접속 (방 ${esc(rec.code)})</button></div>`;
       h += `<p class="k-sub">두 기기에서 이 화면을 열고, 한쪽은 방을 만들고 다른 쪽은 방 번호로 들어갑니다. 같은 와이파이에서 Chrome이나 삼성 인터넷을 쓰세요.</p>
         <h2>내 이름</h2><input class="k-in" id="n-name" maxlength="12" value="${esc(myName())}" autocomplete="off">
         <div class="k-go"><button class="k-primary" id="n-host">방 만들기</button></div>
@@ -487,10 +641,11 @@ RTS.mount = function (root, opts = {}) {
     } else { const lb = N.lobby;
       h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : '서로 대전 (셋이 싸움)'}</dd><dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd><dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
     const vb = verState(N); if (N.stage === 'lobby' && vb) h += `<p class="k-netst bad" role="alert">${vb}</p>`;
-    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}<button id="n-back">나가기</button></div>`;
+    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
     el.innerHTML = h;
     const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
     on('n-back', () => { netClose(true); $('k-start').hidden = false; renderMenu(); });
+    on('n-retry', () => { if (N.peer && N.peer.open) { N.miss = 0; netStatus('상대 기기를 찾는 중…'); tryRejoin(N); } else netRejoin({ code: N.code, team: N.team, role: N.role, other: N.other, peerName: N.peerName }); }); on('n-rejoin', () => { const r = loadResume(); if (r) netRejoin(r); });
     on('n-host', () => { saveName(); netHost(); }); on('n-join', () => { saveName(); netJoin(el.querySelector('#n-code').value.trim()); }); on('n-go', () => { unlock(); netBegin(); });
     const code = el.querySelector('#n-code'); if (code) code.onkeydown = e => { if (e.key === 'Enter') { saveName(); netJoin(code.value.trim()); } };
     const pickers = { 'n-map': v => { app.cfg.map = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-fac': v => { const lb = lobbyOf(); if (v === lb.factions[1]) N.fac1 = lb.factions[0]; app.cfg.faction = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-hc0': v => { N.hc[0] = v; }, 'n-hc1': v => { N.hc[1] = v; },
@@ -504,7 +659,7 @@ RTS.mount = function (root, opts = {}) {
   // ── 둘이 대전 채팅: 게임 명령(lockstep)과 별도로 연결에 바로 보낸다. 게임 계산에는 영향이 없다 ──
   const QUICK = ['공격!', '도와줘', '잠깐만', '잘했어', 'ㅋㅋㅋ', '좋은 게임!', '한 판 더?'];
   const chat = { list: [] };
-  const peerName = () => { const N = app.net; return (N && (N.role === 'host' ? N.peerName : N.lobby && N.lobby.names[0])) || '상대'; };
+  const peerName = () => { const N = app.net; return (N && (N.peerName || (N.role !== 'host' && N.lobby && N.lobby.names[0]))) || '상대'; };
   function chatAdd(mine, name, text) { if (!text) return; chat.list.push({ mine, name, text, at: performance.now() }); if (chat.list.length > 60) chat.list.shift(); renderChat(); setTimeout(renderChat, 9100);
     if (!mine && ac && !muted) { tone(880, 880, .07, 'sine', .05); setTimeout(() => tone(1320, 1320, .09, 'sine', .04), 90); } }
   function chatSend(text) { text = String(text || '').replace(/\s+/g, ' ').trim().slice(0, 80); if (!text || !app.net || !app.net.conn || !app.net.conn.open) return false; netSend({ t: 'chat', text }); chatAdd(true, myName(), text); return true; }
@@ -543,7 +698,9 @@ RTS.mount = function (root, opts = {}) {
   $('k-voicebtn').onclick = voiceToggle; $('n-voice').onclick = voiceToggle;
   // 아무 곳이나 처음 누르면 소리를 연다(브라우저 자동 재생 제한). 막혔던 상대 음성도 이때 다시 튼다
   const anyTap = () => { unlock(); if (voice.needTap) { const p = $('k-voiceout').play(); if (p) p.then(() => { voice.needTap = false; }).catch(() => {}); } };
-  root.addEventListener('pointerdown', anyTap, true); window.addEventListener('keydown', anyTap, true);
+  root.addEventListener('pointerdown', anyTap, true);
+  root.addEventListener('pointerdown', e => { if (app.pop && !$('k-pop').contains(e.target)) { closePop(); app.popShut = performance.now(); } }, true); // 팝업을 닫는 탭은 명령으로 쓰지 않는다
+  window.addEventListener('keydown', e => { if (e.key === 'Escape') closePop(); }, true); window.addEventListener('keydown', anyTap, true);
   $('k-ver').textContent = '버전 ' + (RTS.BUILD || '개발');
 
   // ── 루프 ──────────────────────────────────────────────
@@ -551,9 +708,11 @@ RTS.mount = function (root, opts = {}) {
   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
   let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
   function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
-    if (app.net && app.net.L && !app.demo) { // 둘이 대전: 양쪽 입력이 모인 턴만 진행. 늦은 쪽이 따라잡도록 한 프레임에 최대 6틱
-      if (!app.paused && !G.over) { acc += dt; const per = 1000 / RTS.HZ; let n = 0, stuck = false; while (acc >= per && n < 6) { if (!app.net.L.advance(G)) { stuck = true; acc = Math.min(acc, per * 3); break; } acc -= per; n++; }
-        if (stuck) { app.net.waitMs = (app.net.waitMs || 0) + dt; } else app.net.waitMs = 0; $('k-wait').hidden = !(app.net.waitMs > 700); } }
+    if (app.net && (app.net.L || app.net.match) && !app.demo) { // 둘이 대전: 양쪽 입력이 모인 턴만 진행. 늦은 쪽이 따라잡도록 한 프레임에 최대 6틱
+      const N = app.net; if (N.match) netTick(N, G);
+      if (N.L && !app.paused && !G.over && app.G === G) { acc += dt; const per = 1000 / RTS.HZ; let n = 0, stuck = false; while (acc >= per && n < 6) { if (N.syncTo && RTS.syncPoint(G)) { doSync(); break; } if (!N.L.advance(G)) { stuck = true; acc = Math.min(acc, per * 3); break; } acc -= per; n++; }
+        if (stuck) { N.waitMs = (N.waitMs || 0) + dt; } else N.waitMs = 0; $('k-wait').hidden = !(N.waitMs > 700) || !!N.away || !!N.resync; }
+      else { acc = 0; $('k-wait').hidden = true; } }
     else if (!app.paused && !G.over && (app.demo || !app.setOpen)) { acc += dt * (app.demo ? 1.5 : app.speed); const per = 1000 / RTS.HZ; let n = 0; while (acc >= per && n < 6) { RTS.step(G); acc -= per; n++; } if (n === 6) acc = 0; }
     if (app.demo) { if (!reduce) { const fight = G.ents.find(e => e.firedAt > G.tick - 20 && RTS.defOf(e).kind === 'unit'); if (fight) { const tx = fight.x * TS - view.width / 2, ty = fight.y * TS - view.height / 2; cam.x += (tx - cam.x) * .006; cam.y += (ty - cam.y) * .006; clampCam(); } } }
     else { const m = app.mouse, sp = 14 / cam.z, e = 12; let dx = 0, dy = 0; if (keys.ArrowLeft) dx = -sp; if (keys.ArrowRight) dx = sp; if (keys.ArrowUp) dy = -sp; if (keys.ArrowDown) dy = sp;

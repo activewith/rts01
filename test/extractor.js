@@ -1,6 +1,6 @@
 // 모든 진영이 추출기를 지으면 에테르가 들어오는지 검사
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 for (const [fac, foe, ext] of [['pioneers', 'ironclad', 'p_extractor'], ['ironclad', 'pioneers', 'i_extractor'], ['swarm', 'pioneers', 's_extractor']]) {
   const G = RTS.createGame({ map: 'ridge', seed: 2, players: [{ faction: fac }, { faction: foe }] }), t = G.teams[0]; t.res.ore = 500;
   for (let i = 0; i < 40; i++) RTS.step(G);

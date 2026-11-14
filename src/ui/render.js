@@ -92,6 +92,49 @@ RTS.art = {
       c.fillStyle = p.dark; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(0, 3 * b); c.quadraticCurveTo(-4, (12 + f * .6) * b, -10, (12 + f * .6) * b); c.lineTo(-5, 3 * b); c.closePath(); c.fill(); }
       c.strokeStyle = FLESH[2]; c.lineWidth = 3; c.lineCap = 'round'; c.beginPath(); c.moveTo(-6, 0); c.quadraticCurveTo(-13, 3, -18, -1); c.stroke(); c.lineCap = 'butt';
       blob(c, 1, 0, 8, 4.5, FLESH[2]); blob(c, 2, 0, 5.5, 3, p.main); circ(c, 8, 0, 3, FLESH[0]); circ(c, 9.5, 0, 1.3, '#ffe08a'); },
+
+    // ── 합체 유닛(upgrade.js). 원점은 몸 중심, +x가 앞쪽 ──
+    commando(c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0); // 특공대: 큰 배낭, 소총 + 유탄 발사기
+      circ(c, -3 + w, 6.5, 3.8, STEEL[2]); circ(c, -3 - w, -6.5, 3.8, STEEL[2]);
+      shade(c, -14, -7.5, 8, 15, STEEL[1], 2); c.fillStyle = '#ffd27a'; c.fillRect(-12.5, -5, 1.6, 10);
+      c.fillStyle = p.dark; c.beginPath(); c.ellipse(0, 0, 8.5, 12, 0, 0, TAU); c.fill();
+      circ(c, 1, 0, 6.2, p.main); circ(c, 2.6, 0, 2.9, p.light);
+      c.fillStyle = '#1c2230'; c.fillRect(4, -7, 15, 2.6); c.fillStyle = '#3a6a58'; c.fillRect(4, 3, 12, 5.4); c.fillStyle = '#1c2230'; c.fillRect(14, 4, 4, 3.4); },
+    titan(c, p, s) { const k = s.moving ? Math.sin(s.t * .22) * 6 : 0, j = s.t % 4 < 2 ? 1.2 : 0; // 거대로봇: 두 다리, 어깨 포 두 문, 등 추진기
+      c.fillStyle = STEEL[3]; c.fillRect(-15 + k, -33, 24, 12); c.fillRect(-15 - k, 21, 24, 12);
+      c.fillStyle = STEEL[2]; c.fillRect(-9 + k * .5, -24, 12, 9); c.fillRect(-9 - k * .5, 15, 12, 9);
+      circ(c, -22, -10, 3.4 + j, '#ffd27a'); circ(c, -22, 10, 3.4 + j, '#ffd27a');
+      shade(c, -21, -21, 36, 42, STEEL[1], 7); shade(c, -16, -16, 26, 32, p.dark, 5);
+      for (const b of [-1, 1]) { shade(c, -8, b > 0 ? 15 : -28, 24, 13, STEEL[2], 3); c.fillStyle = STEEL[3]; c.fillRect(14, b > 0 ? 18.5 : -24.5, 20, 6); c.fillStyle = STEEL[0]; c.fillRect(30, b > 0 ? 18 : -25, 4, 7); circ(c, 3, b * 21.5, 4.2, p.main); }
+      circ(c, 0, 0, 10, p.main); circ(c, 3, 0, 5, p.light); c.fillStyle = '#ffd27a'; c.fillRect(9, -2.5, 9, 5); },
+    duelist(c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 3 : 0; // 쌍날기사: 육각 몸체, 양날, 등 총신
+      c.strokeStyle = MECH[3]; c.lineWidth = 3.4;
+      for (const [a, b] of [[-1, 1], [1, -1], [-1, -1], [1, 1]]) { c.beginPath(); c.moveTo(-3 * a, 7 * b); c.lineTo(-9 * a + k * b, 15 * b); c.stroke(); }
+      c.fillStyle = MECH[1]; c.beginPath(); for (let i = 0; i < 6; i++) c.lineTo(Math.cos(i * TAU / 6) * 13.5, Math.sin(i * TAU / 6) * 12.5); c.fill();
+      circ(c, 0, 0, 8.5, p.dark); circ(c, 3, 0, 4.4, p.main);
+      c.fillStyle = '#d6dde5'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(5, 11.5 * b); c.lineTo(24, 5 * b); c.lineTo(8, 5 * b); c.fill(); }
+      c.fillStyle = '#20242c'; c.fillRect(6, -2, 17, 4); },
+    juggernaut(c, p, s) { const k = s.moving ? Math.sin(s.t * .22) * 5 : 0; // 철갑거신: 네 다리 보행 요새, 쌍포
+      c.fillStyle = MECH[3]; for (const [x, b] of [[-22, -1], [-22, 1], [6, -1], [6, 1]]) c.fillRect(x + (b > 0 ? k : -k), b > 0 ? 23 : -35, 17, 12);
+      c.fillStyle = MECH[2]; c.beginPath(); c.moveTo(-30, -24); c.lineTo(15, -28); c.lineTo(31, 0); c.lineTo(15, 28); c.lineTo(-30, 24); c.closePath(); c.fill();
+      c.fillStyle = MECH[1]; c.beginPath(); c.moveTo(-24, -18); c.lineTo(11, -21); c.lineTo(24, 0); c.lineTo(11, 21); c.lineTo(-24, 18); c.closePath(); c.fill();
+      c.fillStyle = p.dark; c.beginPath(); c.moveTo(-16, -11); c.lineTo(6, -13); c.lineTo(14, 0); c.lineTo(6, 13); c.lineTo(-16, 11); c.closePath(); c.fill();
+      c.fillStyle = '#20242c'; c.fillRect(12, -19, 26, 8); c.fillRect(12, 11, 26, 8); c.fillStyle = MECH[0]; c.fillRect(34, -20, 5, 10); c.fillRect(34, 10, 5, 10);
+      circ(c, -3, 0, 8, p.main); circ(c, 0, 0, 3.6, p.light); for (const b of [-1, 1]) circ(c, -20, b * 12, 2.4 + (s.t % 6 < 3 ? .8 : 0), '#ff9a3c'); },
+    venom(c, p, s) { const w = s.moving ? Math.sin(s.t * .5) * 3 : 0; // 맹독충: 갈퀴 다리 + 산탄 머리, 독주머니
+      legs(c, 3, 12, 7, s.t, s.moving, FLESH[3], 2.2);
+      c.strokeStyle = FLESH[2]; c.lineWidth = 7; c.lineCap = 'round'; c.beginPath(); c.moveTo(-17, w); c.quadraticCurveTo(-10, -w, -3, 0); c.stroke(); c.lineCap = 'butt';
+      blob(c, 0, 0, 11, 9, FLESH[1]); blob(c, 0, 0, 8.5, 6.8, p.dark); blob(c, -3, 0, 4, 3.4, '#9be05a');
+      c.fillStyle = p.main; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(-3, 6 * b); c.lineTo(-9, 14 * b); c.lineTo(2, 8 * b); c.closePath(); c.fill(); }
+      blob(c, 9, 0, 5.4, 4.6, FLESH[0]); circ(c, 13.5, 0, 2.6, '#9be05a'); circ(c, 10, -2.4, 1.2, p.light); circ(c, 10, 2.4, 1.2, p.light);
+      c.fillStyle = '#e8dccb'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(9, 4 * b); c.quadraticCurveTo(18, 9 * b, 19, 2 * b); c.lineTo(12, 2 * b); c.closePath(); c.fill(); } },
+    behemoth(c, p, s) { const k = s.moving ? Math.sin(s.t * .25) * 4 : 0, f = Math.sin(s.t * .2) * 3; // 포자거수: 거대한 몸, 등 날개막, 엄니
+      c.fillStyle = FLESH[3]; for (const [x, b] of [[-18, -1], [-18, 1], [4, -1], [4, 1]]) c.fillRect(x + (b > 0 ? k : -k), b > 0 ? 18 : -29, 12, 11);
+      c.fillStyle = FLESH[1]; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(-4, 6 * b); c.quadraticCurveTo(-14, (36 + f) * b, -32, (30 + f) * b); c.quadraticCurveTo(-20, 16 * b, -18, 6 * b); c.closePath(); c.fill(); }
+      blob(c, -3, 0, 25, 20, FLESH[2]); blob(c, -4, 0, 20, 15.5, p.dark); c.fillStyle = FLESH[1]; for (let i = 0; i < 5; i++) { c.beginPath(); c.ellipse(-18 + i * 7, 0, 2.8, 13, 0, 0, TAU); c.fill(); }
+      c.fillStyle = p.main; for (let i = 0; i < 4; i++) { c.beginPath(); c.moveTo(-19 + i * 8, -12); c.lineTo(-16 + i * 8, -20); c.lineTo(-13 + i * 8, -12); c.closePath(); c.fill(); }
+      blob(c, 18, 0, 9, 10, FLESH[1]); circ(c, 22, -4, 2, '#ffe08a'); circ(c, 22, 4, 2, '#ffe08a');
+      c.fillStyle = '#efe4d2'; for (const b of [-1, 1]) { c.beginPath(); c.moveTo(20, 6 * b); c.quadraticCurveTo(38, 15 * b, 39, 3 * b); c.lineTo(25, 2 * b); c.closePath(); c.fill(); } },
   },
   // 건물은 (ctx, w, h, 팔레트, 상태) 로 그린다. 원점은 왼쪽 위, 단위는 px.
   buildings: {
@@ -200,7 +243,16 @@ RTS.Renderer = function (canvas, app) {
     shake(x, y, 1.5 + s * 2.2);
   }
 
+  // 강화 표시: 유닛 위 별(★), 건물 왼쪽 위 금색 마름모(단계 수)
+  function stars(c, x, y, n) { for (let i = 0; i < n; i++) { const sx = x + (i - (n - 1) / 2) * 9; c.fillStyle = '#1a1206'; star(c, sx, y, 4.6); c.fill(); c.fillStyle = '#ffd25a'; star(c, sx, y, 3.6); c.fill(); } }
+  function star(c, x, y, r) { c.beginPath(); for (let i = 0; i < 10; i++) { const a = -Math.PI / 2 + i * Math.PI / 5, q = i % 2 ? r * .45 : r; c.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } c.closePath(); }
+  function levelPips(c, e, d) { const r = RTS.rectOf(e), x = r.x0 * TS + 6, y = r.y0 * TS + 6 - (e.lift || 0);
+    for (let i = 0; i < e.lv; i++) { const px = x + i * 11; c.fillStyle = '#1a1206'; c.beginPath(); c.moveTo(px, y - 6); c.lineTo(px + 6, y); c.lineTo(px, y + 6); c.lineTo(px - 6, y); c.closePath(); c.fill();
+      c.fillStyle = '#ffd25a'; c.beginPath(); c.moveTo(px, y - 4.4); c.lineTo(px + 4.4, y); c.lineTo(px, y + 4.4); c.lineTo(px - 4.4, y); c.closePath(); c.fill(); } }
   R.attach = function (G) {
+    RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
+    RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
       else { const big = w.art === 'shell', s = w.splash ? 7.5 : big ? 6.5 : 4.2;
@@ -298,7 +350,7 @@ RTS.Renderer = function (canvas, app) {
   }
   let unitLight = null;
   function unitSprite(fn, P, st, facing, size, hit) { // 유닛: 몸체를 그린 뒤 고정된 방향의 빛을 입혀 둥글게 보이게 한다
-    const k = Math.min(2, R.cam.z), L = 76, px = Math.ceil(L * k), u = fit(S.unit, px, px);
+    const k = Math.min(2, R.cam.z), L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), u = fit(S.unit, px, px); // 큰 합체 유닛은 그림 판을 키운다
     u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); u.rotate(facing); fn(u, P, st);
     u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); const sc = Math.max(.8, size / 13); u.scale(sc, sc); u.globalCompositeOperation = 'source-atop';
     if (!unitLight) { unitLight = u.createRadialGradient(-5, -6, 1, -5, -6, 19); unitLight.addColorStop(0, 'rgba(255,255,255,.34)'); unitLight.addColorStop(.42, 'rgba(255,255,255,0)'); unitLight.addColorStop(.68, 'rgba(0,0,0,0)'); unitLight.addColorStop(1, 'rgba(0,0,0,.42)'); }
@@ -398,7 +450,7 @@ RTS.Renderer = function (canvas, app) {
       if (d.kind === 'resource') { if (me < 0 || G.nofog || G.teams[me].seen[(e.y | 0) * G.w + (e.x | 0)]) drawNode(c, G, e, d); continue; }
       if (vis(e)) list.push(e); }
     const bl = list.filter(e => RTS.defOf(e).kind === 'building');
-    for (const e of bl) { const d = RTS.defOf(e); if (sel.has(e.id)) selBox(c, e, d); drawBuilding(c, G, e, d, alpha);
+    for (const e of bl) { const d = RTS.defOf(e); if (sel.has(e.id)) selBox(c, e, d); drawBuilding(c, G, e, d, alpha); if (e.lv) levelPips(c, e, d);
       if (e.rally && sel.has(e.id)) { c.strokeStyle = 'rgba(120,255,190,.75)'; c.setLineDash([6, 6]); c.lineWidth = 1.5; c.beginPath(); c.moveTo(e.x * TS, e.y * TS); c.lineTo(e.rally.x * TS, e.rally.y * TS); c.stroke(); c.setLineDash([]); circ(c, e.rally.x * TS, e.rally.y * TS, 4, '#78ffbe'); } }
     const us = list.filter(e => RTS.defOf(e).kind === 'unit');
     const pos = e => [(e.px + (e.x - e.px) * alpha) * TS, (e.py + (e.y - e.py) * alpha) * TS];
@@ -415,7 +467,9 @@ RTS.Renderer = function (canvas, app) {
       if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
       else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
-      if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); } }
+      if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
+      if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
+      if (e.merging) { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } }
     // 투사체
     for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기
