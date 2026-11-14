@@ -31,7 +31,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-netopen" title="같은 와이파이의 다른 기기와 대전하거나 협동">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-rejoin" hidden title="끊긴 둘이 대전에 다시 들어갑니다">대전 다시 접속</button><button id="k-setopen">설정</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-netopen" title="다른 기기와 대전하거나 협동(인터넷 연결 필요)">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-rejoin" hidden title="끊긴 둘이 대전에 다시 들어갑니다">대전 다시 접속</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
@@ -454,10 +454,29 @@ RTS.mount = function (root, opts = {}) {
 
 
   // ── 둘이 대전: 방 만들기/참가, 연결, 시작 ─────────────
-  // 연결 수단: WebRTC(PeerJS). 처음 연결을 이어 줄 때만 PeerJS 공용 중계 서버를 쓰고, 이후 게임 데이터는 두 기기가 직접 주고받는다.
+  // 연결 수단: WebRTC(PeerJS). 처음 연결을 이어 줄 때만 PeerJS 공용 서버를 쓰고, 이후 게임 데이터는 두 기기가 직접 주고받는다.
+  // 직접 연결이 안 되는 망(LTE·5G 등)에서는 TURN 중계 서버가 데이터를 대신 전달한다. 중계를 거쳐도 WebRTC 암호화(DTLS)는 그대로라 중계 서버는 내용을 볼 수 없다.
+  // TURN_URL: Metered(Open Relay) 무료 계정의 자격 증명 주소. 비워 두면 PeerJS 기본 설정을 쓴다.
+  //   형식: https://앱이름.metered.live/api/v1/turn/credentials?apiKey=키
+  //   키가 공개 코드에 들어가 남이 쓸 수도 있다. 카드를 등록하지 않은 무료 계정이면 과금될 수 없고, 최악의 경우 그달 무료 사용량(20GB)이 바닥나 중계만 안 된다(직접 연결은 계속 된다).
+  const TURN_URL = '';
+  const STUN = [{ urls: 'stun:stun.l.google.com:19302' }, { urls: 'stun:stun.cloudflare.com:3478' }];
+  let ICE = null, iceAt = 0;
+  // 중계 서버 목록을 받아 둔다(1시간 재사용). 실패하면 null → PeerJS 기본 설정으로 연결한다
+  function iceLoad() {
+    if (!TURN_URL) return Promise.resolve(null);
+    if (ICE && Date.now() - iceAt < 3600e3) return Promise.resolve(ICE);
+    const ctl = typeof AbortController === 'function' ? new AbortController() : null, t = setTimeout(() => ctl && ctl.abort(), 5000);
+    return fetch(TURN_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined })
+      .then(r => (r.ok ? r.json() : Promise.reject(new Error('turn ' + r.status))))
+      .then(list => { if (!Array.isArray(list) || !list.length) throw new Error('turn empty'); ICE = STUN.concat(list); iceAt = Date.now(); return ICE; })
+      .catch(() => ICE).finally(() => clearTimeout(t));
+  }
+  const peerOpts = () => (ICE ? { debug: 0, config: { iceServers: ICE } } : { debug: 0 });
   const PEER_SRC = 'https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js', PEER_PREFIX = 'kjh-rts01-';
   const esc = x => String(x).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  function peerLib() { if (window.Peer) return Promise.resolve(window.Peer); return new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = PEER_SRC; sc.onload = () => (window.Peer ? ok(window.Peer) : no(new Error('load'))); sc.onerror = () => no(new Error('load')); document.head.appendChild(sc); }); }
+  function peerLib() { return Promise.all([peerScript(), iceLoad()]).then(r => r[0]); }
+  function peerScript() { if (window.Peer) return Promise.resolve(window.Peer); return new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = PEER_SRC; sc.onload = () => (window.Peer ? ok(window.Peer) : no(new Error('load'))); sc.onerror = () => no(new Error('load')); document.head.appendChild(sc); }); }
   const myName = () => (store.get('name') || '').trim().slice(0, 12) || '플레이어';
   function netOpen() { if (app.net) netClose(true); app.net = { stage: 'choose', hc: ['none', 'none'], mode: store.get('netMode') === 'coop' ? 'coop' : 'vs', fac1: null, boost: RTS.COOP.boost }; $('k-start').hidden = true; $('k-net').hidden = false; renderNet(); }
   function netClose(bye) { const N = app.net; if (!N) return; voiceReset(); app.net = null; chat.list = []; $('k-chatbox').hidden = true; renderChat(); $('k-netchat').hidden = true; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; $('k-net').hidden = true; }
@@ -472,7 +491,7 @@ RTS.mount = function (root, opts = {}) {
     conn.on('close', () => { if (app.net !== N || N.conn !== conn) return; voiceReset(); if (N.match) netAway('상대 기기와 연결이 끊겼습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대와 연결이 끊겼습니다.', true); } });
     conn.on('error', e => { if (N.conn === conn) netFail(e); }); }
   async function netHost() { const N = app.net; N.role = 'host'; N.stage = 'host'; netStatus('연결 준비 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
-    const tryCode = left => { N.code = String(1000 + Math.floor(Math.random() * 9000)); const peer = N.peer = new Peer(PEER_PREFIX + N.code, { debug: 0 });
+    const tryCode = left => { N.code = String(1000 + Math.floor(Math.random() * 9000)); const peer = N.peer = new Peer(PEER_PREFIX + N.code, peerOpts());
       peer.on('open', () => { if (app.net === N) netStatus('상대 기기에서 이 번호를 입력하세요.'); });
       peer.on('call', call => onCall(N, call));
       peer.on('connection', conn => onConnection(N, conn));
@@ -481,8 +500,8 @@ RTS.mount = function (root, opts = {}) {
       peer.on('close', () => { if (app.net === N && N.peer === peer) N.peer = null; }); };
     tryCode(4); }
   async function netJoin(code) { const N = app.net; if (!/^\d{4}$/.test(code)) return netStatus('방 번호 숫자 4자리를 입력하세요.', true); N.role = 'guest'; N.code = code; N.stage = 'joining'; netStatus('방을 찾는 중…'); let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
-    const peer = N.peer = new Peer({ debug: 0 }); peerCommon(N, peer); peer.on('error', err => { if (app.net !== N) return; if (N.match) { if (err.type === 'peer-unavailable') rejoinMiss(N); else netFail(err); return; } N.stage = 'choose'; netFail(err); });
-    peer.on('open', () => { if (app.net !== N) return; const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); wireConn(conn); setTimeout(() => { if (app.net === N && N.stage === 'joining') { N.stage = 'choose'; netStatus('방에 연결하지 못했습니다. 두 기기가 같은 와이파이인지 확인하세요.', true); } }, 15000); }); }
+    const peer = N.peer = new Peer(peerOpts()); peerCommon(N, peer); peer.on('error', err => { if (app.net !== N) return; if (N.match) { if (err.type === 'peer-unavailable') rejoinMiss(N); else netFail(err); return; } N.stage = 'choose'; netFail(err); });
+    peer.on('open', () => { if (app.net !== N) return; const conn = peer.connect(PEER_PREFIX + code, { reliable: true, serialization: 'json' }); wireConn(conn); setTimeout(() => { if (app.net === N && N.stage === 'joining') { N.stage = 'choose'; netStatus('방에 연결하지 못했습니다. 방 번호와 두 기기의 인터넷 연결을 확인하세요.', true); } }, 15000); }); }
   // 방장이 정하는 내용: 전장, 진영(상대는 다른 진영), 팀별 핸디캡
   // 두 사람은 서로 다른 진영을 고른다. 남은 진영이 중립세력(AI)이 된다. 협동이면 중립세력과 둘이 싸우고, 대전이면 셋이 서로 싸운다
   const lobbyOf = () => { const N = app.net, fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, coop = N.mode === 'coop', other = N.fac1 && N.fac1 !== mine ? N.fac1 : fs.find(x => x !== mine);
@@ -566,7 +585,7 @@ RTS.mount = function (root, opts = {}) {
   // 남은 기기의 peer가 없어졌으면(연결 서버 오류 등) 예비 이름으로 다시 만든다. 나간 기기는 예비 이름으로도 찾아온다
   async function ensurePeer(N) { if (N.peer && !N.peer.destroyed) { if (N.peer.disconnected) try { N.peer.reconnect(); } catch (e) {} return; }
     if (N.making) return; N.making = true; let Peer; try { Peer = await peerLib(); } catch (e) { N.making = false; return; } if (app.net !== N) return;
-    const peer = N.peer = new Peer(homeId(N, N.role), { debug: 0 }); peerCommon(N, peer);
+    const peer = N.peer = new Peer(homeId(N, N.role), peerOpts()); peerCommon(N, peer);
     peer.on('open', () => { N.making = false; renderAway(); });
     peer.on('error', err => { if (app.net !== N) return; if (err.type === 'peer-unavailable') { rejoinMiss(N); return; } if (err.type === 'unavailable-id') { N.making = false; try { peer.destroy(); } catch (e) {} if (N.peer === peer) N.peer = null; setTimeout(() => { if (app.net === N && N.away) ensurePeer(N); }, 5000); } }); }
   // 다시 연결: 상대 peer(이전 연결 상대, 없으면 예비 이름)에 연결하고 'rejoin'을 보낸다
@@ -592,7 +611,7 @@ RTS.mount = function (root, opts = {}) {
     const N = app.net = { stage: 'rejoin', role: rec.role, code: rec.code, team: rec.team, other: rec.other, peerName: rec.peerName, hc: ['none', 'none'], mode: 'vs', boost: RTS.COOP.boost, miss: 0 };
     $('k-start').hidden = true; $('k-net').hidden = false; netStatus('연결 서버에 접속하는 중…');
     let Peer; try { Peer = await peerLib(); } catch (e) { return netFail(e); } if (app.net !== N) return;
-    const peer = N.peer = new Peer({ debug: 0 }); peerCommon(N, peer);
+    const peer = N.peer = new Peer(peerOpts()); peerCommon(N, peer);
     peer.on('open', () => { if (app.net === N) { netStatus('상대 기기를 찾는 중…'); tryRejoin(N); } });
     peer.on('error', err => { if (app.net !== N) return; if (err.type === 'peer-unavailable') rejoinMiss(N); else if (!N.match) netFail(err); }); }
   function rejoinMsg(N, m) {
@@ -621,7 +640,7 @@ RTS.mount = function (root, opts = {}) {
       h += `<p class="k-sub">방 <b>${esc(N.code)}</b> 대전에 다시 들어갑니다. ${esc(N.peerName || '상대')} 님 기기에 게임 화면이 켜져 있어야 합니다. 들어가면 상대 기기의 지금 상태에서 이어서 합니다.</p>${st}`;
     } else if (N.stage === 'choose' || N.stage === 'joining') { const rec = loadResume();
       if (rec) h += `<div class="k-go"><button class="k-primary" id="n-rejoin">진행 중이던 대전 다시 접속 (방 ${esc(rec.code)})</button></div>`;
-      h += `<p class="k-sub">두 기기에서 이 화면을 열고, 한쪽은 방을 만들고 다른 쪽은 방 번호로 들어갑니다. 같은 와이파이에서 Chrome이나 삼성 인터넷을 쓰세요.</p>
+      h += `<p class="k-sub">두 기기에서 이 화면을 열고, 한쪽은 방을 만들고 다른 쪽은 방 번호로 들어갑니다. 집 밖(다른 와이파이·LTE)의 기기와도 됩니다. 두 기기 모두 Chrome이나 삼성 인터넷을 쓰세요.</p>
         <h2>내 이름</h2><input class="k-in" id="n-name" maxlength="12" value="${esc(myName())}" autocomplete="off">
         <div class="k-go"><button class="k-primary" id="n-host">방 만들기</button></div>
         <h2>참가하기</h2><div class="k-netjoin"><input class="k-in" id="n-code" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="방 번호 4자리" value="${esc(N.code && N.role === 'guest' ? N.code : '')}"><button id="n-join" ${N.stage === 'joining' ? 'disabled' : ''}>참가</button></div>${st}`;
