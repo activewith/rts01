@@ -58,7 +58,10 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
   cmd(G, { type: 'merge', unit: a.id, recipe: 'commando' }); ok(!G.merges?.length && G._msgs.includes('병영 강화 2단계가 필요합니다'), '병영 2단계 전에는 합체 불가');
   b.lv = 2; RTS.census(G); const sup0 = (RTS.census(G), G.teams[0].sup);
   cmd(G, { type: 'merge', unit: a.id, recipe: 'commando' }); ok(G.merges.length === 1 && a.merging && g.merging, '합체 시작: 재료가 모인다');
-  run(G, 200); const c = G.ents.find(e => e.def === 'p_commando');
+  let started = 0; for (let i = 0; i < 300 && !started; i++) { RTS.step(G); if (G.merges[0] && G.merges[0].at) started = G.tick; }
+  const sec = RTS.mergeTime(RTS.defs.merges.commando); ok(started && !a.dead && G.merges[0].total === sec * 20, `재료가 모이면 합체 시작, 걸리는 시간 ${sec}초`);
+  run(G, sec * 20 - 3); ok(!a.dead && !G.ents.some(e => e.def === 'p_commando'), '합체 시간이 지나기 전에는 만들어지지 않는다');
+  run(G, 5); const c = G.ents.find(e => e.def === 'p_commando');
   ok(c && a.dead && g.dead && !G.ents.includes(a) && c.hp === 110 && !G.merges.length, `특공대 합체 완료: 체력 ${c && c.hp}/${c && RTS.stat(G, c, 'hp')} (재료 40+70)`);
   RTS.census(G); ok(G.teams[0].sup === sup0, `보급 유지 ${sup0}→${G.teams[0].sup}`);
   const dc = D.p_commando, dps = dc.weapon.damage / dc.weapon.cooldown, src = 6 / .8 + 14 / 1.6;
@@ -70,6 +73,8 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
   // 다른 명령을 주면 취소
   const g2 = unit(G, 'p_gren', x - 3, y + 6); cmd(G, { type: 'merge', unit: lone.id, recipe: 'commando' }); cmd(G, { type: 'order', ids: [g2.id], order: { type: 'move', x: x + 20, y } }); run(G, 2);
   ok(!G.merges.length && !lone.merging && !g2.merging && !lone.dead && !g2.dead, '재료에 다른 명령을 주면 합체 취소');
+  { const g3 = unit(G, 'p_gren', lone.x + 1, lone.y); cmd(G, { type: 'merge', unit: lone.id, recipe: 'commando' }); run(G, 100); const j = G.merges[0];
+    ok(j && j.at, '합체 중'); g3.hp = 0; RTS.kill(G, g3, null); run(G, 2); ok(!G.merges.length && !lone.merging && !lone.dead, '합체 도중 재료가 죽으면 취소, 남은 재료는 그대로'); }
   // 너무 멀면 재료로 안 잡힌다
   const far = unit(G, 'p_gren', x - 3 + RTS.MERGE.range + 3, y); g2.x = 2; g2.y = 2; cmd(G, { type: 'merge', unit: lone.id, recipe: 'commando' }); ok(!lone.merging && !far.merging, `${RTS.MERGE.range}칸 밖 재료는 쓰지 않는다`); }
 // 5) 거대로봇: 다섯 기, 공중 재료 포함
@@ -77,7 +82,7 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
   const parts = [unit(G, 'p_tank', x, y), unit(G, 'p_tank', x + 2, y + 2), unit(G, 'p_gunship', x - 3, y), unit(G, 'p_gunship', x + 4, y - 2)];
   const sieged = parts[1]; sieged.sieged = true; const sum = parts.reduce((s, e) => s + e.hp, 0) + 45;
   cmd(G, { type: 'merge', unit: parts[0].id, recipe: 'titan' }); ok(G.merges.length === 1, '공병까지 다섯 재료를 찾는다(시작 공병 사용)');
-  run(G, 400); const ti = G.ents.find(e => e.def === 'p_titan');
+  run(G, 400 + RTS.mergeTime(RTS.defs.merges.titan) * 20); const ti = G.ents.find(e => e.def === 'p_titan');
   ok(ti && parts.every(e => e.dead) && ti.hp === Math.min(sum, RTS.stat(G, ti, 'hp')), `거대로봇 합체: 체력 ${ti && ti.hp} (합 ${sum}), 포격 모드 전차도 풀고 합류`);
   ok(D.p_titan.weapon.air !== false && D.p_titan.speed === D.p_tank.speed && D.p_titan.supply === 13, `거대로봇: 공중 공격 ${D.p_titan.weapon.air !== false}, 속도 ${D.p_titan.speed}, 보급 ${D.p_titan.supply}`);
   f.lv = 2; ok(!RTS.rankBlock(G, ti), '합체 유닛은 합체 건물 단계로 ★ 강화'); }
@@ -85,11 +90,11 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
 for (const m of Object.values(RTS.defs.merges)) {
   const G = setup(m.faction, 21), h = hq0(G); building(G, m.at, 6, 4).lv = 2; RTS.census(G);
   const list = []; let k = 0; for (const id of Object.keys(m.parts)) for (let i = 0; i < m.parts[id]; i++) { list.push(unit(G, id, h.x + 3 + (k % 3) * 1.6, h.y + 8 + Math.floor(k / 3) * 1.6)); k++; }
-  cmd(G, { type: 'merge', unit: list[0].id, recipe: m.id }); run(G, 400);
-  const r = G.ents.find(e => e.def === m.into); ok(!!r && list.every(e => e.dead), `${RTS.defs.factions[m.faction].name} ${D[m.into].name}: 체력 ${D[m.into].hp}, 공격 ${D[m.into].weapon.damage}/${D[m.into].weapon.cooldown}s, 사거리 ${D[m.into].weapon.range}`);
+  cmd(G, { type: 'merge', unit: list[0].id, recipe: m.id }); run(G, 400 + RTS.mergeTime(m) * 20);
+  const r = G.ents.find(e => e.def === m.into); ok(!!r && list.every(e => e.dead), `${RTS.defs.factions[m.faction].name} ${D[m.into].name}: 합체 ${RTS.mergeTime(m)}초, 체력 ${D[m.into].hp}, 공격 ${D[m.into].weapon.damage}/${D[m.into].weapon.cooldown}s, 사거리 ${D[m.into].weapon.range}`);
 }
 // 7) 합체 중 저장 → 복원해도 결과가 같다
 { const mk = () => { const G = setup('pioneers', 4), b = building(G, 'p_barracks'), h = hq0(G); b.lv = 2; RTS.census(G); const a = unit(G, 'p_rifle', h.x + 4, h.y + 7); unit(G, 'p_gren', h.x + 8, h.y + 8); RTS.command(G, 0, { type: 'merge', unit: a.id, recipe: 'commando' }); RTS.command(G, 0, { type: 'levelup', building: b.id }); return G; };
-  const A = mk(); run(A, 600); let B = mk(); run(B, 15); ok(B.merges.length === 1, '복원 전 합체 진행 중'); B = RTS.deserialize(RTS.serialize(B)); run(B, 585);
+  const A = mk(); run(A, 900); let B = mk(); run(B, 150); ok(B.merges.length === 1, '복원 전 합체 진행 중'); B = RTS.deserialize(RTS.serialize(B)); run(B, 750);
   ok(RTS.serialize(A) === RTS.serialize(B), '합체 도중 저장·복원 후 상태 동일'); }
 console.log(fail ? `실패 ${fail}건` : '강화·합체 검사 통과'); process.exit(fail ? 1 : 0);
