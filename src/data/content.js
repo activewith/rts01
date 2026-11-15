@@ -3,14 +3,19 @@
 RTS.mod({
   difficulties: {
     // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    // plans: 작전 가중치(속공 rush, 확장-발전 expand, 타이밍 공격 timing — RTS.AI_PLANS). attackMin·expandMin: 작전 배율 하한. perBase: 확장 기지당 일꾼 목표 증가율, bases: 최대 사령부 수, harass: 견제 부대
     // 2026-11 하향: 각 단계가 예전보다 두 단계 아래 수치를 쓴다(어려움 = 예전 쉬움, 보통 = 예전 왕초보, 쉬움·왕초보는 그보다 더 약하게)
-    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14 },
-    easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13 },
-    normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
-    hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
+    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14,
+      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2 },
+    easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13,
+      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2 },
+    normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12,
+      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true },
+    hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10,
+      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true },
   },
   terrain: {
-    ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' },
+    ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' }, cliff: { name: '고지대 절벽' },
   },
   abilities: {
     stim: { short: '충전', name: '과충전', key: 'Q', target: 'self', cooldown: 12, requires: 'p_stim', desc: '체력 10을 써서 8초간 속도 +50%, 공격 간격 -33%',
@@ -208,6 +213,25 @@ RTS.mod({
       rocks: [[48, 32, 9], [40, 27, 4], [30, 32, 3], [72, 20, 3], [22, 48, 3.5]],
       sand: [[48, 32, 15], [48, 9, 7]],
       lanes: [[11, 32, 32, 24, 3], [32, 24, 48, 17, 3], [11, 32, 26, 44, 3], [26, 44, 48, 50, 3], [13, 9, 18, 24, 2.5]] },
+    // 높낮이 맵: highs(고지대 원, 단계 1·2)와 ramps(경사로)를 쓴다. 절벽은 지나갈 수 없고, 경사로로만 오르내린다.
+    // 낮은 곳에서는 높은 곳이 보이지 않고, 아래에서 위로 쏘면 피해가 25% 준다. 높은 곳에 있으면 단계당 시야 +1.
+    highland: { name: '고원 요새', gen: 'symmetric', w: 112, h: 112, theme: 'dusk', desc: '112×112 · 기지 8 · 높낮이 맵. 고지대 본진, 2단 중앙 언덕. 아래에선 위가 안 보이고 위로 쏘면 피해 -25%',
+      highs: [[13, 13, 17, 1], [56, 56, 15, 1], [56, 56, 6.5, 2], [17, 84, 13, 1], [44, 30, 6, 1]],
+      ramps: [[33.5, 20.5, 28.5, 18.5, 2.2], [37.5, 44.5, 45, 49, 2.4], [74.5, 44.5, 67.5, 50, 2.4], [47.5, 51.5, 53.5, 54.5, 1.7], [35, 85, 28, 85, 2.2], [44, 39, 44, 34.5, 1.6]],
+      bases: [{ x: 13, y: 13, start: 0, dir: 3.93 }, { x: 42, y: 13, dir: 4.71, ore: 7, oneVent: true }, { x: 14, y: 46, dir: 3.14, ore: 6, oneVent: true }, { x: 15, y: 84, dir: 3.14, ore: 7 }],
+      sites: [[30, 62], [70, 22]], posts: [[50, 4], [4, 64]],
+      rocks: [[28, 32, 3.5], [32, 50, 3], [62, 30, 3.5], [84, 14, 3], [30, 100, 3], [8, 104, 3], [70, 70, 2.5], [40, 70, 3]],
+      sand: [[56, 56, 22], [30, 40, 7], [88, 32, 8]],
+      lanes: [[33, 20, 42, 13, 3], [33, 20, 38, 44, 3], [14, 46, 38, 44, 3], [14, 46, 30, 84, 2.5], [42, 13, 74, 44, 3], [34, 85, 56, 96, 3]] },
+    terrace: { name: '계단 협곡', gen: 'symmetric', w: 144, h: 96, theme: 'ochre', desc: '144×96 · 기지 8 · 높낮이 맵. 3단 계단식 본진, 넓은 저지대와 중앙 고원. 경사로로만 오르내린다',
+      highs: [[16, 48, 31, 1], [11, 48, 13, 2], [72, 48, 13, 1], [60, 24, 6, 1]],
+      ramps: [[28, 48, 20.5, 48, 2.2], [48.4, 34.9, 41, 37.9, 2.4], [48.4, 61.1, 41, 58.1, 2.4], [55, 48, 62.5, 48, 2.6], [72, 65, 72, 57.5, 2.2], [60, 33, 60, 28, 1.8]],
+      bases: [{ x: 11, y: 48, start: 0, dir: 3.14 }, { x: 27, y: 32, dir: 4.0, ore: 7, oneVent: true }, { x: 50, y: 11, dir: 4.71, ore: 7, oneVent: true }, { x: 40, y: 85, dir: 1.57, ore: 7 }],
+      sites: [[48, 26], [86, 30]], posts: [[100, 6], [26, 90]],
+      walls: [[44, 0, 44, 5, 1.5], [30, 82, 30, 96, 1.4]],
+      rocks: [[54, 68, 3.5], [88, 64, 3], [30, 4, 3], [104, 40, 3], [8, 90, 3], [78, 10, 3], [60, 84, 3]],
+      sand: [[72, 48, 20], [50, 11, 7], [40, 85, 7]],
+      lanes: [[28, 48, 41, 38, 3], [27, 32, 41, 38, 3], [48, 35, 50, 11, 3], [48, 61, 40, 85, 3], [48, 61, 55, 48, 3], [72, 65, 86, 88, 3]] },
   },
 });
 

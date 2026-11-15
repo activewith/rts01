@@ -154,7 +154,8 @@ function fire(G, u, w, t) {
   u.facing = Math.atan2(t.y - u.y, t.x - u.x);
   u.cd = Math.round(RTS.wStat(G, u, w, 'cooldown') * RTS.HZ);
   u.firedAt = G.tick;
-  const dmg = RTS.wStat(G, u, w, 'damage');
+  let dmg = RTS.wStat(G, u, w, 'damage');
+  if (G.elev && RTS.lvlOf(G, t) < 99 && RTS.lvlOf(G, t) > RTS.lvlOf(G, u)) dmg *= RTS.UPHILL; // 고지대 공격 불리
   RTS.emit(G, 'shot', { e: u, t, w });
   if (!w.speed) RTS.hit(G, t, t.x, t.y, dmg, w, u);
   else G.projectiles.push({ x: u.x, y: u.y, sx: u.x, sy: u.y, tx: t.x, ty: t.y, target: t.id, dmg, speed: w.speed, team: u.team, wdef: u.def, sieged: !!u.sieged, src: u.id, art: w.art || 'bolt' });
@@ -269,6 +270,7 @@ Object.assign(RTS.orders, {
         u.facing = Math.atan2(n.y - u.y, n.x - u.x);
       } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
     } else if (o.phase === 'mine') {
+      if (!n || n.dead || (n.vent && !G.byId[n.vent])) { o.phase = u.cargo ? 'back' : 'go'; u.claim = 0; return; } // 캐는 중에 광맥·추출기가 사라진 경우
       if (--o.t > 0) { u.mining = G.tick; return; }
       const src = n.vent ? G.byId[n.vent] : n, take = Math.min(src.amount, n.vent ? 4 : 5);
       src.amount -= take; u.cargo = take; u.cargoType = n.vent ? 'gas' : 'ore';

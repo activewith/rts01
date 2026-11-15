@@ -194,7 +194,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'a80f6b7';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'd6c5c30';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -247,7 +247,7 @@ RTS.createGame = function (opts) {
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
-  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null;
+  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null; if (m.elev) G.elev = m.elev;
   RTS.initRuntime(G);
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;
@@ -350,7 +350,12 @@ RTS.walkable = (G, x, y) => {
   const i = y * G.w + x;
   return RTS.terrainPass[G.tiles[i]] && !G._occ[i];
 };
-RTS.terrainPass = [true, false, true]; // 0 땅, 1 암벽, 2 모래. 맵 생성 후 defs.terrain이 덮어씀
+RTS.terrainPass = [true, false, true, false]; // 0 땅, 1 암벽, 2 모래, 3 고지대 절벽(지나갈 수 없음)
+// 고지대: G.elev[i] = 높이 단계×4. 경사로 칸은 아래 단계×4 + 0~4(위로 갈수록 큼). 4 미만이면 게임 판정에서 아래 단계로 본다.
+// 높이가 없는 맵(G.elev 없음)은 모두 0단계다. 공중 유닛은 높이 규칙을 받지 않는다.
+RTS.lvl = (G, x, y) => { if (!G.elev) return 0; const xi = x | 0, yi = y | 0; return xi < 0 || yi < 0 || xi >= G.w || yi >= G.h ? 0 : G.elev[yi * G.w + xi] >> 2; };
+RTS.lvlOf = (G, e) => (RTS.defs.entities[e.def].air ? 99 : RTS.lvl(G, e.x, e.y));
+RTS.UPHILL = .75; // 낮은 곳에서 높은 곳의 지상 대상을 쏘면 피해 ×0.75
 
 RTS.rectOf = e => { const s = RTS.defs.entities[e.def].size; return { x0: e.x - s[0] / 2, y0: e.y - s[1] / 2, w: s[0], h: s[1] }; };
 RTS.occupy = function (G, e, val) {
@@ -395,21 +400,22 @@ RTS.findPath = function (G, sx, sy, goal) {
   const w = G.w, n = w * G.h; asInit(n);
   const gen = ++AS.gen, start = Math.floor(sy) * w + Math.floor(sx);
   const rect = goal.x0 !== undefined;
+  if (!rect && !RTS.walkable(G, Math.floor(goal.x), Math.floor(goal.y))) { const q = RTS.nearestFree(G, goal.x, goal.y, 6); if (RTS.walkable(G, Math.floor(q.x), Math.floor(q.y))) goal = q; } // 막힌 칸이 목표면 가까운 빈칸으로(헛된 전체 탐색 방지)
   const gx = rect ? (goal.x0 + goal.x1) / 2 : Math.floor(goal.x), gy = rect ? (goal.y0 + goal.y1) / 2 : Math.floor(goal.y);
   const H = (x, y) => { const a = Math.abs(x - gx), b = Math.abs(y - gy); return (a + b) + (1.414 - 2) * Math.min(a, b); };
   const isGoal = (x, y) => rect ? (x >= goal.x0 && x <= goal.x1 && y >= goal.y0 && y <= goal.y1) : (x === gx && y === gy);
-  const heap = [], f = []; // 힙은 노드 인덱스, f는 우선순위
-  const push = (i, p) => { let c = heap.length; heap.push(i); f.push(p);
-    while (c > 0) { const q = (c - 1) >> 1; if (f[q] <= f[c]) break; [heap[q], heap[c]] = [heap[c], heap[q]]; [f[q], f[c]] = [f[c], f[q]]; c = q; } };
-  const pop = () => { const top = heap[0], li = heap.pop(), lf = f.pop();
-    if (heap.length) { heap[0] = li; f[0] = lf; let c = 0;
-      for (;;) { const l = 2 * c + 1, r = l + 1; let m = c; if (l < heap.length && f[l] < f[m]) m = l; if (r < heap.length && f[r] < f[m]) m = r; if (m === c) break;
-        [heap[m], heap[c]] = [heap[c], heap[m]]; [f[m], f[c]] = [f[c], f[m]]; c = m; } }
+  // 이진 힙: 형식 배열에 직접 넣고 빼며 배열을 새로 만들지 않는다(구조 분해 교환은 느리다)
+  if (!AS.hi || AS.hi.length < n * 8) { AS.hi = new Int32Array(n * 8); AS.hf = new Float64Array(n * 8); }
+  const HI = AS.hi, HF = AS.hf; let hn = 0;
+  const push = (i, p) => { if (hn >= HI.length) return; let c = hn++; while (c > 0) { const q = (c - 1) >> 1; if (HF[q] <= p) break; HI[c] = HI[q]; HF[c] = HF[q]; c = q; } HI[c] = i; HF[c] = p; };
+  const pop = () => { const top = HI[0], li = HI[--hn], lf = HF[hn]; let c = 0;
+    if (hn > 0) { for (;;) { const l = 2 * c + 1, r = l + 1; let m = -1, mf = lf; if (l < hn && HF[l] < mf) { m = l; mf = HF[l]; } if (r < hn && HF[r] < mf) { m = r; mf = HF[r]; } if (m < 0) break; HI[c] = HI[m]; HF[c] = HF[m]; c = m; }
+      HI[c] = li; HF[c] = lf; }
     return top; };
   AS.g[start] = 0; AS.stamp[start] = gen; AS.from[start] = -1; push(start, 0);
   let best = start, bestH = 1e9, found = -1, visited = 0;
   const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
-  while (heap.length && visited < 7000) {
+  while (hn > 0 && visited < Math.max(7000, n * .7)) { // 큰 맵은 탐색 한도를 넓힌다
     const cur = pop();
     if (AS.closed[cur] === gen) continue; AS.closed[cur] = gen; visited++;
     const cx = cur % w, cy = (cur / w) | 0;
@@ -429,7 +435,7 @@ RTS.findPath = function (G, sx, sy, goal) {
   if (found >= 0 && !rect) pts[pts.length - 1] = [goal.x, goal.y];
   const out = []; let ax = sx, ay = sy, i = 0; // 끈 당기기 평활화
   while (i < pts.length) {
-    let j = pts.length - 1;
+    let j = Math.min(pts.length - 1, i + 40); // 앞쪽 40칸까지만 본다(긴 경로에서 계산량이 제곱으로 늘지 않게)
     while (j > i && !RTS.lineClear(G, ax, ay, pts[j][0], pts[j][1])) j--;
     out.push(pts[j]); ax = pts[j][0]; ay = pts[j][1]; i = j + 1;
   }
@@ -455,9 +461,10 @@ RTS.updateFog = function (G, force) {
     t.vis.fill(0); const tribeEyes = RTS.tribeAlly && RTS.tribeAlly(G, t.id); // 잿빛 부족 동맹이면 부족 시야를 공유한다
     for (const e of G.ents) {
       if ((e.team !== t.id && !(tribeEyes && e.team === RTS.TRIBE) && !(G.coop && e.team >= 0 && RTS.ally(G, t.id, e.team))) || e.dead) continue; // 협동: 동료 시야 공유
-      const r = RTS.defs.entities[e.def].sight || 8, cx = e.x | 0, cy = e.y | 0, R = r * r;
+      // 고지대: 지상 유닛·건물은 자기보다 높은 단계를 보지 못하고, 높은 곳에 있으면 단계당 시야 +1
+      const EL = G.elev, ul = EL ? RTS.lvlOf(G, e) : 99, r = (RTS.defs.entities[e.def].sight || 8) + (ul < 99 ? ul : 0), cx = e.x | 0, cy = e.y | 0, R = r * r;
       for (let y = Math.max(0, cy - r); y <= Math.min(G.h - 1, cy + r); y++) for (let x = Math.max(0, cx - r); x <= Math.min(G.w - 1, cx + r); x++) {
-        if ((x - cx) ** 2 + (y - cy) ** 2 <= R) { const i = y * G.w + x; t.vis[i] = 1; t.seen[i] = 1; }
+        if ((x - cx) ** 2 + (y - cy) ** 2 <= R) { const i = y * G.w + x; if (EL && (EL[i] >> 2) > ul) continue; t.vis[i] = 1; t.seen[i] = 1; }
       }
     }
   }
@@ -484,6 +491,7 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
   for (const [x, y] of spec.sites || []) { disc(x, y, 3.5, 0); sites.push({ x, y }); sites.push({ x: w - x, y: h - y }); }
   let tribe = null; // 잿빛 부족 회당 자리: 대칭 중심선 위. 둘레를 비우고 필요하면 둑길(tribeLanes)을 낸다
   if (spec.tribe) { for (const [a, b, c, d, t] of spec.tribeLanes || []) line(a, b, c, d, t, 0); disc(spec.tribe[0], spec.tribe[1], 6.5, 0); tribe = { x: spec.tribe[0], y: spec.tribe[1] }; }
+  const elev = spec.highs ? RTS.raiseHighs(spec, w, h, tiles, rng) : null;
   const cx = w / 2, cy = h / 2;
   half.forEach((b, i) => {
     const dir = b.dir !== undefined ? b.dir : Math.atan2(b.y - cy, b.x - cx);
@@ -494,7 +502,42 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
     add('vent', Math.round(b.x + Math.cos(dir + 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir + 2.05) * 7.5 - 1), 2, 2);
     if (!b.oneVent) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
   });
-  return { w, h, tiles, bases, nodes, sites, posts, tribe };
+  return { w, h, tiles, bases, nodes, sites, posts, tribe, elev };
+};
+// 고지대 만들기(대칭). highs: [x, y, 반경, 단계] 원(가장자리를 노이즈로 흔든다, 뒤에 온 것이 덮는다).
+// ramps: [아래쪽 x, y, 위쪽 x, y, 폭] 선분 둘레를 경사로로 만든다. 그 밖에서 단계가 바뀌는 경계의 높은 쪽 한 칸은 절벽(3)이 된다.
+RTS.raiseHighs = function (spec, w, h, tiles, rng) {
+  const N = w * h, L = new Array(N).fill(0), ramp = new Array(N).fill(-1), rk = new Array(N).fill(0);
+  const both = (x, y, fn) => { if (x >= 0 && y >= 0 && x < w && y < h) { fn(y * w + x); fn((h - 1 - y) * w + (w - 1 - x)); } };
+  for (const [hx, hy, r, lv] of spec.highs) {
+    const p1 = rng() * 6.28, p2 = rng() * 6.28, a1 = .06 + rng() * .05, a2 = .03 + rng() * .04;
+    for (let y = Math.floor(hy - r * 1.2); y <= hy + r * 1.2; y++) for (let x = Math.floor(hx - r * 1.2); x <= hx + r * 1.2; x++) {
+      const dx = x + .5 - hx, dy = y + .5 - hy, a = Math.atan2(dy, dx), R = r * (1 + a1 * Math.sin(3 * a + p1) + a2 * Math.sin(5 * a + p2));
+      if (dx * dx + dy * dy <= R * R) both(x, y, i => { L[i] = lv; });
+    }
+  }
+  const Lat = (x, y) => (x < 0 || y < 0 || x >= w || y >= h ? 0 : L[Math.floor(y) * w + Math.floor(x)]);
+  for (const [ax, ay, bx, by, wd] of spec.ramps || []) {
+    // 가장자리가 노이즈로 흔들리므로, 아래쪽 점에서 위쪽 방향으로 걸어가며 실제 경계를 찾아 그 둘레 5칸을 경사로로 만든다
+    const ul = Math.hypot(bx - ax, by - ay) || 1, ux = (bx - ax) / ul, uy = (by - ay) / ul, lo = Lat(ax, ay);
+    let hi = Lat(bx, by); if (hi <= lo) for (let k = ul; k < ul + 8 && hi <= lo; k += .5) hi = Math.max(hi, Lat(ax + ux * k, ay + uy * k));
+    let ke = ul; for (let k = 0; k < ul + 8; k += .25) if (Lat(ax + ux * k, ay + uy * k) >= hi) { ke = k; break; }
+    const x0 = ax + ux * (ke - 3.5), y0 = ay + uy * (ke - 3.5), x1 = ax + ux * (ke + 1.5), y1 = ay + uy * (ke + 1.5), low = Math.min(lo, hi);
+    const vx = x1 - x0, vy = y1 - y0, len = Math.hypot(vx, vy) || 1;
+    for (let y = Math.floor(Math.min(y0, y1) - wd - 1); y <= Math.max(y0, y1) + wd + 1; y++) for (let x = Math.floor(Math.min(x0, x1) - wd - 1); x <= Math.max(x0, x1) + wd + 1; x++) {
+      const px = x + .5 - x0, py = y + .5 - y0, k = Math.max(0, Math.min(1, (px * vx + py * vy) / (len * len)));
+      const up = k, j = y * w + x; // 아래쪽 0 → 위쪽 1
+      if (Math.hypot(px - vx * k, py - vy * k) <= wd && x >= 0 && y >= 0 && x < w && y < h) { const q = Math.max(0, Math.min(4, Math.round(up * 4))); ramp[j] = low; rk[j] = q; tiles[j] = 0; const m = (h - 1 - y) * w + (w - 1 - x); ramp[m] = low; rk[m] = q; tiles[m] = 0; }
+    }
+  }
+  const E = new Array(N);
+  for (let i = 0; i < N; i++) E[i] = ramp[i] >= 0 ? ramp[i] * 4 + rk[i] : L[i] * 4;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) { const i = y * w + x; if (ramp[i] >= 0 || !L[i]) continue;
+    let cliff = false;
+    for (let dy = -1; dy <= 1 && !cliff; dy++) for (let dx = -1; dx <= 1; dx++) { const nx = x + dx, ny = y + dy; if ((!dx && !dy) || nx < 0 || ny < 0 || nx >= w || ny >= h) continue;
+      const j = ny * w + nx; if (ramp[j] >= 0 ? ramp[j] + 1 < L[i] : L[j] < L[i]) { cliff = true; break; } }
+    if (cliff) tiles[i] = 3; }
+  return E;
 };
 
 // sim.js — 엔티티, 스탯, 명령, 이동, 전투, 생산, 승패. 규칙 대부분은 여기 있다.
@@ -653,7 +696,8 @@ function fire(G, u, w, t) {
   u.facing = Math.atan2(t.y - u.y, t.x - u.x);
   u.cd = Math.round(RTS.wStat(G, u, w, 'cooldown') * RTS.HZ);
   u.firedAt = G.tick;
-  const dmg = RTS.wStat(G, u, w, 'damage');
+  let dmg = RTS.wStat(G, u, w, 'damage');
+  if (G.elev && RTS.lvlOf(G, t) < 99 && RTS.lvlOf(G, t) > RTS.lvlOf(G, u)) dmg *= RTS.UPHILL; // 고지대 공격 불리
   RTS.emit(G, 'shot', { e: u, t, w });
   if (!w.speed) RTS.hit(G, t, t.x, t.y, dmg, w, u);
   else G.projectiles.push({ x: u.x, y: u.y, sx: u.x, sy: u.y, tx: t.x, ty: t.y, target: t.id, dmg, speed: w.speed, team: u.team, wdef: u.def, sieged: !!u.sieged, src: u.id, art: w.art || 'bolt' });
@@ -768,6 +812,7 @@ Object.assign(RTS.orders, {
         u.facing = Math.atan2(n.y - u.y, n.x - u.x);
       } else if (arrived(u) && G.tick - (u.pathT || 0) > 12) u.destEnt = 0;
     } else if (o.phase === 'mine') {
+      if (!n || n.dead || (n.vent && !G.byId[n.vent])) { o.phase = u.cargo ? 'back' : 'go'; u.claim = 0; return; } // 캐는 중에 광맥·추출기가 사라진 경우
       if (--o.t > 0) { u.mining = G.tick; return; }
       const src = n.vent ? G.byId[n.vent] : n, take = Math.min(src.amount, n.vent ? 4 : 5);
       src.amount -= take; u.cargo = take; u.cargoType = n.vent ? 'gas' : 'ore';
@@ -1390,6 +1435,7 @@ RTS.tribeRelName = r => REL_NAME[r] || r;
 const tTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind });
 
 // 회당 자리: 게임마다 무작위. 맵 가운데, 시작 기지·확장 기지·자원·회사 거점·지부 근처는 피하고, 두 시작 기지에서 걸어서 닿아야 한다
+const nearRamp = (G, px, py) => { for (let y = (py | 0) - 6; y <= (py | 0) + 6; y++) for (let x = (px | 0) - 6; x <= (px | 0) + 6; x++) if (x >= 0 && y >= 0 && x < G.w && y < G.h && (G.elev[y * G.w + x] & 3)) return true; return false; };
 RTS.tribeSpotPick = function (G) {
   const H = RTS.defs.entities.t_hall, starts = G.bases.filter(b => b.start !== undefined), cx = G.w / 2, cy = G.h / 2, R = TR();
   const keep = [...G.siteSpots, ...G.postSpots], res = G.ents.filter(e => RTS.defOf(e).kind === 'resource');
@@ -1401,6 +1447,7 @@ RTS.tribeSpotPick = function (G) {
       if (Math.hypot(px - cx, py - cy) < R.centerGap) continue;
       if (starts.some(b => Math.hypot(b.x - px, b.y - py) < R.startGap * (k < 1 ? .85 : 1)) || G.bases.some(b => Math.hypot(b.x - px, b.y - py) < 11 * k)) continue;
       if (keep.some(q => Math.hypot(q.x - px, q.y - py) < 7 * k) || res.some(e => Math.hypot(e.x - px, e.y - py) < 6 * k)) continue;
+      if (G.elev && nearRamp(G, px, py)) continue; // 경사로를 막지 않게 한다
       const tx = Math.round(px - H.size[0] / 2), ty = Math.round(py - H.size[1] / 2); if (!RTS.canPlace(G, RTS.TRIBE, 't_hall', tx, ty, 2)) continue;
       cand.push([px, py, tx, ty]); }
     for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
@@ -1536,99 +1583,215 @@ RTS.aiDiff = function (t) {
     waveSize: Math.round(base.waveSize * k), waveGrow: Math.max(1, Math.round(base.waveGrow * k)), firstAttack: Math.round(base.firstAttack / k), expandAt: Math.round(base.expandAt / k),
     investEvery: Math.max(5, Math.round(base.investEvery / k)), scoutAt: Math.round(base.scoutAt / k), allyArmy: Math.max(4, Math.round(base.allyArmy / k)) }));
 };
+// ── 전략(작전) ──────────────────────────────────────────────
+// 게임 시작 때 AI마다 하나를 무작위로 고른다(난이도의 plans 가중치). 수치는 난이도 기준값에 곱한다.
+// attack: 첫 공격 시각, wave: 공격 규모, expand: 첫 확장 시각, workers: 일꾼 목표, t1/t2: 에테르 없는 유닛 / 에테르 유닛 생산 비중
+RTS.AI_PLANS = {
+  rush:   { name: '속공', attack: .55, wave: .8, expand: 1.3, workers: .8, t1: 2.4, t2: .35, delayTech: true, pressure: true },
+  expand: { name: '확장-발전', attack: 1.3, wave: 1.7, expand: .3, workers: 1.2, t1: .6, t2: 1.8, techFirst: true, guardExpo: true },
+  timing: { name: '타이밍 공격', attack: .9, wave: 1.1, expand: .6, workers: 1, t1: 1, t2: 1 },
+};
+RTS.aiPlan = function (G, t, diff) {
+  const S = t.aiState; if (S.plan) return RTS.AI_PLANS[S.plan];
+  const w = diff.plans || { timing: 1 }, keys = Object.keys(w).filter(k => w[k] > 0), tot = keys.reduce((a, k) => a + w[k], 0);
+  let r = RTS.rand(G) * tot; S.plan = keys[keys.length - 1]; for (const k of keys) { r -= w[k]; if (r <= 0) { S.plan = k; break; } }
+  return RTS.AI_PLANS[S.plan];
+};
+// 전투력 어림값: 체력 × 초당 피해(무기 없으면 작게). 교전 판단·후퇴에만 쓴다.
+const powOf = (G, e) => { const d = RTS.defOf(e), w = RTS.weapon(e); return Math.max(0, e.hp) * (w ? Math.max(1, (w.damage || 1) * (w.splash ? 1.5 : 1) / (w.cooldown || 1)) : .3); };
+const centroid = us => { let x = 0, y = 0; for (const u of us) { x += u.x; y += u.y; } return { x: x / us.length, y: y / us.length }; };
+const pathLen = (G, a, b) => { const p = RTS.findPath(G, a.x, a.y + 3, { x: b.x, y: b.y }); if (!p.length) return 1e9; const l = p[p.length - 1]; if (Math.hypot(l[0] - b.x, l[1] - b.y) > 6) return 1e9;
+  let s = 0, px = a.x, py = a.y; for (const q of p) { s += Math.hypot(q[0] - px, q[1] - py); px = q[0]; py = q[1]; } return s; };
+
 RTS.aiThink = function (G, t) {
   const diff = RTS.aiDiff(t);
   if ((G.tick + t.id * 3) % diff.interval) return;
-  const f = RTS.defs.factions[t.faction], P = f.ai, S = t.aiState, D = RTS.defs.entities;
+  const f = RTS.defs.factions[t.faction], P = f.ai, S = t.aiState, D = RTS.defs.entities, plan = RTS.aiPlan(G, t, diff), sec = G.tick / RTS.HZ;
   const mine = G.ents.filter(e => e.team === t.id && !e.dead);
   const builds = mine.filter(e => D[e.def].kind === 'building' && !D[e.def].site), units = mine.filter(e => D[e.def].kind === 'unit');
-  const workers = units.filter(e => D[e.def].gather), army = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && e.id !== S.scout);
+  const harass = new Set(S.harass || []);
+  const workers = units.filter(e => D[e.def].gather), allArmy = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && e.id !== S.scout && e.id !== S.tScout && e.id !== S.tScoutM);
+  const army = allArmy.filter(u => !harass.has(u.id));
   const hqs = builds.filter(e => D[e.def].dropoff && RTS.complete(e));
   const count = id => builds.filter(b => b.def === id).length;
   const cmd = c => RTS.command(G, t.id, c);
   if (!hqs.length && !builds.length) return;
-  const home = hqs[0] || builds[0];
+  const home = G.byId[S.home] && !G.byId[S.home].dead ? G.byId[S.home] : (hqs[0] || builds[0]); S.home = home.id;
+  const extId = (P.build.find(s => D[s.b].placeOn) || {}).b;
+  // 난이도 하한: 왕초보·쉬움은 작전이 바뀌어도 첫 공격이 너무 이르거나 확장이 너무 빠르지 않다
+  const atkMul = Math.max(plan.attack, diff.attackMin || 0), expMul = Math.max(plan.expand, diff.expandMin || 0);
+  const firstAttack = diff.firstAttack * atkMul;
 
-  // 놀고 있는 일꾼 → 채취. 에테르는 추출기당 3명
+  // 놀고 있는 일꾼 → 채취. 에테르는 추출기당 3명. 일꾼은 일꾼이 가장 적은 사령부 쪽 광맥으로 보낸다
+  const near = (w, b, r) => Math.hypot(w.x - b.x, w.y - b.y) < r;
+  const gatherAt = b => workers.filter(w => w.order && w.order.type === 'gather' && G.byId[w.order.node] && near(G.byId[w.order.node], b, 11)).length;
   const exts = builds.filter(b => D[b.def].placeOn && RTS.complete(b));
   for (const x of exts) { const n = workers.filter(w => w.order && w.order.type === 'gather' && w.order.node === x.id).length;
-    if (n < 3) { const w = workers.find(w => w.order && w.order.type === 'gather' && !G.byId[w.order.node]?.vent && !w.cargo); if (w) RTS.issue(G, w, { type: 'gather', node: x.id }); } }
-  for (const w of workers) if (!w.order) { const b = hqs[(w.id) % (hqs.length || 1)] || home, n = RTS.nearestNode(G, b.x, b.y, 'ore', 40); if (n) RTS.issue(G, w, { type: 'gather', node: n.id }); }
+    if (n < 3) { const w = workers.filter(w => w.order && w.order.type === 'gather' && !G.byId[w.order.node]?.vent && !w.cargo).sort((a, b) => Math.hypot(a.x - x.x, a.y - x.y) - Math.hypot(b.x - x.x, b.y - x.y))[0]; if (w) RTS.issue(G, w, { type: 'gather', node: x.id }); } }
+  const load = hqs.map(b => ({ b, n: gatherAt(b), node: RTS.nearestNode(G, b.x, b.y, 'ore', 11) }));
+  for (const w of workers) if (!w.order) { const L = load.filter(o => o.node).sort((a, b) => a.n - b.n)[0], b = L ? L.b : home, n = RTS.nearestNode(G, b.x, b.y, 'ore', 40); if (n) { RTS.issue(G, w, { type: 'gather', node: n.id }); if (L) L.n++; } }
+  // 사령부 사이 일꾼 옮기기: 한쪽이 붐비고 다른 쪽(광맥 남음)이 비면 4명씩 보낸다
+  if (load.length > 1) { load.sort((a, b) => a.n - b.n); const lo = load[0], hi = load[load.length - 1];
+    if (lo.node && hi.n - lo.n > 6) { let k = 0; for (const w of workers) { if (k >= 4) break; const nd = w.order && w.order.type === 'gather' && G.byId[w.order.node]; if (!nd || nd.vent || w.cargo || !near(nd, hi.b, 11)) continue; RTS.issue(G, w, { type: 'gather', node: lo.node.id }); k++; } } }
 
-  const wantWorkers = Math.min(diff.maxWorkers, 16 * Math.max(1, hqs.length));
-  for (const b of hqs) if (workers.length + b.prod.length < wantWorkers && !b.prod.length && RTS.canPay(t, D[f.worker].cost)) cmd({ type: 'train', building: b.id, unit: f.worker });
+  const wantWorkers = Math.min(Math.round(diff.maxWorkers * (plan.delayTech && S.rushDone ? 1 : plan.workers) * (1 + (diff.perBase || .5) * (hqs.length - 1))), 16 * Math.max(1, hqs.length) + 3 * exts.length);
+  if (plan.delayTech && !S.rushDone && S.attackAt && G.tick - S.attackAt > 100 * RTS.HZ) S.rushDone = true; // 속공 창은 첫 공격 뒤 100초까지
+  const rushHold = plan.delayTech && !S.rushDone && workers.length >= Math.round(diff.maxWorkers * plan.workers);
+  for (const b of hqs) if (!rushHold && workers.length + b.prod.length < wantWorkers && !b.prod.length && RTS.canPay(t, D[f.worker].cost)) cmd({ type: 'train', building: b.id, unit: f.worker });
 
   const sites = builds.filter(b => !RTS.complete(b));
-  const builder = () => workers.find(w => w.order && w.order.type === 'gather' && w.order.phase !== 'mine' && !w.cargo) || workers.find(w => !w.order || w.order.type === 'gather');
-  const place = (id, near) => {
-    const w = builder(); if (!w || !RTS.canPay(t, D[id].cost)) return false;
-    const spot = RTS.aiSpot(G, t, id, near || home); if (!spot) return false;
+  const builder = (at) => { const ok = workers.filter(w => (w.order && w.order.type === 'gather' && w.order.phase !== 'mine' && !w.cargo) || !w.order); if (!ok.length) return workers.find(w => !w.order || w.order.type === 'gather');
+    if (!at) return ok[0]; return ok.sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y))[0]; };
+  const place = (id, nearB) => {
+    const at = nearB || home, w = builder(at); if (!w || !RTS.canPay(t, D[id].cost)) return false;
+    const spot = RTS.aiSpot(G, t, id, at); if (!spot) return false;
     cmd({ type: 'place', ids: [w.id], def: id, tx: spot.x, ty: spot.y }); return true;
   };
   // 공사 중 건물에 일꾼이 없으면 다시 붙인다 (건설자가 죽은 경우)
-  for (const s of sites) { const has = units.some(u => u.order && u.order.type === 'build' && u.order.site === s.id); if (!has && !s.active) { const w = builder(); if (w) RTS.issue(G, w, { type: 'build', site: s.id }); } }
+  for (const s of sites) { const has = units.some(u => u.order && u.order.type === 'build' && u.order.site === s.id); if (!has && !s.active) { const w = builder(s); if (w) RTS.issue(G, w, { type: 'build', site: s.id }); } }
+
+  // 위협: 내 건물 9칸 안의 적 유닛
+  let threat = null, threatPow = 0;
+  for (const b of builds) RTS.query(G, b.x, b.y, 9, o => { if (!o.dead && RTS.foe(G, t.id, o.team) && D[o.def].kind === 'unit' && Math.hypot(o.x - b.x, o.y - b.y) < 10) { if (!threat) threat = o; threatPow += powOf(G, o); } });
+
+  // 위기 판단: 상대 전투 병력이 내 1.3배 이상이면(5기 이상) 투자·연구·확장 저축을 멈추고 병력과 방어탑에 쓴다. AI는 안개를 무시한다.
+  if ((G.tick + t.id) % (diff.interval * 3) < diff.interval) { let ep = 0, mp = 0, en = 0;
+    for (const e of G.ents) { if (e.dead || D[e.def].kind !== 'unit' || D[e.def].gather || e.team < 0) continue; if (e.team === t.id) mp += powOf(G, e); else if (RTS.foe(G, t.id, e.team)) { ep += powOf(G, e); en++; } }
+    S.danger = en >= 5 && ep > mp * 1.3 && sec < 900; }
+  // ── 확장 ── 작전이 정한 시각이 되거나 일꾼이 꽉 차면 사령부 값을 모은다(그동안 병력 생산을 멈춘다)
+  const hqSite = sites.some(s => s.def === f.hq), maxBases = diff.bases || 3;
+  const nextAt = (S.expands || 0) === 0 ? diff.expandAt * expMul : (S.lastExpand || 0) / RTS.HZ + diff.expandAt * .45 * Math.max(.6, expMul * 1.5);
+  const saturated = workers.length >= wantWorkers - 1 && hqs.length * 16 <= workers.length + 2 && sec > diff.expandAt * expMul * .7;
+  const wantExpand = !S.danger && !hqSite && count(f.hq) < maxBases && (sec >= nextAt || saturated) && (!threat || threatPow < 400) && G.tick >= (S.expandWait || 0) && !(plan.delayTech && !S.rushDone && sec < diff.expandAt);
+  S.saveHq = false;
+  if (wantExpand) {
+    if (!S.expoPick || G.tick - (S.expoPickAt || 0) > 30 * RTS.HZ || !G.bases[S.expoPick - 1]) {
+      const free = G.bases.map((b, i) => ({ b, i })).filter(({ b }) => !G.ents.some(e => !e.dead && (D[e.def].kind === 'building' || (e.team >= 0 && e.team !== t.id && D[e.def].kind === 'unit')) && Math.hypot(e.x - b.x, e.y - b.y) < (e.team === t.id || e.team < 0 ? 7 : 12)) && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
+      const enemyHq = G.ents.filter(e => !e.dead && e.team >= 0 && RTS.foe(G, t.id, e.team) && D[e.def].dropoff);
+      for (const o of free) { const dEnemy = Math.min(1e9, ...enemyHq.map(e => Math.hypot(e.x - o.b.x, e.y - o.b.y))); o.k = Math.min(...hqs.concat([home]).map(h => Math.hypot(h.x - o.b.x, h.y - o.b.y))) - Math.min(dEnemy, 60) * .35; }
+      free.sort((a, b) => a.k - b.k);
+      let pick = null; for (const o of free.slice(0, 3)) { if (pathLen(G, home, o.b) < 1e9) { pick = o; break; } }
+      S.expoPick = pick ? pick.i + 1 : 0; S.expoPickAt = G.tick;
+    }
+    const tgt = S.expoPick && G.bases[S.expoPick - 1];
+    if (tgt) { const d = D[f.hq];
+      if (RTS.canPay(t, d.cost)) { const w = builder(tgt); if (w) { cmd({ type: 'place', ids: [w.id], def: f.hq, tx: Math.round(tgt.x - d.size[0] / 2), ty: Math.round(tgt.y - d.size[1] / 2) }); S.expands = (S.expands || 0) + 1; S.lastExpand = G.tick; S.expoPick = 0; S.saveSince = 0; } }
+      else { S.saveHq = true; S.saveSince = S.saveSince || G.tick; if (G.tick - S.saveSince > 70 * RTS.HZ) { S.expandWait = G.tick + 40 * RTS.HZ; S.saveSince = 0; } }
+    }
+  } else S.saveSince = 0;
 
   // 보급
-  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < RTS.cfg(G).supplyCap && !sites.some(s => s.def === f.supply)) place(f.supply);
-  else {
-    // 빌드 오더: 앞에서부터 처음 미충족 항목 하나만 실행
-    for (const step of P.build) {
-      if (G.tick < (step.after || 0) * RTS.HZ) break;
+  if (t.cap - t.sup < 4 + t.have[f.hq] * 1 + (army.length > 15 ? 4 : 0) && t.cap < RTS.cfg(G).supplyCap && !sites.some(s => s.def === f.supply)) { if (!S.saveHq || t.res.ore > D[f.hq].cost.ore + 100) place(f.supply); }
+  else if (!S.saveHq) {
+    // 빌드 오더: 앞에서부터 처음 미충족 항목 하나만 실행. 속공은 에테르 건물을 첫 공격 뒤로 미루고 생산 건물을 하나 더 짓는다. 위기면 생산 건물만 늘린다
+    const order = S.danger && sec < 480 ? [Object.assign({}, P.build[0], { n: 2 }), Object.assign({}, P.build[0], { n: 3 })] : plan.delayTech && !S.rushDone ? [P.build[0], Object.assign({}, P.build[0], { n: 2 })].concat(P.build.slice(1).filter(s => !(D[s.b].cost.gas > 0))) : P.build;
+    for (const step of order) {
+      if (G.tick < (step.after || 0) * RTS.HZ * (plan.techFirst ? .8 : 1)) break;
       if (count(step.b) >= step.n) continue;
       if (RTS.techOk(t, D[step.b])) place(step.b);
       break;
     }
-  }
-  // 확장
-  const mineral = G.ents.filter(e => e.def === 'ore_node').length;
-  if (G.tick > diff.expandAt * RTS.HZ && !sites.some(s => s.def === f.hq) && count(f.hq) < 3 && t.res.ore > D[f.hq].cost.ore && mineral) {
-    const free = G.bases.filter(b => !G.ents.some(e => D[e.def].kind === 'building' && !e.dead && Math.hypot(e.x - b.x, e.y - b.y) < 7) && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
-    free.sort((a, b) => Math.hypot(a.x - home.x, a.y - home.y) - Math.hypot(b.x - home.x, b.y - home.y));
-    if (free[0]) { const w = builder(), d = D[f.hq]; if (w) cmd({ type: 'place', ids: [w.id], def: f.hq, tx: Math.round(free[0].x - d.size[0] / 2), ty: Math.round(free[0].y - d.size[1] / 2) }); }
+    // 확장 기지마다 추출기, 발전형은 확장 기지에 방어탑 하나
+    if (hqs.length > 1 && extId && exts.length < hqs.length * 2 && sec > 200) for (const h of hqs) { if (h === home) continue; const v = G.ents.find(e => e.def === 'vent' && !e.ext && !e.dead && near(e, h, 10)); if (v && !sites.some(s => s.def === extId)) { if (place(extId, h)) break; } }
+    if ((plan.guardExpo || diff.guardExpo) && f.defense && RTS.techOk(t, D[f.defense]) && t.res.ore > D[f.defense].cost.ore + 120) for (const h of hqs) { if (h === home) continue; if (!builds.some(b => b.def === f.defense && near(b, h, 9))) { if (place(f.defense, h)) break; } }
   }
   RTS.aiDiplomacy(G, t, diff, units);
   if (RTS.aiTribe) RTS.aiTribe(G, t, diff, units);
   // 투자는 생산보다 먼저 판단해 병력에 자금이 전부 묶이지 않게 한다
-  RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14));
-  // 생산
+  if (!S.saveHq && !S.danger) RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14) && !(plan.delayTech && !S.rushDone));
+  // 생산: 작전에 따라 에테르 없는 유닛(t1)과 에테르 유닛(t2) 비중을 바꾼다
+  const hold = (S.saving || S.saveHq) && !threat;
   for (const b of builds) {
-    const d = D[b.def]; if (S.saving || !RTS.complete(b) || b.prod.length || !d.trains || d.dropoff) continue;
+    const d = D[b.def]; if (hold || !RTS.complete(b) || b.prod.length || !d.trains || d.dropoff) continue;
     const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost));
     if (!opts.length) continue;
-    let total = opts.reduce((s, o) => s + o.w, 0), r = RTS.rand(G) * total, pick = opts[0];
-    for (const o of opts) { r -= o.w; if (r <= 0) { pick = o; break; } }
+    const wt = o => o.w * (D[o.u].cost.gas > 0 ? plan.t2 : plan.t1);
+    let total = opts.reduce((s, o) => s + wt(o), 0), r = RTS.rand(G) * total, pick = opts[0];
+    for (const o of opts) { r -= wt(o); if (r <= 0) { pick = o; break; } }
     if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
   }
   // 연구
-  for (const id of P.research) {
+  if (!hold && !S.danger) for (const id of P.research) {
     if (t.upgrades[id] || t.research[id]) continue;
     const u = RTS.defs.upgrades[id], lab = builds.find(b => (D[b.def].researches || []).includes(id) && RTS.complete(b) && !b.prod.length);
-    if (lab && RTS.techOk(t, u) && RTS.canPay(t, u.cost) && t.res.ore > u.cost.ore + 100) cmd({ type: 'research', building: lab.id, upgrade: id });
+    if (lab && RTS.techOk(t, u) && RTS.canPay(t, u.cost) && t.res.ore > u.cost.ore + (plan.techFirst ? 30 : 100)) cmd({ type: 'research', building: lab.id, upgrade: id });
     break;
   }
   // 교전 판단
-  for (const u of army) for (const id of D[u.def].abilities || []) { const ab = RTS.defs.abilities[id]; if (ab.ai && RTS.abilityReady(G, u, ab)) ab.ai(G, u); }
-  let threat = null;
-  for (const b of builds) { RTS.query(G, b.x, b.y, 9, o => { if (!threat && !o.dead && RTS.foe(G, t.id, o.team) && D[o.def].kind === 'unit') threat = o; }); if (threat) break; }
+  for (const u of allArmy) for (const id of D[u.def].abilities || []) { const ab = RTS.defs.abilities[id]; if (ab.ai && RTS.abilityReady(G, u, ab)) ab.ai(G, u); }
+  RTS.aiHarass(G, t, diff, plan, allArmy);
   const ids = army.map(u => u.id);
-  S.wave = S.wave || diff.waveSize;
+  S.wave = S.wave || Math.max(3, Math.round(diff.waveSize * plan.wave));
+  // 공격 중 본진이 크게 위협받으면 병력을 불러들인다
+  if (S.attacking && threat && threatPow > 900 && army.length) { S.attacking = false; S.recall = G.tick; }
+  // 방어 보강: 밀리면 일꾼을 끌어와 싸우고(위협이 사라지거나 20초 뒤 채취로 복귀), 이른 시간에는 본진에 방어탑을 세운다
+  const pulled = (S.pulled || []).map(id => G.byId[id]).filter(u => u && !u.dead);
+  if (pulled.length && (!threat || G.tick - S.pullAt > 20 * RTS.HZ)) { for (const w of pulled) { const n = RTS.nearestNode(G, home.x, home.y, 'ore', 30); if (n) RTS.issue(G, w, { type: 'gather', node: n.id }); } S.pulled = []; }
+  if (S.danger && f.defense && sec < 600 && (S.towers || 0) < 2 && G.tick - (S.towerAt || -1e9) > 45 * RTS.HZ && RTS.techOk(t, D[f.defense]) && RTS.canPay(t, D[f.defense].cost)) { if (place(f.defense, home)) { S.towers = (S.towers || 0) + 1; S.towerAt = G.tick; } }
+  if (threat && !S.attacking && Math.hypot(threat.x - home.x, threat.y - home.y) < 16) {
+    let mp = 0; for (const u of army) if (Math.hypot(u.x - threat.x, u.y - threat.y) < 14) mp += powOf(G, u);
+    if (threatPow > mp * 1.3 && !pulled.length) { const ws = workers.filter(w => !w.cargo || true).sort((a, b) => Math.hypot(a.x - threat.x, a.y - threat.y) - Math.hypot(b.x - threat.x, b.y - threat.y)).slice(0, Math.min(8, Math.floor(workers.length * .6)));
+      if (ws.length) { S.pulled = ws.map(w => w.id); S.pullAt = G.tick; cmd({ type: 'order', ids: S.pulled, order: { type: 'amove', x: threat.x, y: threat.y } }); } }
+    if (f.defense && sec < 600 && (S.towers || 0) < 2 && G.tick - (S.towerAt || -1e9) > 60 * RTS.HZ && RTS.techOk(t, D[f.defense]) && RTS.canPay(t, D[f.defense].cost)) { if (place(f.defense, home)) { S.towers = (S.towers || 0) + 1; S.towerAt = G.tick; } }
+  }
   if (threat && !S.attacking) { cmd({ type: 'order', ids: ids.filter(i => { const o = G.byId[i].order; return !o || o.type !== 'amove' || Math.hypot(o.x - threat.x, o.y - threat.y) > 6; }), order: { type: 'amove', x: threat.x, y: threat.y } }); S.defending = G.tick; return; }
+  const rally = () => S.rally || (S.rally = (() => { const c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
   if (G.tick - (S.defending || -999) > 100 && !S.attacking && !threat) { // 집결
-    const r = S.rally || (S.rally = (() => { const c = { x: G.w / 2, y: G.h / 2 }; const k = 11 / Math.max(1, Math.hypot(c.x - home.x, c.y - home.y)); return RTS.nearestFree(G, home.x + (c.x - home.x) * k, home.y + (c.y - home.y) * k); })());
-    const idle = army.filter(u => !u.order && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
-    if (idle.length) cmd({ type: 'order', ids: idle, order: { type: 'amove', x: r.x, y: r.y } });
+    const r = rally(), idle = army.filter(u => (!u.order || (S.retreat && G.tick - S.retreat < 30)) && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
+    if (idle.length) cmd({ type: 'order', ids: idle, order: { type: S.retreat && G.tick - S.retreat < 200 ? 'move' : 'amove', x: r.x, y: r.y } });
   }
-  if (!S.attacking && army.length >= S.wave && G.tick > diff.firstAttack * RTS.HZ) { S.attacking = true; S.sent = army.length; S.wave = Math.min(40, S.wave + diff.waveGrow);
+  if (!S.attacking && army.length >= S.wave && G.tick > firstAttack * RTS.HZ && G.tick - (S.retreat || -1e9) > 25 * RTS.HZ) {
+    S.attacking = true; S.sent = army.length; S.attackAt = G.tick; S.wave = Math.min(45, S.wave + Math.max(1, Math.round(diff.waveGrow * plan.wave)));
     // 적 팀이 여럿이면(중립세력) 공격 대상을 공격마다 번갈아 정한다. 가까운 쪽만 계속 때리지 않게 한다
-    const foes = G.teams.filter(o => o.id !== t.id && RTS.foe(G, t.id, o.id) && o.alive > 0); S.waves = (S.waves || 0) + 1; S.tgt = foes.length ? foes[S.waves % foes.length].id : -1; }
-  if (S.attacking) {
-    if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; return; }
-    let goal = null, bd = 1e12;
-    const tg = S.tgt !== undefined && S.tgt >= 0 && G.teams[S.tgt] && G.teams[S.tgt].alive > 0 ? S.tgt : -1;
-    for (const e of G.ents) { if (e.dead || e.team < 0 || !RTS.foe(G, t.id, e.team) || (tg >= 0 && e.team !== tg) || D[e.def].kind !== 'building' || D[e.def].site) continue; const d = (e.x - home.x) ** 2 + (e.y - home.y) ** 2; if (d < bd) { bd = d; goal = e; } }
-    if (goal) { const go = army.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - goal.x, u.order.y - goal.y) > 3).map(u => u.id);
-      if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: goal.x, y: goal.y } }); }
+    const foes = G.teams.filter(o => o.id !== t.id && RTS.foe(G, t.id, o.id) && o.alive > 0); S.waves = (S.waves || 0) + 1; S.tgt = foes.length ? foes[S.waves % foes.length].id : -1;
+    S.mode = RTS.aiPickMode(G, t, plan, army.length); S.goal = null; S.grp2 = null;
   }
+  if (S.attacking) {
+    if (army.length < Math.max(3, S.sent * .3)) { S.attacking = false; if (plan.delayTech) S.rushDone = true; return; }
+    const tg = S.tgt !== undefined && S.tgt >= 0 && G.teams[S.tgt] && G.teams[S.tgt].alive > 0 ? S.tgt : -1;
+    const c = centroid(army);
+    // 후퇴: 교전 지점에서 상대 전투력이 내 1.6배를 넘고 병력이 절반 가까이 줄었으면 집결지로 물러난다(속공 압박 중에는 버틴다)
+    if (G.tick - S.attackAt > 8 * RTS.HZ) { let mp = 0, ep = 0; for (const u of army) if (Math.hypot(u.x - c.x, u.y - c.y) < 10) mp += powOf(G, u);
+      RTS.query(G, c.x, c.y, 11, o => { if (!o.dead && RTS.foe(G, t.id, o.team) && (D[o.def].kind === 'unit' || RTS.weapon(o)) && Math.hypot(o.x - c.x, o.y - c.y) < 11) ep += powOf(G, o); });
+      if (ep > mp * 1.6 && army.length < S.sent * (plan.pressure && !S.rushDone ? .4 : .65)) { S.attacking = false; S.retreat = G.tick; if (plan.delayTech) S.rushDone = true; const r = rally(); cmd({ type: 'order', ids, order: { type: 'move', x: r.x, y: r.y } }); return; } }
+    const goalOk = g => g && g.id ? (G.byId[g.id] && !G.byId[g.id].dead) : g && G.tick - g.at < 25 * RTS.HZ && !(Math.hypot(c.x - g.x, c.y - g.y) < 4);
+    if (!goalOk(S.goal)) S.goal = RTS.aiGoal(G, t, S.mode, tg, c, home);
+    if (S.grp2 && !goalOk(S.goal2)) S.goal2 = RTS.aiGoal(G, t, 'expo', tg, c, home) || S.goal;
+    const g1 = S.goal; if (!g1) { S.attacking = false; return; }
+    const two = S.mode === 'split' && army.length >= 10;
+    if (two && !S.grp2) { const sorted = army.slice().sort((a, b) => a.id - b.id); S.grp2 = sorted.filter((u, i) => i % 5 < 2).map(u => u.id); S.goal2 = RTS.aiGoal(G, t, 'expo', tg, c, home) || g1; }
+    const g2s = new Set(two ? S.grp2 : []);
+    const send = (us, g) => { const go = us.filter(u => !u.order || u.order.type !== 'amove' || Math.hypot(u.order.x - g.x, u.order.y - g.y) > 3).map(u => u.id); if (go.length) cmd({ type: 'order', ids: go, order: { type: 'amove', x: g.x, y: g.y } }); };
+    send(army.filter(u => !g2s.has(u.id)), g1); if (two && S.goal2) send(army.filter(u => g2s.has(u.id)), S.goal2);
+  }
+};
+// 공격 방식: main 가장 가까운 건물, expo 확장 기지, split 두 갈래(본대 + 확장 기지), workers 일꾼 습격
+RTS.aiPickMode = function (G, t, plan, n) {
+  const opts = [['main', 3], ['expo', 2], ['split', n >= 12 ? 2 : 0], ['workers', plan.pressure ? 3 : 1.5]].filter(o => o[1] > 0);
+  let r = RTS.rand(G) * opts.reduce((s, o) => s + o[1], 0); for (const o of opts) { r -= o[1]; if (r <= 0) return o[0]; } return 'main';
+};
+RTS.aiGoal = function (G, t, mode, tg, from, home) {
+  const D = RTS.defs.entities, foeB = G.ents.filter(e => !e.dead && e.team >= 0 && RTS.foe(G, t.id, e.team) && (tg < 0 || e.team === tg) && D[e.def].kind === 'building' && !D[e.def].site);
+  if (!foeB.length) return null;
+  const d2 = (a, b) => (a.x - b.x) ** 2 + (a.y - b.y) ** 2, near = (L, p) => L.slice().sort((a, b) => d2(a, p) - d2(b, p))[0];
+  const hqs = foeB.filter(e => D[e.def].dropoff);
+  if (mode === 'expo' && hqs.length > 1) { const main = hqs.slice().sort((a, b) => a.id - b.id)[0]; const ex = near(hqs.filter(h => h !== main), home); if (ex) return { id: ex.id, x: ex.x, y: ex.y }; }
+  if (mode === 'workers' && hqs.length) { const h = near(hqs, home); let x = 0, y = 0, n = 0;
+    for (const e of G.ents) if (!e.dead && e.team === h.team && D[e.def].gather && Math.hypot(e.x - h.x, e.y - h.y) < 10) { x += e.x; y += e.y; n++; }
+    if (n >= 3) return { x: x / n, y: y / n, at: G.tick }; return { id: h.id, x: h.x, y: h.y }; }
+  const b = near(foeB, from || home); return { id: b.id, x: b.x, y: b.y };
+};
+// 견제: 보통 이상에서 빠른 유닛(공중 우선) 3~4기를 상대 일꾼 쪽으로 보낸다. 40초 뒤 또는 반 이상 잃으면 돌아온다.
+RTS.aiHarass = function (G, t, diff, plan, allArmy) {
+  const S = t.aiState, D = RTS.defs.entities, sec = G.tick / RTS.HZ; if (!diff.harass) return;
+  const cur = (S.harass || []).map(id => G.byId[id]).filter(u => u && !u.dead);
+  if (cur.length) { if (G.tick - S.harassAt > 40 * RTS.HZ || cur.length < Math.ceil(S.harassN / 2)) { S.harass = []; S.nextHarass = G.tick + (70 + RTS.rand(G) * 40) * RTS.HZ; } else S.harass = cur.map(u => u.id); return; }
+  S.harass = [];
+  if (sec < diff.firstAttack * .8 || G.tick < (S.nextHarass || 0) || S.attacking || allArmy.length < 10) return;
+  const fast = allArmy.filter(u => RTS.weapon(u)).sort((a, b) => (D[b.def].air ? 2 : 0) + (D[b.def].speed || 0) - (D[a.def].air ? 2 : 0) - (D[a.def].speed || 0)).slice(0, 4);
+  const g = RTS.aiGoal(G, t, 'workers', -1, null, G.byId[S.home] || fast[0]); if (!g || fast.length < 3) return;
+  S.harass = fast.map(u => u.id); S.harassN = fast.length; S.harassAt = G.tick;
+  RTS.command(G, t.id, { type: 'order', ids: S.harass, order: { type: 'amove', x: g.x, y: g.y } });
 };
 RTS.aiSpot = function (G, t, id, near) {
   const d = RTS.defs.entities[id];
@@ -1639,9 +1802,31 @@ RTS.aiSpot = function (G, t, id, near) {
     const a = dir + ((k % 2 ? 1 : -1) * Math.ceil(k / 2)) * .42, x = Math.round(cx + Math.cos(a) * r), y = Math.round(cy + Math.sin(a) * r);
     if (!RTS.canPlace(G, t.id, id, x, y, 1)) continue;
     if (RTS.nearestNode(G, x + 1, y + 1, 'ore', 3.5) || RTS.nearestNode(G, x + 1, y + 1, 'gas', 3.5)) continue;
+    if (G.elev && RTS.nearRampTile(G, x + d.size[0] / 2, y + d.size[1] / 2, 3 + Math.max(...d.size) / 2)) continue; // 경사로 둘레는 비운다
+    if (!RTS.stillOpen(G, near, x, y, d.size[0], d.size[1])) continue; // 기지 출구를 막는 자리는 쓰지 않는다
     return { x, y };
   }
   return null;
+};
+
+RTS.nearRampTile = function (G, cx, cy, r) {
+  for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) if (x >= 0 && y >= 0 && x < G.w && y < G.h && (G.elev[y * G.w + x] & 3)) return true;
+  return false;
+};
+// 건물을 (x,y,w,h)에 놓아도 기지에서 맵 가운데까지 걸어갈 수 있는지(4방향 범람 채우기). 막히면 false.
+const FF = { n: 0 };
+RTS.stillOpen = function (G, from, x, y, w, h) {
+  const W = G.w, N = W * G.h; if (FF.n !== N) { FF.n = N; FF.m = new Int32Array(N); FF.q = new Int32Array(N); FF.g = 0; }
+  const g = ++FF.g, M = FF.m, Q = FF.q, blocked = i => { const tx = i % W, ty = (i / W) | 0; return (tx >= x && tx < x + w && ty >= y && ty < y + h) || !RTS.walkable(G, tx, ty); };
+  const goal = RTS.nearestFree(G, G.w / 2, G.h / 2, 20), gi = Math.floor(goal.y) * W + Math.floor(goal.x);
+  const s = RTS.nearestFree(G, from.x, from.y + (RTS.defs.entities[from.def] ? RTS.defs.entities[from.def].size[1] / 2 + 1 : 0), 6); let qh = 0, qt = 0;
+  const si = Math.floor(s.y) * W + Math.floor(s.x); if (blocked(si)) return true; M[si] = g; Q[qt++] = si;
+  while (qh < qt) { const i = Q[qh++]; if (i === gi) return true; const tx = i % W;
+    if (tx > 0 && M[i - 1] !== g && !blocked(i - 1)) { M[i - 1] = g; Q[qt++] = i - 1; }
+    if (tx < W - 1 && M[i + 1] !== g && !blocked(i + 1)) { M[i + 1] = g; Q[qt++] = i + 1; }
+    if (i >= W && M[i - W] !== g && !blocked(i - W)) { M[i - W] = g; Q[qt++] = i - W; }
+    if (i < N - W && M[i + W] !== g && !blocked(i + W)) { M[i + W] = g; Q[qt++] = i + W; } }
+  return false;
 };
 
 // net.js — 2인 대전용 lockstep. DOM을 쓰지 않는다(전송 수단은 send 함수로 받는다).
@@ -1734,14 +1919,19 @@ RTS.netGameOpts = function (o) {
 RTS.mod({
   difficulties: {
     // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    // plans: 작전 가중치(속공 rush, 확장-발전 expand, 타이밍 공격 timing — RTS.AI_PLANS). attackMin·expandMin: 작전 배율 하한. perBase: 확장 기지당 일꾼 목표 증가율, bases: 최대 사령부 수, harass: 견제 부대
     // 2026-11 하향: 각 단계가 예전보다 두 단계 아래 수치를 쓴다(어려움 = 예전 쉬움, 보통 = 예전 왕초보, 쉬움·왕초보는 그보다 더 약하게)
-    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14 },
-    easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13 },
-    normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12 },
-    hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10 },
+    beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14,
+      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2 },
+    easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13,
+      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2 },
+    normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12,
+      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true },
+    hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10,
+      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true },
   },
   terrain: {
-    ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' },
+    ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' }, cliff: { name: '고지대 절벽' },
   },
   abilities: {
     stim: { short: '충전', name: '과충전', key: 'Q', target: 'self', cooldown: 12, requires: 'p_stim', desc: '체력 10을 써서 8초간 속도 +50%, 공격 간격 -33%',
@@ -1939,6 +2129,25 @@ RTS.mod({
       rocks: [[48, 32, 9], [40, 27, 4], [30, 32, 3], [72, 20, 3], [22, 48, 3.5]],
       sand: [[48, 32, 15], [48, 9, 7]],
       lanes: [[11, 32, 32, 24, 3], [32, 24, 48, 17, 3], [11, 32, 26, 44, 3], [26, 44, 48, 50, 3], [13, 9, 18, 24, 2.5]] },
+    // 높낮이 맵: highs(고지대 원, 단계 1·2)와 ramps(경사로)를 쓴다. 절벽은 지나갈 수 없고, 경사로로만 오르내린다.
+    // 낮은 곳에서는 높은 곳이 보이지 않고, 아래에서 위로 쏘면 피해가 25% 준다. 높은 곳에 있으면 단계당 시야 +1.
+    highland: { name: '고원 요새', gen: 'symmetric', w: 112, h: 112, theme: 'dusk', desc: '112×112 · 기지 8 · 높낮이 맵. 고지대 본진, 2단 중앙 언덕. 아래에선 위가 안 보이고 위로 쏘면 피해 -25%',
+      highs: [[13, 13, 17, 1], [56, 56, 15, 1], [56, 56, 6.5, 2], [17, 84, 13, 1], [44, 30, 6, 1]],
+      ramps: [[33.5, 20.5, 28.5, 18.5, 2.2], [37.5, 44.5, 45, 49, 2.4], [74.5, 44.5, 67.5, 50, 2.4], [47.5, 51.5, 53.5, 54.5, 1.7], [35, 85, 28, 85, 2.2], [44, 39, 44, 34.5, 1.6]],
+      bases: [{ x: 13, y: 13, start: 0, dir: 3.93 }, { x: 42, y: 13, dir: 4.71, ore: 7, oneVent: true }, { x: 14, y: 46, dir: 3.14, ore: 6, oneVent: true }, { x: 15, y: 84, dir: 3.14, ore: 7 }],
+      sites: [[30, 62], [70, 22]], posts: [[50, 4], [4, 64]],
+      rocks: [[28, 32, 3.5], [32, 50, 3], [62, 30, 3.5], [84, 14, 3], [30, 100, 3], [8, 104, 3], [70, 70, 2.5], [40, 70, 3]],
+      sand: [[56, 56, 22], [30, 40, 7], [88, 32, 8]],
+      lanes: [[33, 20, 42, 13, 3], [33, 20, 38, 44, 3], [14, 46, 38, 44, 3], [14, 46, 30, 84, 2.5], [42, 13, 74, 44, 3], [34, 85, 56, 96, 3]] },
+    terrace: { name: '계단 협곡', gen: 'symmetric', w: 144, h: 96, theme: 'ochre', desc: '144×96 · 기지 8 · 높낮이 맵. 3단 계단식 본진, 넓은 저지대와 중앙 고원. 경사로로만 오르내린다',
+      highs: [[16, 48, 31, 1], [11, 48, 13, 2], [72, 48, 13, 1], [60, 24, 6, 1]],
+      ramps: [[28, 48, 20.5, 48, 2.2], [48.4, 34.9, 41, 37.9, 2.4], [48.4, 61.1, 41, 58.1, 2.4], [55, 48, 62.5, 48, 2.6], [72, 65, 72, 57.5, 2.2], [60, 33, 60, 28, 1.8]],
+      bases: [{ x: 11, y: 48, start: 0, dir: 3.14 }, { x: 27, y: 32, dir: 4.0, ore: 7, oneVent: true }, { x: 50, y: 11, dir: 4.71, ore: 7, oneVent: true }, { x: 40, y: 85, dir: 1.57, ore: 7 }],
+      sites: [[48, 26], [86, 30]], posts: [[100, 6], [26, 90]],
+      walls: [[44, 0, 44, 5, 1.5], [30, 82, 30, 96, 1.4]],
+      rocks: [[54, 68, 3.5], [88, 64, 3], [30, 4, 3], [104, 40, 3], [8, 90, 3], [78, 10, 3], [60, 84, 3]],
+      sand: [[72, 48, 20], [50, 11, 7], [40, 85, 7]],
+      lanes: [[28, 48, 41, 38, 3], [27, 32, 41, 38, 3], [48, 35, 50, 11, 3], [48, 61, 40, 85, 3], [48, 61, 55, 48, 3], [72, 65, 86, 88, 3]] },
   },
 });
 
@@ -2075,8 +2284,23 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
       for (let x = 0; x < W; x++) { const tx = (x + .5) * K - .5, x0 = Math.floor(tx), u = tx - x0;
         F[y * W + x] = tileAt(x0, y0, k) * (1 - u) * (1 - v) + tileAt(x0 + 1, y0, k) * u * (1 - v) + tileAt(x0, y0 + 1, k) * (1 - u) * v + tileAt(x0 + 1, y0 + 1, k) * u * v; } }
     return F; };
-  const rockV = field(1), sandV = field(2);
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const rockV = field(1), sandV = field(2);
+  // 고지대: 단계(경사로는 반 단계)를 보간한 뒤 경사로가 아닌 곳은 경계를 가파르게 깎는다. 절벽 타일(3)은 바위 절벽면 색으로 칠한다.
+  let elv = null, cliffV = null; const HE = 24;
+  if (G.elev) { const F = new Float32Array(N), RP = new Float32Array(N), K = SC / TS, E0 = G.elev, Tf = new Float32Array(G.w * G.h), Tr = new Uint8Array(G.w * G.h), at0 = (tx, ty) => E0[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))];
+    // 경사로 둘레는 3×3 평균으로 부드럽게 해 계단 무늬가 보이지 않게 한다
+    for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx++) { let sum = 0, r = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const v = at0(tx + dx, ty + dy); sum += v; if (v & 3) r = 1; }
+      Tf[ty * G.w + tx] = r ? sum / 9 : E0[ty * G.w + tx]; Tr[ty * G.w + tx] = r; }
+    const ev = (tx, ty) => Tf[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))], er = (tx, ty) => Tr[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))];
+    for (let y = 0; y < H; y++) { const ty = (y + .5) * K - .5, y0 = Math.floor(ty), v = ty - y0;
+      for (let x = 0; x < W; x++) { const tx = (x + .5) * K - .5, x0 = Math.floor(tx), u = tx - x0, a = ev(x0, y0), b = ev(x0 + 1, y0), c = ev(x0, y0 + 1), d = ev(x0 + 1, y0 + 1);
+        F[y * W + x] = (a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v) / 4;
+        RP[y * W + x] = er(x0, y0) * (1 - u) * (1 - v) + er(x0 + 1, y0) * u * (1 - v) + er(x0, y0 + 1) * (1 - u) * v + er(x0 + 1, y0 + 1) * u * v; } }
+    elv = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, e = F[i], fl = Math.floor(e), fr = e - fl, n = cg(nC, x, y) - .5, rp = Math.min(1, RP[i] * 1.6);
+      const sharp = fl + ss(.18, .62, fr + n * .25); elv[i] = sharp * (1 - rp) + e * rp; }
+    cliffV = field(3); }
   const rock = new Float32Array(N), sand = new Float32Array(N);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, n = cg(nC, x, y) - .5;
     rock[i] = ss(.42, .58, rockV[i] + n * .3); sand[i] = ss(.25, .75, sandV[i] + n * .5); }
@@ -2085,7 +2309,7 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, b = cg(nB, x, y), a = cg(nA, x, y);
     const tp = y + FB < H ? rock[i + FB * W] * rock[i] : rock[i]; top[i] = tp;
     const c2 = cg(nC, x, y), hz = T[((y * 7 + x * 13) & 65535)] - .5; // 암벽 윗면: 능선(ridged) + 거친 결
-    Hf[i] = rock[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - rock[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2); }
+    Hf[i] = rock[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - rock[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2) + (elv ? elv[i] * HE : 0); }
   const L = [-.52, -.62, .58], Ll = Math.hypot(...L); L[0] /= Ll; L[1] /= Ll; L[2] /= Ll; // 햇빛 방향(빛 쪽을 향함): 왼쪽 위
   const tanE = L[2] / Math.hypot(L[0], L[1]), sx = L[0] / Math.hypot(L[0], L[1]), sy = L[1] / Math.hypot(L[0], L[1]);
   const img = new ImageData(W, H), D = img.data;
@@ -2104,11 +2328,13 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
     // 색: 땅(얼룩·마른 땅·짙은 곳) → 모래 → 암벽 윗면 / 절벽면. 표본마다 배열을 만들지 않도록 채널별로 계산한다.
     const wA = ss(.3, .7, a), wB = ss(.45, .7, b) * .6, wD = ss(.6, .78, b * .6 + a * .4) * .55, wL = ss(.62, .82, 1 - b) * .35, wS1 = ss(.3, .7, b), wS2 = ss(.55, .8, a) * .5, wR1 = ss(.35, .75, b), wR2 = ss(.5, .8, a) * .4;
     const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? rock[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
-    const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a);
+    const ev = elv ? elv[i] : 0, cl = cliffV ? Math.min(1, cliffV[i] * 1.5) : 0, slope = elv ? Math.min(1, Math.max(0, Math.hypot(gx, gy) / SC - .9) * .8) * (1 - ro) : 0; // 고지대 경사면
+    const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a) * (.92 + ev * .11);
     for (let ch = 0; ch < 3; ch++) { let v = gP[1][ch] + (gP[2][ch] - gP[1][ch]) * wA; v += (gP[0][ch] - v) * wB; v += (dry[ch] - v) * wD; v += (lush[ch] - v) * wL;
       let sv = sP[1][ch] + (sP[2][ch] - sP[1][ch]) * wS1; sv += (sP[0][ch] - sv) * wS2; v += (sv - v) * sa;
       let rv = rP[1][ch] + (rP[2][ch] - rP[1][ch]) * wR1; rv += (rP[0][ch] - rv) * wR2; v += (rv - v) * tp;
       if (face > 0) v += ((rP[0][ch] + (rP[1][ch] - rP[0][ch]) * rfk) * fmul - v) * wF;
+      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * rfk) * .92 - v) * Math.min(.85, Math.max(slope, cl * .7));
       D[i * 4 + ch] = v * k > 255 ? 255 : v * k; }
     D[i * 4 + 3] = 255; }
   const lo = document.createElement('canvas'); lo.width = W; lo.height = H; lo.getContext('2d').putImageData(img, 0, 0);
@@ -2120,7 +2346,7 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   gx2.putImageData(gi, 0, 0); x.globalCompositeOperation = 'overlay'; x.globalAlpha = .32; x.fillStyle = x.createPattern(gr, 'repeat'); x.fillRect(0, 0, cv.width, cv.height);
   x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.setTransform(OUT, 0, 0, OUT, 0, 0); const CW2 = G.w * TS, CH2 = G.h * TS; // 장식은 월드 px 좌표로
   // 장식: 자잘한 돌, 풀·얼음·덤불, 암벽 균열. 통행 판정과 무관하게 아주 작게만 그린다.
-  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: rock[i], tp: top[i], sa: sand[i] }; };
+  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: Math.max(rock[i], cliffV ? cliffV[i] : 0), tp: top[i], sa: sand[i] }; };
   for (let n = 0; n < G.w * G.h * (low ? .25 : .5); n++) { const px = r() * CW2, py = r() * CH2, q = at(px, py); if (q.ro > .05) continue;
     const z = 1 + r() * 2.2; x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(px + 1, py + 1, z * 1.2, z * .8, 0, 0, Math.PI * 2); x.fill();
     x.fillStyle = dec.pebble[0]; x.beginPath(); x.ellipse(px, py, z * 1.1, z * .75, r() * 3, 0, Math.PI * 2); x.fill();

@@ -50,7 +50,7 @@ RTS.createGame = function (opts) {
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
-  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null;
+  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null; if (m.elev) G.elev = m.elev;
   RTS.initRuntime(G);
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;

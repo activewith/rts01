@@ -26,6 +26,7 @@ RTS.tribeRelName = r => REL_NAME[r] || r;
 const tTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind });
 
 // 회당 자리: 게임마다 무작위. 맵 가운데, 시작 기지·확장 기지·자원·회사 거점·지부 근처는 피하고, 두 시작 기지에서 걸어서 닿아야 한다
+const nearRamp = (G, px, py) => { for (let y = (py | 0) - 6; y <= (py | 0) + 6; y++) for (let x = (px | 0) - 6; x <= (px | 0) + 6; x++) if (x >= 0 && y >= 0 && x < G.w && y < G.h && (G.elev[y * G.w + x] & 3)) return true; return false; };
 RTS.tribeSpotPick = function (G) {
   const H = RTS.defs.entities.t_hall, starts = G.bases.filter(b => b.start !== undefined), cx = G.w / 2, cy = G.h / 2, R = TR();
   const keep = [...G.siteSpots, ...G.postSpots], res = G.ents.filter(e => RTS.defOf(e).kind === 'resource');
@@ -37,6 +38,7 @@ RTS.tribeSpotPick = function (G) {
       if (Math.hypot(px - cx, py - cy) < R.centerGap) continue;
       if (starts.some(b => Math.hypot(b.x - px, b.y - py) < R.startGap * (k < 1 ? .85 : 1)) || G.bases.some(b => Math.hypot(b.x - px, b.y - py) < 11 * k)) continue;
       if (keep.some(q => Math.hypot(q.x - px, q.y - py) < 7 * k) || res.some(e => Math.hypot(e.x - px, e.y - py) < 6 * k)) continue;
+      if (G.elev && nearRamp(G, px, py)) continue; // 경사로를 막지 않게 한다
       const tx = Math.round(px - H.size[0] / 2), ty = Math.round(py - H.size[1] / 2); if (!RTS.canPlace(G, RTS.TRIBE, 't_hall', tx, ty, 2)) continue;
       cand.push([px, py, tx, ty]); }
     for (let i = cand.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [cand[i], cand[j]] = [cand[j], cand[i]]; }
