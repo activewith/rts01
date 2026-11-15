@@ -31,8 +31,23 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
       for (let x = 0; x < W; x++) { const tx = (x + .5) * K - .5, x0 = Math.floor(tx), u = tx - x0;
         F[y * W + x] = tileAt(x0, y0, k) * (1 - u) * (1 - v) + tileAt(x0 + 1, y0, k) * u * (1 - v) + tileAt(x0, y0 + 1, k) * (1 - u) * v + tileAt(x0 + 1, y0 + 1, k) * u * v; } }
     return F; };
-  const rockV = field(1), sandV = field(2);
   const ss = (a, b, x) => { const t = Math.min(1, Math.max(0, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+  const rockV = field(1), sandV = field(2);
+  // 고지대: 단계(경사로는 반 단계)를 보간한 뒤 경사로가 아닌 곳은 경계를 가파르게 깎는다. 절벽 타일(3)은 바위 절벽면 색으로 칠한다.
+  let elv = null, cliffV = null; const HE = 24;
+  if (G.elev) { const F = new Float32Array(N), RP = new Float32Array(N), K = SC / TS, E0 = G.elev, Tf = new Float32Array(G.w * G.h), Tr = new Uint8Array(G.w * G.h), at0 = (tx, ty) => E0[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))];
+    // 경사로 둘레는 3×3 평균으로 부드럽게 해 계단 무늬가 보이지 않게 한다
+    for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx++) { let sum = 0, r = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) { const v = at0(tx + dx, ty + dy); sum += v; if (v & 3) r = 1; }
+      Tf[ty * G.w + tx] = r ? sum / 9 : E0[ty * G.w + tx]; Tr[ty * G.w + tx] = r; }
+    const ev = (tx, ty) => Tf[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))], er = (tx, ty) => Tr[Math.min(G.h - 1, Math.max(0, ty)) * G.w + Math.min(G.w - 1, Math.max(0, tx))];
+    for (let y = 0; y < H; y++) { const ty = (y + .5) * K - .5, y0 = Math.floor(ty), v = ty - y0;
+      for (let x = 0; x < W; x++) { const tx = (x + .5) * K - .5, x0 = Math.floor(tx), u = tx - x0, a = ev(x0, y0), b = ev(x0 + 1, y0), c = ev(x0, y0 + 1), d = ev(x0 + 1, y0 + 1);
+        F[y * W + x] = (a * (1 - u) * (1 - v) + b * u * (1 - v) + c * (1 - u) * v + d * u * v) / 4;
+        RP[y * W + x] = er(x0, y0) * (1 - u) * (1 - v) + er(x0 + 1, y0) * u * (1 - v) + er(x0, y0 + 1) * (1 - u) * v + er(x0 + 1, y0 + 1) * u * v; } }
+    elv = new Float32Array(N);
+    for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, e = F[i], fl = Math.floor(e), fr = e - fl, n = cg(nC, x, y) - .5, rp = Math.min(1, RP[i] * 1.6);
+      const sharp = fl + ss(.18, .62, fr + n * .25); elv[i] = sharp * (1 - rp) + e * rp; }
+    cliffV = field(3); }
   const rock = new Float32Array(N), sand = new Float32Array(N);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, n = cg(nC, x, y) - .5;
     rock[i] = ss(.42, .58, rockV[i] + n * .3); sand[i] = ss(.25, .75, sandV[i] + n * .5); }
@@ -41,7 +56,7 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, b = cg(nB, x, y), a = cg(nA, x, y);
     const tp = y + FB < H ? rock[i + FB * W] * rock[i] : rock[i]; top[i] = tp;
     const c2 = cg(nC, x, y), hz = T[((y * 7 + x * 13) & 65535)] - .5; // 암벽 윗면: 능선(ridged) + 거친 결
-    Hf[i] = rock[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - rock[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2); }
+    Hf[i] = rock[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - rock[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2) + (elv ? elv[i] * HE : 0); }
   const L = [-.52, -.62, .58], Ll = Math.hypot(...L); L[0] /= Ll; L[1] /= Ll; L[2] /= Ll; // 햇빛 방향(빛 쪽을 향함): 왼쪽 위
   const tanE = L[2] / Math.hypot(L[0], L[1]), sx = L[0] / Math.hypot(L[0], L[1]), sy = L[1] / Math.hypot(L[0], L[1]);
   const img = new ImageData(W, H), D = img.data;
@@ -60,11 +75,13 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
     // 색: 땅(얼룩·마른 땅·짙은 곳) → 모래 → 암벽 윗면 / 절벽면. 표본마다 배열을 만들지 않도록 채널별로 계산한다.
     const wA = ss(.3, .7, a), wB = ss(.45, .7, b) * .6, wD = ss(.6, .78, b * .6 + a * .4) * .55, wL = ss(.62, .82, 1 - b) * .35, wS1 = ss(.3, .7, b), wS2 = ss(.55, .8, a) * .5, wR1 = ss(.35, .75, b), wR2 = ss(.5, .8, a) * .4;
     const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? rock[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
-    const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a);
+    const ev = elv ? elv[i] : 0, cl = cliffV ? Math.min(1, cliffV[i] * 1.5) : 0, slope = elv ? Math.min(1, Math.max(0, Math.hypot(gx, gy) / SC - .9) * .8) * (1 - ro) : 0; // 고지대 경사면
+    const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a) * (.92 + ev * .11);
     for (let ch = 0; ch < 3; ch++) { let v = gP[1][ch] + (gP[2][ch] - gP[1][ch]) * wA; v += (gP[0][ch] - v) * wB; v += (dry[ch] - v) * wD; v += (lush[ch] - v) * wL;
       let sv = sP[1][ch] + (sP[2][ch] - sP[1][ch]) * wS1; sv += (sP[0][ch] - sv) * wS2; v += (sv - v) * sa;
       let rv = rP[1][ch] + (rP[2][ch] - rP[1][ch]) * wR1; rv += (rP[0][ch] - rv) * wR2; v += (rv - v) * tp;
       if (face > 0) v += ((rP[0][ch] + (rP[1][ch] - rP[0][ch]) * rfk) * fmul - v) * wF;
+      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * rfk) * .92 - v) * Math.min(.85, Math.max(slope, cl * .7));
       D[i * 4 + ch] = v * k > 255 ? 255 : v * k; }
     D[i * 4 + 3] = 255; }
   const lo = document.createElement('canvas'); lo.width = W; lo.height = H; lo.getContext('2d').putImageData(img, 0, 0);
@@ -76,7 +93,7 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   gx2.putImageData(gi, 0, 0); x.globalCompositeOperation = 'overlay'; x.globalAlpha = .32; x.fillStyle = x.createPattern(gr, 'repeat'); x.fillRect(0, 0, cv.width, cv.height);
   x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.setTransform(OUT, 0, 0, OUT, 0, 0); const CW2 = G.w * TS, CH2 = G.h * TS; // 장식은 월드 px 좌표로
   // 장식: 자잘한 돌, 풀·얼음·덤불, 암벽 균열. 통행 판정과 무관하게 아주 작게만 그린다.
-  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: rock[i], tp: top[i], sa: sand[i] }; };
+  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: Math.max(rock[i], cliffV ? cliffV[i] : 0), tp: top[i], sa: sand[i] }; };
   for (let n = 0; n < G.w * G.h * (low ? .25 : .5); n++) { const px = r() * CW2, py = r() * CH2, q = at(px, py); if (q.ro > .05) continue;
     const z = 1 + r() * 2.2; x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(px + 1, py + 1, z * 1.2, z * .8, 0, 0, Math.PI * 2); x.fill();
     x.fillStyle = dec.pebble[0]; x.beginPath(); x.ellipse(px, py, z * 1.1, z * .75, r() * 3, 0, Math.PI * 2); x.fill();
