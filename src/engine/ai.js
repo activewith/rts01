@@ -14,8 +14,8 @@ RTS.aiDiff = function (t) {
 // 게임 시작 때 AI마다 하나를 무작위로 고른다(난이도의 plans 가중치). 수치는 난이도 기준값에 곱한다.
 // attack: 첫 공격 시각, wave: 공격 규모, expand: 첫 확장 시각, workers: 일꾼 목표, t1/t2: 에테르 없는 유닛 / 에테르 유닛 생산 비중
 RTS.AI_PLANS = {
-  rush:   { name: '속공', attack: .55, wave: .8, expand: 1.3, workers: .8, t1: 2.4, t2: .35, delayTech: true, pressure: true },
-  expand: { name: '확장-발전', attack: 1.3, wave: 1.7, expand: .3, workers: 1.2, t1: .6, t2: 1.8, techFirst: true, guardExpo: true },
+  rush:   { name: '속공', attack: .55, wave: .8, expand: 1.3, workers: .8, t1: 2.4, t2: .35, delayTech: true, pressure: true, tech: 1.15 },
+  expand: { name: '확장-발전', attack: 1.3, wave: 1.7, expand: .3, workers: 1.2, t1: .6, t2: 1.8, techFirst: true, guardExpo: true, tech: .8 },
   timing: { name: '타이밍 공격', attack: .9, wave: 1.1, expand: .6, workers: 1, t1: 1, t2: 1 },
 };
 RTS.aiPlan = function (G, t, diff) {
@@ -37,7 +37,7 @@ RTS.aiThink = function (G, t) {
   const mine = G.ents.filter(e => e.team === t.id && !e.dead);
   const builds = mine.filter(e => D[e.def].kind === 'building' && !D[e.def].site), units = mine.filter(e => D[e.def].kind === 'unit');
   const harass = new Set(S.harass || []);
-  const workers = units.filter(e => D[e.def].gather), allArmy = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && e.id !== S.scout && e.id !== S.tScout && e.id !== S.tScoutM);
+  const workers = units.filter(e => D[e.def].gather), allArmy = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && !e.merging && e.id !== S.scout && e.id !== S.tScout && e.id !== S.tScoutM);
   const army = allArmy.filter(u => !harass.has(u.id));
   const hqs = builds.filter(e => D[e.def].dropoff && RTS.complete(e));
   const count = id => builds.filter(b => b.def === id).length;
@@ -125,17 +125,23 @@ RTS.aiThink = function (G, t) {
   RTS.aiDiplomacy(G, t, diff, units);
   if (RTS.aiTribe) RTS.aiTribe(G, t, diff, units);
   // 투자는 생산보다 먼저 판단해 병력에 자금이 전부 묶이지 않게 한다
-  if (!S.saveHq && !S.danger) RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14) && !(plan.delayTech && !S.rushDone));
+  if (!S.saveHq && !S.danger && !S.techNeed) RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14) && !(plan.delayTech && !S.rushDone));
   // 생산: 작전에 따라 에테르 없는 유닛(t1)과 에테르 유닛(t2) 비중을 바꾼다
   const hold = (S.saving || S.saveHq) && !threat;
+  // 시간이 지날수록 에테르 유닛 비중을 늘리고(10분부터 20분까지 최대 2배), 합체가 열린 재료는 더 뽑는다
+  const late = 1 + Math.min(1, Math.max(0, (sec - 600) / 600)), fuseWant = RTS.aiFuseWant(t);
+  // 고급 운영: (병력 생산보다 먼저) 생산 건물 강화 → 유닛 ★ 강화 → 합체
+  if (!hold && !S.danger) RTS.aiAdvance(G, t, diff, plan, builds, army, workers, sec, cmd);
+  let healers = RTS.healerCount(G, t.id); const healCap = RTS.healerCap(G, t.id);
   for (const b of builds) {
     const d = D[b.def]; if (hold || !RTS.complete(b) || b.prod.length || !d.trains || d.dropoff) continue;
-    const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost));
+    const keep = S.techNeed && !threat ? S.techNeed : null, fits = c => !keep || (t.res.ore - (c.ore || 0) >= (keep.ore || 0) && t.res.gas - (c.gas || 0) >= (keep.gas || 0));
+    const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost) && fits(D[a.u].cost) && !(D[a.u].heal && healers >= healCap));
     if (!opts.length) continue;
-    const wt = o => o.w * (D[o.u].cost.gas > 0 ? plan.t2 : plan.t1);
+    const wt = o => o.w * (D[o.u].cost.gas > 0 ? plan.t2 * late : plan.t1) * (fuseWant[o.u] || 1);
     let total = opts.reduce((s, o) => s + wt(o), 0), r = RTS.rand(G) * total, pick = opts[0];
     for (const o of opts) { r -= wt(o); if (r <= 0) { pick = o; break; } }
-    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
+    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) { cmd({ type: 'train', building: b.id, unit: pick.u }); if (D[pick.u].heal) healers += D[pick.u].count || 1; }
   }
   // 연구
   if (!hold && !S.danger) for (const id of P.research) {
@@ -209,6 +215,58 @@ RTS.aiGoal = function (G, t, mode, tg, from, home) {
   const b = near(foeB, from || home); return { id: b.id, x: b.x, y: b.y };
 };
 // 견제: 보통 이상에서 빠른 유닛(공중 우선) 3~4기를 상대 일꾼 쪽으로 보낸다. 40초 뒤 또는 반 이상 잃으면 돌아온다.
+// ── 고급 운영(2026-11) ─────────────────────────────────────
+// lv1·lv2: 생산 건물 강화 시작 시각(초, 난이도 techAt·작전 tech를 곱한다). keep: 강화·★에 쓰고 남길 광석.
+// techSave: 강화 비용을 모으려고 병력 생산·투자를 아끼는 최대 시간(초). rankEvery: ★ 강화 판단 간격(초). fuseCap: 합체 유닛 최대 보유 수(작은 합체, 일꾼이 드는 큰 합체). fuseBias: 합체가 열린 재료 생산 가중치.
+RTS.AI_TECH = { lv1: 300, lv2: 480, keep: 120, rankEvery: 6, fuseCap: [4, 3], fuseBias: 1.6, workerWait: 40, techSave: 60 };
+RTS.aiFuseWant = function (t) {
+  const out = {}, lvl = t.lvl || {};
+  for (const m of Object.values(RTS.defs.merges)) if (m.faction === t.faction && (lvl[m.at] || 0) >= 2) for (const k of Object.keys(m.parts)) if (!RTS.defs.entities[k].gather) out[k] = RTS.AI_TECH.fuseBias;
+  return out; };
+RTS.aiAdvance = function (G, t, diff, plan, builds, army, workers, sec, cmd) {
+  const S = t.aiState, D = RTS.defs.entities, f = RTS.defs.factions[t.faction], T = RTS.AI_TECH, lvl = t.lvl || {};
+  if (diff.techAt === 0 || (plan.delayTech && !S.rushDone)) return;
+  const k = (diff.techAt || 1) * (plan.tech || 1), spare = c => t.res.ore >= (c.ore || 0) + T.keep && t.res.gas >= (c.gas || 0);
+  // 1) 생산 건물 강화: 병력을 만드는 건물 종류마다 한 채씩 1단계, 그다음 2단계
+  const prodIds = [...new Set(f.ai.army.map(a => RTS.producerOf(a.u)).filter(Boolean))];
+  // 비용이 모자라면 S.techNeed에 적어 두고 병력 생산·투자를 그만큼 아낀다(최대 techSave초)
+  let leveling = builds.some(b => b.prod.some(p => p.kind === 'level')), need = null;
+  for (const lv of [1, 2]) { if (leveling || need || sec < T['lv' + lv] * k) break;
+    for (const id of prodIds) { if ((lvl[id] || 0) >= lv) continue;
+      const b = builds.filter(b => b.def === id && RTS.complete(b) && (b.lv || 0) === lv - 1 && b.prod.length < 3).sort((a, c) => a.prod.length - c.prod.length || a.id - c.id)[0];
+      if (!b) continue; const cost = RTS.levelCost(D[id], lv);
+      if (RTS.canPay(t, cost)) { cmd({ type: 'levelup', building: b.id }); leveling = true; } else need = cost; break; } }
+  if (need) { if (!S.techNeed) S.techSince = G.tick; S.techNeed = G.tick - S.techSince < T.techSave * RTS.HZ ? need : null; if (!S.techNeed && G.tick - S.techSince > T.techSave * 2 * RTS.HZ) S.techSince = G.tick; }
+  else S.techNeed = null;
+  if (S.techNeed) return;
+  // 2) ★ 강화: 비싼 유닛부터 한 번에 두 기까지
+  if (G.tick - (S.rankAt || -1e9) >= T.rankEvery * RTS.HZ) { S.rankAt = G.tick; let n = 0;
+    for (const u of army.filter(u => !RTS.rankBlock(G, u)).sort((a, b) => ((D[b.def].cost.ore || 0) + (D[b.def].cost.gas || 0) * 1.5) - ((D[a.def].cost.ore || 0) + (D[a.def].cost.gas || 0) * 1.5) || a.id - b.id)) {
+      const c = RTS.rankCost(D[u.def], (u.rank || 0) + 1); if (!spare(c)) break; cmd({ type: 'rankup', ids: [u.id] }); if (++n >= 2) break; } }
+  // 3) 합체: 집결 중(공격·방어 아님)일 때만. 일꾼이 드는 합체는 일꾼을 먼저 불러온다
+  if (S.attacking || G.tick - (S.defending || -999) < 100) return;
+  const mw = S.fuseW && G.byId[S.fuseW.w], mh = S.fuseW && G.byId[S.fuseW.host];
+  if (S.fuseW) {
+    if (!mw || mw.dead || !mh || mh.dead || mh.merging || G.tick > S.fuseW.until) { if (mw && !mw.dead && !mw.merging) RTS.issue(G, mw, null); S.fuseW = null; }
+    else if (Math.hypot(mw.x - mh.x, mw.y - mh.y) <= RTS.MERGE.range - 1) { if (!RTS.mergePick(G, mh, RTS.defs.merges[S.fuseW.recipe]).miss.length) cmd({ type: 'merge', unit: mh.id, recipe: S.fuseW.recipe }); S.fuseW = null; return; }
+    else return;
+  }
+  const have = id => G.ents.filter(e => e.team === t.id && !e.dead && e.def === id).length + (G.merges || []).filter(j => j.team === t.id && RTS.defs.merges[j.recipe].into === id).length;
+  const recipes = Object.values(RTS.defs.merges).filter(m => m.faction === t.faction && (lvl[m.at] || 0) >= 2)
+    .sort((a, b) => Object.keys(b.parts).length - Object.keys(a.parts).length || (a.id < b.id ? -1 : 1)); // 큰 합체 먼저
+  for (const m of recipes) {
+    const big = Object.keys(m.parts).some(p => D[p].gather); if (have(m.into) >= T.fuseCap[big ? 1 : 0]) continue;
+    const main = Object.keys(m.parts).filter(p => !D[p].gather).sort((a, b) => m.parts[b] - m.parts[a] || (a < b ? -1 : 1))[0];
+    for (const h of army.filter(u => u.def === main)) {
+      const { miss } = RTS.mergePick(G, h, m);
+      if (!miss.length) { cmd({ type: 'merge', unit: h.id, recipe: m.id }); return; }
+      if (miss.length === 1 && D[miss[0][0]].gather && miss[0][1] === 1) {
+        const w = workers.filter(w => !w.merging && !w.cargo && (!w.order || w.order.type === 'gather')).sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y) || a.id - b.id)[0];
+        if (w) { S.fuseW = { w: w.id, host: h.id, recipe: m.id, until: G.tick + T.workerWait * RTS.HZ }; RTS.issue(G, w, { type: 'move', x: h.x, y: h.y }); return; }
+      }
+    }
+  }
+};
 RTS.aiHarass = function (G, t, diff, plan, allArmy) {
   const S = t.aiState, D = RTS.defs.entities, sec = G.tick / RTS.HZ; if (!diff.harass) return;
   const cur = (S.harass || []).map(id => G.byId[id]).filter(u => u && !u.dead);

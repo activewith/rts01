@@ -152,3 +152,62 @@ RTS.addSystem({ id: 'merge', run(G) {
     RTS.fuse(G, j, parts, host); return false;
   });
 } }, { after: 'entities' });
+
+// ── 치료 비용 · 공병 수리 · 철거 (2026-11) ─────────────────
+// heal·repair: 체력을 가득 채우면 대상 생산비의 이 비율이 든다(체력 1당 생산비 × 비율 ÷ 최대 체력, 묶음 생산 유닛은 한 기 값).
+// 자원이 모자라면 치료·수리를 하지 않는다. demo: 철거 비용 = 건물 비용 × demo(광석 최소 demoMin), 철거 시간 = 건설 시간 × demoTime(demoTimeMin~demoTimeMax초).
+// humanHealers: 사람 플레이어의 치료 유닛 최대 수. AI는 난이도 healers.
+RTS.SERVICE = { heal: .3, repair: .35, demo: .15, demoMin: 10, demoTime: .25, demoTimeMin: 5, demoTimeMax: 20, humanHealers: 6, warnEvery: 15 };
+RTS.serviceCost = function (G, t, hp, ratio) { const d = RTS.defOf(t), c = d.cost || {}, n = d.count || 1, max = RTS.stat(G, t, 'hp') || 1, out = {};
+  for (const k of Object.keys(c)) if (c[k] > 0) out[k] = c[k] / n * ratio * hp / max; return out; };
+// 비용을 내면 true. 모자라면 알림(warnEvery초에 한 번)을 내고 false. 중립 세력(team < 0)은 무료
+RTS.servicePay = function (G, team, cost, what) { const t = G.teams[team]; if (!t || team < 0) return true;
+  if (RTS.canPay(t, cost)) { RTS.pay(t, cost); return true; }
+  if (G.tick - (t.svcWarn || -1e9) > RTS.SERVICE.warnEvery * RTS.HZ) { t.svcWarn = G.tick; RTS.say(G, team, `${what}에 쓸 자원이 부족합니다`, 'warn'); }
+  return false; };
+// 치료 1회: 실제로 채운 체력만큼 비용을 낸다. 성공하면 채운 양, 실패하면 0
+RTS.healOnce = function (G, src, t, amount, ratio, what) { const max = RTS.stat(G, t, 'hp'), add = Math.min(amount, max - t.hp); if (add <= 0) return 0;
+  if (!RTS.servicePay(G, src.team, RTS.serviceCost(G, t, add, ratio), what)) return 0;
+  t.hp = Math.min(max, t.hp + add); RTS.emit(G, 'heal', { e: src, t }); return add; };
+
+// 치료 유닛 수 제한
+RTS.healerCap = (G, team) => { const t = G.teams[team]; if (!t) return Infinity; if (t.ai) { const v = (RTS.defs.difficulties[t.ai] || {}).healers; return v == null ? 3 : v; } return RTS.SERVICE.humanHealers; };
+RTS.healerCount = (G, team) => { let n = 0; for (const e of G.ents) { if (e.dead || e.team !== team) continue; const d = RTS.defOf(e);
+  if (d.heal) n++; else if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'unit' && RTS.defs.entities[p.id].heal) n += RTS.defs.entities[p.id].count || 1; } return n; };
+
+// 수리(개척단 공병): 일꾼 정의의 repair { tag, amount, cooldown, range }
+RTS.repairBlock = function (G, u, t) { const r = RTS.defOf(u).repair; if (!r) return '수리할 수 없는 유닛입니다';
+  if (!t || t.dead || t.team !== u.team || t === u) return '내 유닛만 수리할 수 있습니다';
+  const d = RTS.defOf(t); if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛만 수리할 수 있습니다';
+  if (t.hp >= RTS.stat(G, t, 'hp')) return '체력이 가득 차 있습니다';
+  return ''; };
+RTS.orders.repair = function (G, u, o) { const t = G.byId[o.target], r = RTS.defOf(u).repair;
+  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp')) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (RTS.edgeDist(u, t) > r.range) { RTS.goTo(G, u, t); return; }
+  RTS.stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
+  if (u.cd > 0) return; u.cd = Math.round(r.cooldown * RTS.HZ);
+  if (!RTS.healOnce(G, u, t, r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+
+// 철거: 일꾼 누구나. 완공된 내 건물, 생산·연구·강화 대기열이 비어 있을 때. 비용은 철거를 시작할 때 한 번 낸다(되돌려 받지 않는다)
+RTS.demoCost = d => { const S = RTS.SERVICE, c = d.cost || {}, out = { ore: Math.max(S.demoMin, Math.round((c.ore || 0) * S.demo)) }; if (c.gas) out.gas = Math.round(c.gas * S.demo); return out; };
+RTS.demoTicks = d => Math.round(Math.max(RTS.SERVICE.demoTimeMin, Math.min(RTS.SERVICE.demoTimeMax, (d.time || 20) * RTS.SERVICE.demoTime)) * RTS.HZ);
+RTS.demoBlock = function (G, b, team) { const d = RTS.defOf(b);
+  if (!b || b.dead || b.team !== team || d.kind !== 'building' || b.company || b.branch) return '내 건물만 철거할 수 있습니다';
+  if (!RTS.complete(b)) return '짓는 중인 건물은 취소하세요';
+  if (b.prod && b.prod.length) return '생산·연구 중에는 철거할 수 없습니다';
+  if (d.dropoff && !G.ents.some(o => o !== b && !o.dead && o.team === team && RTS.defOf(o).dropoff && RTS.complete(o))) return '마지막 사령부는 철거할 수 없습니다';
+  return ''; };
+RTS.commands.demolish = function (G, team, c) { const b = G.byId[c.building], t = G.teams[team];
+  const ws = (c.ids || []).map(i => G.byId[i]).filter(w => w && !w.dead && w.team === team && RTS.defOf(w).gather); if (!ws.length || !b) return;
+  const why = RTS.demoBlock(G, b, team); if (why) { RTS.say(G, team, why, 'warn'); return; }
+  if (!b.demoPaid) { const cost = RTS.demoCost(RTS.defOf(b)); if (RTS.lack(G, team, t, cost)) return; RTS.pay(t, cost); b.demoPaid = true; b.demo = 0; }
+  for (const w of ws) RTS.issue(G, w, { type: 'demolish', target: b.id }, c.queue);
+  RTS.say(G, team, `${RTS.defOf(b).name} 철거를 시작합니다`, 'ok'); };
+RTS.orders.demolish = function (G, u, o) { const b = G.byId[o.target];
+  if (!b || b.dead || b.team !== u.team) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (RTS.edgeDist(u, b) > 1.1) { RTS.goTo(G, u, b); return; }
+  RTS.stopMove(u); u.facing = Math.atan2(b.y - u.y, b.x - u.x); if (b.prod && b.prod.length) return; // 철거 중 생산을 넣으면 그동안 멈춘다
+  b.demo = (b.demo || 0) + 1; u.building = G.tick;
+  if (b.demo >= RTS.demoTicks(RTS.defOf(b))) { RTS.kill(G, b, null, true); RTS.emit(G, 'death', { e: b }); RTS.say(G, u.team, `${RTS.defOf(b).name} 철거 완료`, 'ok'); RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+// 일을 마친 사람 쪽 일꾼은 가까운 광맥으로 돌아간다(AI 일꾼은 AI가 다시 배치)
+RTS.backToWork = function (G, u) { if (u.order || !RTS.defOf(u).gather || G.teams[u.team].ai) return; const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; };

@@ -143,6 +143,8 @@ RTS.mount = function (root, opts = {}) {
         items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
+      if (d.gather) items.push({ key: 'D', text: '철거', name: '건물 철거', desc: `철거할 내 건물을 누릅니다. 비용은 건물 값의 ${pct(RTS.SERVICE.demo)}%(돌려받지 않음), 시간은 건설 시간의 ${pct(RTS.SERVICE.demoTime)}%(${RTS.SERVICE.demoTimeMin}~${RTS.SERVICE.demoTimeMax}초). 생산 중인 건물은 철거할 수 없습니다. 건물을 길게 눌러도 됩니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'demolish' }); notice('철거할 내 건물을 누르세요', 'ok'); } });
+      if (d.repair) items.push({ key: 'R', text: '수리', name: '기계 수리', desc: `수리할 내 기계 유닛을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
@@ -169,7 +171,12 @@ RTS.mount = function (root, opts = {}) {
     return out; }
   // 길게 누르기 팝업 메뉴
   function popItems(e) { if (!app.G || app.demo || e.team !== app.team || e.dead) return []; const items = upgradeItems(e, app.sel.includes(e.id) ? app.sel : [e.id]);
+    const d = RTS.defOf(e); if (d.kind === 'building' && !e.company && !e.branch && RTS.complete(e)) { const why = RTS.demoBlock(app.G, e, app.team) || (demoWorker(e) ? '' : '철거할 일꾼이 없습니다');
+      items.push({ pl: e.demoPaid ? '철거 이어 하기' : '철거', note: `${Math.round(RTS.demoTicks(d) / RTS.HZ)}초 · 가까운 일꾼이 갑니다`, cost: e.demoPaid ? null : RTS.demoCost(d), ok: !why, why, run: () => { const w = demoWorker(e); if (w) send({ type: 'demolish', ids: [w.id], building: e.id }); } }); }
     return items.length ? items.concat({ pl: '정보 보기', ok: true, info: true }) : []; }
+  // 철거하러 갈 일꾼: 선택한 일꾼 중 가장 가까운 것, 없으면 짐 없는 채취 일꾼 중 가장 가까운 것
+  function demoWorker(b) { const G = app.G, mine = G.ents.filter(w => !w.dead && w.team === app.team && RTS.defOf(w).gather), near = l => l.sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+    return near(mine.filter(w => app.sel.includes(w.id))) || near(mine.filter(w => !w.cargo && (!w.order || w.order.type === 'gather'))) || near(mine); }
   function closePop() { if (!app.pop) return; app.pop = null; $('k-pop').hidden = true; }
   function openPop(e, sx, sy) { hideHover(); const G = app.G, t = G.teams[app.team], d = RTS.defOf(e), items = popItems(e); if (!items.length) return;
     if (!app.sel.includes(e.id)) app.sel = [e.id]; app.menu = 'main'; app.pop = { id: e.id }; app.sfx('click');
@@ -249,6 +256,7 @@ RTS.mount = function (root, opts = {}) {
       if (d.resource) stats.push(`남은 양 ${e.amount}`);
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
+      if (e.demoPaid) stats.push(`철거 중 ${Math.floor((e.demo || 0) / RTS.demoTicks(RTS.defOf(e)) * 100)}%`);
       if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
@@ -285,6 +293,15 @@ RTS.mount = function (root, opts = {}) {
 
   // ── 입력 ──────────────────────────────────────────────
   const toWorld = (sx, sy) => [(sx / cam.z + cam.x) / TS, (sy / cam.z + cam.y) / TS];
+  // 확대·축소: 화면 점 (sx, sy)의 월드 위치(wx, wy, 타일)가 그 자리에 남도록 배율 z를 바꾼다. 범위 ZOOM
+  const ZOOM = [.5, 2];
+  function zoomAt(z, sx, sy, wx, wy) { cam.z = Math.max(ZOOM[0], Math.min(ZOOM[1], z)); cam.x = wx * TS - sx / cam.z; cam.y = wy * TS - sy / cam.z; clampCam(); }
+  // 두 손가락: 손가락 사이 거리 비율로 배율, 두 손가락 가운데 점을 따라 화면이 움직인다. 두 손가락이 닿은 뒤로는 모든 손가락을 뗄 때까지 탭·선택 명령을 내지 않는다
+  const touches = new Map(), pinch = { on: false, lock: false };
+  const ptAt = e => { const r = view.getBoundingClientRect(), k = view.width / r.width; return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k }; };
+  function pinchState() { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
+    drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
   const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
@@ -312,12 +329,18 @@ RTS.mount = function (root, opts = {}) {
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
+    const fixers = units.filter(e => RTS.defOf(e).repair && !RTS.repairBlock(G, e, t)).map(e => e.id);
+    if (t && fixers.length) { send({ type: 'order', ids: fixers, order: { type: 'repair', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#7dffa8' }); return true; }
     const gas = t && t.team === app.team && RTS.defOf(t).placeOn && RTS.complete(t), ore = t && RTS.defOf(t).resource === 'ore';
     if (t && (gas || ore) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'gather', node: t.id }, queue }); if (rest.length) send({ type: 'order', ids: rest, order: { type: 'move', x: wx, y: wy }, spread: spread(rest, wx, wy), queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ffc247' }); return true; }
     if (t && t.team === app.team && !RTS.complete(t) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'build', site: t.id }, queue }); return true; }
     send({ type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
   function execMode(wx, wy, shift) { const G = app.G, m = app.mode, ids = selected().filter(e => e.team === app.team && RTS.defOf(e).kind === 'unit').map(e => e.id);
     if (m.type === 'place') { const [tx, ty] = app.placeTile(m.def), w = selected().filter(e => RTS.defOf(e).gather).sort((a, b) => (a.order && a.order.type === 'build' ? 1 : 0) - (b.order && b.order.type === 'build' ? 1 : 0)); send({ type: 'place', ids: w.map(e => e.id), def: m.def, tx, ty, queue: shift }); if (!shift) app.mode = null; return; }
+    if (m.svc) { const t = pick(wx, wy), ws = selected().filter(e => e.team === app.team && RTS.defOf(e).gather);
+      if (m.svc === 'demolish') { const why = t ? RTS.demoBlock(G, t, app.team) : '철거할 내 건물을 누르세요'; if (why) { notice(why, 'warn'); return; } send({ type: 'demolish', ids: ws.map(e => e.id), building: t.id, queue: shift }); }
+      else { const fx = ws.filter(e => RTS.defOf(e).repair), why = fx.length ? RTS.repairBlock(G, fx[0], t) : '수리할 수 있는 일꾼이 없습니다'; if (why) { notice(why, 'warn'); return; } send({ type: 'order', ids: fx.map(e => e.id), order: { type: 'repair', target: t.id }, queue: shift }); }
+      R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
@@ -357,7 +380,9 @@ RTS.mount = function (root, opts = {}) {
     if (w) h += row('공격', `${Math.round(st('damage', w.damage))} · 사거리 ${+st('range', w.range).toFixed(1)} · ${w.air === false ? '지상만' : '지상·공중'}${w.splash ? ' · 범위' : ''}`);
     if (d.siegeWeapon && !(e && e.sieged)) h += row('포격 모드', `공격 ${d.siegeWeapon.damage} · 사거리 ${d.siegeWeapon.range} · 범위`);
     const arm = e && e.team >= 0 ? RTS.stat(G, e, 'armor') : d.armor || 0; if (arm) h += row('방어', Math.round(arm));
-    if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'}`);
+    if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'} · 대상 값의 ${Math.round(RTS.SERVICE.heal * 100)}%/가득`) + (t ? row('최대 수', `${RTS.healerCap(G, me)}기 (지금 ${RTS.healerCount(G, me)}기)`) : '');
+    if (d.repair) h += row('수리', `기계 ${d.repair.amount}/${d.repair.cooldown}초 · 대상 값의 ${Math.round(RTS.SERVICE.repair * 100)}%/가득`);
+    if (d.gather) h += row('철거', `건물 값의 ${Math.round(RTS.SERVICE.demo * 100)}% · 돌려받지 않음`);
     if (isUnit && d.speed) h += row('속도', +(e && e.team >= 0 ? RTS.stat(G, e, 'speed') : d.speed).toFixed(1));
     if (d.provides) h += row('보급 제공', '+' + (e && e.team >= 0 ? RTS.provides(e) : d.provides));
     if (!isUnit && RTS.canLevel(d) && mineE) h += row('강화', e ? `${e.lv || 0} / ${RTS.LEVEL.max}단계${e.lv ? ' · ' + RTS.levelFx(d, e.lv).join(' · ') : ''}` : `최대 ${RTS.LEVEL.max}단계`);
@@ -386,13 +411,18 @@ RTS.mount = function (root, opts = {}) {
   view.addEventListener('contextmenu', e => e.preventDefault());
   view.addEventListener('pointerenter', e => { setMouse(e); app.mouse.inside = true; }); // 위치를 먼저 잡아야 (0,0)으로 남은 좌표 때문에 가장자리 스크롤이 일어나지 않는다
   view.addEventListener('pointerleave', () => { app.mouse.inside = false; hideHover(); });
-  view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over || performance.now() - (app.popShut || 0) < 80) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
+  view.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') { touches.set(e.pointerId, ptAt(e)); if (touches.size >= 2) { if (!app.demo && app.G && !app.G.over) { view.setPointerCapture(e.pointerId); if (touches.size === 2) pinchStart(); } return; } if (pinch.lock) return; }
+    unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over || performance.now() - (app.popShut || 0) < 80) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
     hideHover(); closePop(); htip.long = false; if (!app.mode && e.button === 0) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved && !app.box) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t && popItems(t).length) { openPop(t, sx, sy); htip.long = true; } else if (t && touch) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
-  view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
+  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.on && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
+    setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+  const touchEnd = e => { if (e.pointerType !== 'touch') return false; touches.delete(e.pointerId); if (!pinch.lock) return false;
+    if (touches.size < 2) pinch.on = false; if (touches.size === 2) pinchStart(); if (!touches.size) pinch.lock = false; return true; };
+  view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
+  view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
@@ -403,7 +433,7 @@ RTS.mount = function (root, opts = {}) {
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
     if (drag.shift && t.team === app.team && RTS.defOf(t).kind === 'unit') { app.sel = app.sel.includes(t.id) ? app.sel.filter(i => i !== t.id) : [...app.sel, t.id]; return; }
     app.sel = [t.id]; });
-  view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); const [wx, wy] = [app.mouse.wx, app.mouse.wy], z = Math.max(.55, Math.min(1.6, cam.z * (e.deltaY < 0 ? 1.1 : .91))); cam.z = z; cam.x = wx * TS - app.mouse.x / z; cam.y = wy * TS - app.mouse.y / z; clampCam(); }, { passive: false });
+  view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); if (!e.deltaY) return; zoomAt(cam.z * Math.pow(1.1, Math.max(-3, Math.min(3, -e.deltaY / (e.deltaMode ? 3 : 100)))), app.mouse.x, app.mouse.y, app.mouse.wx, app.mouse.wy); [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }, { passive: false });
   const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
   mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
   mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
