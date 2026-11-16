@@ -3,16 +3,17 @@
 RTS.mod({
   difficulties: {
     // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    // healers: AI 치료 유닛(의무병·정비봇·양육충) 최대 수. techAt: 고급 운영(건물 강화·★·합체) 시각 배율(RTS.AI_TECH, 0이면 안 함)
     // plans: 작전 가중치(속공 rush, 확장-발전 expand, 타이밍 공격 timing — RTS.AI_PLANS). attackMin·expandMin: 작전 배율 하한. perBase: 확장 기지당 일꾼 목표 증가율, bases: 최대 사령부 수, harass: 견제 부대
     // 2026-11 하향: 각 단계가 예전보다 두 단계 아래 수치를 쓴다(어려움 = 예전 쉬움, 보통 = 예전 왕초보, 쉬움·왕초보는 그보다 더 약하게)
     beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14,
-      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2 },
+      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2, techAt: 1.9, healers: 1 },
     easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13,
-      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2 },
+      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2, techAt: 1.45, healers: 2 },
     normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12,
-      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true },
+      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true, techAt: 1, healers: 3 },
     hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10,
-      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true },
+      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true, techAt: .75, healers: 4 },
   },
   terrain: {
     ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' }, cliff: { name: '고지대 절벽' },
@@ -57,7 +58,7 @@ RTS.mod({
 
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], desc: '자원 채취와 건설' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8 }, desc: '자원 채취와 건설, 기계 유닛 수리(자원 소모), 건물 철거' },
     p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
       weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
@@ -79,7 +80,7 @@ RTS.mod({
 
     // ── 철갑회: 일꾼이 터만 잡으면 건물이 스스로 올라간다(selfBuild) ──
     i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'iworker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작, 건물 철거' },
     i_blade:   { kind: 'unit', name: '칼날봇', abbr: '칼', key: 'B', art: 'bot', r: .42, hp: 75, armor: 1, speed: 3.2, sight: 7, supply: 1, cost: { ore: 75 }, time: 15, tags: ['mech'],
       weapon: { damage: 11, range: .4, cooldown: .9, air: false }, desc: '빠른 근접 돌격병. 지상만 공격' },
     i_striker: { kind: 'unit', name: '사수봇', abbr: '사', key: 'R', art: 'bot', tint: 1, r: .44, hp: 80, speed: 2.7, sight: 8, supply: 2, cost: { ore: 100, gas: 25 }, time: 20, tags: ['mech'],
@@ -101,7 +102,7 @@ RTS.mod({
 
     // ── 포자군락: 일꾼이 건물로 변태한다(morph, 일꾼 소모). 유닛·건물이 스스로 재생한다(regen) ──
     s_drone:   { kind: 'unit', name: '포자일꾼', abbr: '포', key: 'W', art: 'sworker', r: .36, hp: 40, speed: 3, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['s_pod', 's_extractor', 's_pool', 's_den', 's_spine', 's_nest', 's_hq'], desc: '자원 채취. 건설하면 그 건물로 변태해 사라진다' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['s_pod', 's_extractor', 's_pool', 's_den', 's_spine', 's_nest', 's_hq'], desc: '자원 채취. 건설하면 그 건물로 변태해 사라진다. 건물 철거' },
     s_claw:    { kind: 'unit', name: '갈퀴충', abbr: '갈', key: 'Z', art: 'claw', r: .34, hp: 38, speed: 3.6, sight: 7, supply: .5, count: 2, cost: { ore: 50 }, time: 14, tags: ['bio'],
       weapon: { damage: 6, range: .3, cooldown: .6, air: false }, desc: '한 번에 2기씩 태어나는 싸고 빠른 근접 무리. 지상만 공격' },
     s_spitter: { kind: 'unit', name: '산탄충', abbr: '산', key: 'R', art: 'spitter', r: .42, hp: 80, speed: 2.7, sight: 8, supply: 1, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], abilities: ['acid'],

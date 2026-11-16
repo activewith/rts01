@@ -100,6 +100,8 @@ RTS.commands.order = function (G, team, c) {
 RTS.commands.train = function (G, team, c) {
   const t = G.teams[team], b = G.byId[c.building], d = D()[c.unit];
   if (!b || b.dead || b.team !== team || !RTS.complete(b) || b.prod.length >= 5 || !RTS.techOk(t, d)) return;
+  if (d.heal && RTS.healerCount(G, team) + (d.count || 1) > RTS.healerCap(G, team)) { say(G, team, `치료 유닛은 최대 ${RTS.healerCap(G, team)}기까지입니다`, 'warn'); return; }
+  if (b.demoPaid) { say(G, team, '철거 중인 건물입니다', 'warn'); return; }
   if (lack(G, team, t, d.cost)) return;
   pay(t, d.cost); b.prod.push({ kind: 'unit', id: c.unit, t: 0, total: Math.round(d.time * RTS.HZ), started: false });
 };
@@ -234,7 +236,7 @@ function tryHeal(G, u, chase) {
   }
   if (!t) return false;
   if (RTS.edgeDist(u, t) <= h.range) { stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
-    if (u.cd <= 0) { u.cd = Math.round(h.cooldown * RTS.HZ); t.hp = Math.min(RTS.stat(G, t, 'hp'), t.hp + h.amount); RTS.emit(G, 'heal', { e: u, t }); } return true; }
+    if (u.cd <= 0) { u.cd = Math.round(h.cooldown * RTS.HZ); RTS.healOnce(G, u, t, h.amount, RTS.SERVICE.heal, '치료'); } return true; } // 치료는 대상 생산비의 일부를 쓴다(RTS.SERVICE)
   if (chase) { moveToEnt(G, u, t); return true; }
   return false;
 }

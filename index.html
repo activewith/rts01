@@ -194,7 +194,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'd6c5c30';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '2de674d';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -642,6 +642,8 @@ RTS.commands.order = function (G, team, c) {
 RTS.commands.train = function (G, team, c) {
   const t = G.teams[team], b = G.byId[c.building], d = D()[c.unit];
   if (!b || b.dead || b.team !== team || !RTS.complete(b) || b.prod.length >= 5 || !RTS.techOk(t, d)) return;
+  if (d.heal && RTS.healerCount(G, team) + (d.count || 1) > RTS.healerCap(G, team)) { say(G, team, `치료 유닛은 최대 ${RTS.healerCap(G, team)}기까지입니다`, 'warn'); return; }
+  if (b.demoPaid) { say(G, team, '철거 중인 건물입니다', 'warn'); return; }
   if (lack(G, team, t, d.cost)) return;
   pay(t, d.cost); b.prod.push({ kind: 'unit', id: c.unit, t: 0, total: Math.round(d.time * RTS.HZ), started: false });
 };
@@ -776,7 +778,7 @@ function tryHeal(G, u, chase) {
   }
   if (!t) return false;
   if (RTS.edgeDist(u, t) <= h.range) { stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
-    if (u.cd <= 0) { u.cd = Math.round(h.cooldown * RTS.HZ); t.hp = Math.min(RTS.stat(G, t, 'hp'), t.hp + h.amount); RTS.emit(G, 'heal', { e: u, t }); } return true; }
+    if (u.cd <= 0) { u.cd = Math.round(h.cooldown * RTS.HZ); RTS.healOnce(G, u, t, h.amount, RTS.SERVICE.heal, '치료'); } return true; } // 치료는 대상 생산비의 일부를 쓴다(RTS.SERVICE)
   if (chase) { moveToEnt(G, u, t); return true; }
   return false;
 }
@@ -1184,6 +1186,65 @@ RTS.addSystem({ id: 'merge', run(G) {
   });
 } }, { after: 'entities' });
 
+// ── 치료 비용 · 공병 수리 · 철거 (2026-11) ─────────────────
+// heal·repair: 체력을 가득 채우면 대상 생산비의 이 비율이 든다(체력 1당 생산비 × 비율 ÷ 최대 체력, 묶음 생산 유닛은 한 기 값).
+// 자원이 모자라면 치료·수리를 하지 않는다. demo: 철거 비용 = 건물 비용 × demo(광석 최소 demoMin), 철거 시간 = 건설 시간 × demoTime(demoTimeMin~demoTimeMax초).
+// humanHealers: 사람 플레이어의 치료 유닛 최대 수. AI는 난이도 healers.
+RTS.SERVICE = { heal: .3, repair: .35, demo: .15, demoMin: 10, demoTime: .25, demoTimeMin: 5, demoTimeMax: 20, humanHealers: 6, warnEvery: 15 };
+RTS.serviceCost = function (G, t, hp, ratio) { const d = RTS.defOf(t), c = d.cost || {}, n = d.count || 1, max = RTS.stat(G, t, 'hp') || 1, out = {};
+  for (const k of Object.keys(c)) if (c[k] > 0) out[k] = c[k] / n * ratio * hp / max; return out; };
+// 비용을 내면 true. 모자라면 알림(warnEvery초에 한 번)을 내고 false. 중립 세력(team < 0)은 무료
+RTS.servicePay = function (G, team, cost, what) { const t = G.teams[team]; if (!t || team < 0) return true;
+  if (RTS.canPay(t, cost)) { RTS.pay(t, cost); return true; }
+  if (G.tick - (t.svcWarn || -1e9) > RTS.SERVICE.warnEvery * RTS.HZ) { t.svcWarn = G.tick; RTS.say(G, team, `${what}에 쓸 자원이 부족합니다`, 'warn'); }
+  return false; };
+// 치료 1회: 실제로 채운 체력만큼 비용을 낸다. 성공하면 채운 양, 실패하면 0
+RTS.healOnce = function (G, src, t, amount, ratio, what) { const max = RTS.stat(G, t, 'hp'), add = Math.min(amount, max - t.hp); if (add <= 0) return 0;
+  if (!RTS.servicePay(G, src.team, RTS.serviceCost(G, t, add, ratio), what)) return 0;
+  t.hp = Math.min(max, t.hp + add); RTS.emit(G, 'heal', { e: src, t }); return add; };
+
+// 치료 유닛 수 제한
+RTS.healerCap = (G, team) => { const t = G.teams[team]; if (!t) return Infinity; if (t.ai) { const v = (RTS.defs.difficulties[t.ai] || {}).healers; return v == null ? 3 : v; } return RTS.SERVICE.humanHealers; };
+RTS.healerCount = (G, team) => { let n = 0; for (const e of G.ents) { if (e.dead || e.team !== team) continue; const d = RTS.defOf(e);
+  if (d.heal) n++; else if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'unit' && RTS.defs.entities[p.id].heal) n += RTS.defs.entities[p.id].count || 1; } return n; };
+
+// 수리(개척단 공병): 일꾼 정의의 repair { tag, amount, cooldown, range }
+RTS.repairBlock = function (G, u, t) { const r = RTS.defOf(u).repair; if (!r) return '수리할 수 없는 유닛입니다';
+  if (!t || t.dead || t.team !== u.team || t === u) return '내 유닛만 수리할 수 있습니다';
+  const d = RTS.defOf(t); if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛만 수리할 수 있습니다';
+  if (t.hp >= RTS.stat(G, t, 'hp')) return '체력이 가득 차 있습니다';
+  return ''; };
+RTS.orders.repair = function (G, u, o) { const t = G.byId[o.target], r = RTS.defOf(u).repair;
+  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp')) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (RTS.edgeDist(u, t) > r.range) { RTS.goTo(G, u, t); return; }
+  RTS.stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
+  if (u.cd > 0) return; u.cd = Math.round(r.cooldown * RTS.HZ);
+  if (!RTS.healOnce(G, u, t, r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+
+// 철거: 일꾼 누구나. 완공된 내 건물, 생산·연구·강화 대기열이 비어 있을 때. 비용은 철거를 시작할 때 한 번 낸다(되돌려 받지 않는다)
+RTS.demoCost = d => { const S = RTS.SERVICE, c = d.cost || {}, out = { ore: Math.max(S.demoMin, Math.round((c.ore || 0) * S.demo)) }; if (c.gas) out.gas = Math.round(c.gas * S.demo); return out; };
+RTS.demoTicks = d => Math.round(Math.max(RTS.SERVICE.demoTimeMin, Math.min(RTS.SERVICE.demoTimeMax, (d.time || 20) * RTS.SERVICE.demoTime)) * RTS.HZ);
+RTS.demoBlock = function (G, b, team) { const d = RTS.defOf(b);
+  if (!b || b.dead || b.team !== team || d.kind !== 'building' || b.company || b.branch) return '내 건물만 철거할 수 있습니다';
+  if (!RTS.complete(b)) return '짓는 중인 건물은 취소하세요';
+  if (b.prod && b.prod.length) return '생산·연구 중에는 철거할 수 없습니다';
+  if (d.dropoff && !G.ents.some(o => o !== b && !o.dead && o.team === team && RTS.defOf(o).dropoff && RTS.complete(o))) return '마지막 사령부는 철거할 수 없습니다';
+  return ''; };
+RTS.commands.demolish = function (G, team, c) { const b = G.byId[c.building], t = G.teams[team];
+  const ws = (c.ids || []).map(i => G.byId[i]).filter(w => w && !w.dead && w.team === team && RTS.defOf(w).gather); if (!ws.length || !b) return;
+  const why = RTS.demoBlock(G, b, team); if (why) { RTS.say(G, team, why, 'warn'); return; }
+  if (!b.demoPaid) { const cost = RTS.demoCost(RTS.defOf(b)); if (RTS.lack(G, team, t, cost)) return; RTS.pay(t, cost); b.demoPaid = true; b.demo = 0; }
+  for (const w of ws) RTS.issue(G, w, { type: 'demolish', target: b.id }, c.queue);
+  RTS.say(G, team, `${RTS.defOf(b).name} 철거를 시작합니다`, 'ok'); };
+RTS.orders.demolish = function (G, u, o) { const b = G.byId[o.target];
+  if (!b || b.dead || b.team !== u.team) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (RTS.edgeDist(u, b) > 1.1) { RTS.goTo(G, u, b); return; }
+  RTS.stopMove(u); u.facing = Math.atan2(b.y - u.y, b.x - u.x); if (b.prod && b.prod.length) return; // 철거 중 생산을 넣으면 그동안 멈춘다
+  b.demo = (b.demo || 0) + 1; u.building = G.tick;
+  if (b.demo >= RTS.demoTicks(RTS.defOf(b))) { RTS.kill(G, b, null, true); RTS.emit(G, 'death', { e: b }); RTS.say(G, u.team, `${RTS.defOf(b).name} 철거 완료`, 'ok'); RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+// 일을 마친 사람 쪽 일꾼은 가까운 광맥으로 돌아간다(AI 일꾼은 AI가 다시 배치)
+RTS.backToWork = function (G, u) { if (u.order || !RTS.defOf(u).gather || G.teams[u.team].ai) return; const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; };
+
 // market.js — 공유 주식시장. 회사 4곳, 총 100주씩, 나와 AI가 같은 물량을 두고 경쟁한다.
 // 주가: 평균회귀 + 무작위 변동 + 매매 충격. 배당: 30초마다 실적에 비례. 51주 이상이면 경영권.
 RTS.MARKET = { shares: 100 }; // 나머지 수치는 설정 메뉴(RTS.cfg)에서 온다
@@ -1587,8 +1648,8 @@ RTS.aiDiff = function (t) {
 // 게임 시작 때 AI마다 하나를 무작위로 고른다(난이도의 plans 가중치). 수치는 난이도 기준값에 곱한다.
 // attack: 첫 공격 시각, wave: 공격 규모, expand: 첫 확장 시각, workers: 일꾼 목표, t1/t2: 에테르 없는 유닛 / 에테르 유닛 생산 비중
 RTS.AI_PLANS = {
-  rush:   { name: '속공', attack: .55, wave: .8, expand: 1.3, workers: .8, t1: 2.4, t2: .35, delayTech: true, pressure: true },
-  expand: { name: '확장-발전', attack: 1.3, wave: 1.7, expand: .3, workers: 1.2, t1: .6, t2: 1.8, techFirst: true, guardExpo: true },
+  rush:   { name: '속공', attack: .55, wave: .8, expand: 1.3, workers: .8, t1: 2.4, t2: .35, delayTech: true, pressure: true, tech: 1.15 },
+  expand: { name: '확장-발전', attack: 1.3, wave: 1.7, expand: .3, workers: 1.2, t1: .6, t2: 1.8, techFirst: true, guardExpo: true, tech: .8 },
   timing: { name: '타이밍 공격', attack: .9, wave: 1.1, expand: .6, workers: 1, t1: 1, t2: 1 },
 };
 RTS.aiPlan = function (G, t, diff) {
@@ -1610,7 +1671,7 @@ RTS.aiThink = function (G, t) {
   const mine = G.ents.filter(e => e.team === t.id && !e.dead);
   const builds = mine.filter(e => D[e.def].kind === 'building' && !D[e.def].site), units = mine.filter(e => D[e.def].kind === 'unit');
   const harass = new Set(S.harass || []);
-  const workers = units.filter(e => D[e.def].gather), allArmy = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && e.id !== S.scout && e.id !== S.tScout && e.id !== S.tScoutM);
+  const workers = units.filter(e => D[e.def].gather), allArmy = units.filter(e => !D[e.def].gather && !D[e.def].uncontrollable && !e.merging && e.id !== S.scout && e.id !== S.tScout && e.id !== S.tScoutM);
   const army = allArmy.filter(u => !harass.has(u.id));
   const hqs = builds.filter(e => D[e.def].dropoff && RTS.complete(e));
   const count = id => builds.filter(b => b.def === id).length;
@@ -1698,17 +1759,23 @@ RTS.aiThink = function (G, t) {
   RTS.aiDiplomacy(G, t, diff, units);
   if (RTS.aiTribe) RTS.aiTribe(G, t, diff, units);
   // 투자는 생산보다 먼저 판단해 병력에 자금이 전부 묶이지 않게 한다
-  if (!S.saveHq && !S.danger) RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14) && !(plan.delayTech && !S.rushDone));
+  if (!S.saveHq && !S.danger && !S.techNeed) RTS.aiInvest(G, t, diff, workers.length >= Math.min(wantWorkers, 14) && !(plan.delayTech && !S.rushDone));
   // 생산: 작전에 따라 에테르 없는 유닛(t1)과 에테르 유닛(t2) 비중을 바꾼다
   const hold = (S.saving || S.saveHq) && !threat;
+  // 시간이 지날수록 에테르 유닛 비중을 늘리고(10분부터 20분까지 최대 2배), 합체가 열린 재료는 더 뽑는다
+  const late = 1 + Math.min(1, Math.max(0, (sec - 600) / 600)), fuseWant = RTS.aiFuseWant(t);
+  // 고급 운영: (병력 생산보다 먼저) 생산 건물 강화 → 유닛 ★ 강화 → 합체
+  if (!hold && !S.danger) RTS.aiAdvance(G, t, diff, plan, builds, army, workers, sec, cmd);
+  let healers = RTS.healerCount(G, t.id); const healCap = RTS.healerCap(G, t.id);
   for (const b of builds) {
     const d = D[b.def]; if (hold || !RTS.complete(b) || b.prod.length || !d.trains || d.dropoff) continue;
-    const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost));
+    const keep = S.techNeed && !threat ? S.techNeed : null, fits = c => !keep || (t.res.ore - (c.ore || 0) >= (keep.ore || 0) && t.res.gas - (c.gas || 0) >= (keep.gas || 0));
+    const opts = P.army.filter(a => d.trains.includes(a.u) && RTS.techOk(t, D[a.u]) && RTS.canPay(t, D[a.u].cost) && fits(D[a.u].cost) && !(D[a.u].heal && healers >= healCap));
     if (!opts.length) continue;
-    const wt = o => o.w * (D[o.u].cost.gas > 0 ? plan.t2 : plan.t1);
+    const wt = o => o.w * (D[o.u].cost.gas > 0 ? plan.t2 * late : plan.t1) * (fuseWant[o.u] || 1);
     let total = opts.reduce((s, o) => s + wt(o), 0), r = RTS.rand(G) * total, pick = opts[0];
     for (const o of opts) { r -= wt(o); if (r <= 0) { pick = o; break; } }
-    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) cmd({ type: 'train', building: b.id, unit: pick.u });
+    if (t.sup + (D[pick.u].supply || 0) * (D[pick.u].count || 1) <= t.cap) { cmd({ type: 'train', building: b.id, unit: pick.u }); if (D[pick.u].heal) healers += D[pick.u].count || 1; }
   }
   // 연구
   if (!hold && !S.danger) for (const id of P.research) {
@@ -1782,6 +1849,58 @@ RTS.aiGoal = function (G, t, mode, tg, from, home) {
   const b = near(foeB, from || home); return { id: b.id, x: b.x, y: b.y };
 };
 // 견제: 보통 이상에서 빠른 유닛(공중 우선) 3~4기를 상대 일꾼 쪽으로 보낸다. 40초 뒤 또는 반 이상 잃으면 돌아온다.
+// ── 고급 운영(2026-11) ─────────────────────────────────────
+// lv1·lv2: 생산 건물 강화 시작 시각(초, 난이도 techAt·작전 tech를 곱한다). keep: 강화·★에 쓰고 남길 광석.
+// techSave: 강화 비용을 모으려고 병력 생산·투자를 아끼는 최대 시간(초). rankEvery: ★ 강화 판단 간격(초). fuseCap: 합체 유닛 최대 보유 수(작은 합체, 일꾼이 드는 큰 합체). fuseBias: 합체가 열린 재료 생산 가중치.
+RTS.AI_TECH = { lv1: 300, lv2: 480, keep: 120, rankEvery: 6, fuseCap: [4, 3], fuseBias: 1.6, workerWait: 40, techSave: 60 };
+RTS.aiFuseWant = function (t) {
+  const out = {}, lvl = t.lvl || {};
+  for (const m of Object.values(RTS.defs.merges)) if (m.faction === t.faction && (lvl[m.at] || 0) >= 2) for (const k of Object.keys(m.parts)) if (!RTS.defs.entities[k].gather) out[k] = RTS.AI_TECH.fuseBias;
+  return out; };
+RTS.aiAdvance = function (G, t, diff, plan, builds, army, workers, sec, cmd) {
+  const S = t.aiState, D = RTS.defs.entities, f = RTS.defs.factions[t.faction], T = RTS.AI_TECH, lvl = t.lvl || {};
+  if (diff.techAt === 0 || (plan.delayTech && !S.rushDone)) return;
+  const k = (diff.techAt || 1) * (plan.tech || 1), spare = c => t.res.ore >= (c.ore || 0) + T.keep && t.res.gas >= (c.gas || 0);
+  // 1) 생산 건물 강화: 병력을 만드는 건물 종류마다 한 채씩 1단계, 그다음 2단계
+  const prodIds = [...new Set(f.ai.army.map(a => RTS.producerOf(a.u)).filter(Boolean))];
+  // 비용이 모자라면 S.techNeed에 적어 두고 병력 생산·투자를 그만큼 아낀다(최대 techSave초)
+  let leveling = builds.some(b => b.prod.some(p => p.kind === 'level')), need = null;
+  for (const lv of [1, 2]) { if (leveling || need || sec < T['lv' + lv] * k) break;
+    for (const id of prodIds) { if ((lvl[id] || 0) >= lv) continue;
+      const b = builds.filter(b => b.def === id && RTS.complete(b) && (b.lv || 0) === lv - 1 && b.prod.length < 3).sort((a, c) => a.prod.length - c.prod.length || a.id - c.id)[0];
+      if (!b) continue; const cost = RTS.levelCost(D[id], lv);
+      if (RTS.canPay(t, cost)) { cmd({ type: 'levelup', building: b.id }); leveling = true; } else need = cost; break; } }
+  if (need) { if (!S.techNeed) S.techSince = G.tick; S.techNeed = G.tick - S.techSince < T.techSave * RTS.HZ ? need : null; if (!S.techNeed && G.tick - S.techSince > T.techSave * 2 * RTS.HZ) S.techSince = G.tick; }
+  else S.techNeed = null;
+  if (S.techNeed) return;
+  // 2) ★ 강화: 비싼 유닛부터 한 번에 두 기까지
+  if (G.tick - (S.rankAt || -1e9) >= T.rankEvery * RTS.HZ) { S.rankAt = G.tick; let n = 0;
+    for (const u of army.filter(u => !RTS.rankBlock(G, u)).sort((a, b) => ((D[b.def].cost.ore || 0) + (D[b.def].cost.gas || 0) * 1.5) - ((D[a.def].cost.ore || 0) + (D[a.def].cost.gas || 0) * 1.5) || a.id - b.id)) {
+      const c = RTS.rankCost(D[u.def], (u.rank || 0) + 1); if (!spare(c)) break; cmd({ type: 'rankup', ids: [u.id] }); if (++n >= 2) break; } }
+  // 3) 합체: 집결 중(공격·방어 아님)일 때만. 일꾼이 드는 합체는 일꾼을 먼저 불러온다
+  if (S.attacking || G.tick - (S.defending || -999) < 100) return;
+  const mw = S.fuseW && G.byId[S.fuseW.w], mh = S.fuseW && G.byId[S.fuseW.host];
+  if (S.fuseW) {
+    if (!mw || mw.dead || !mh || mh.dead || mh.merging || G.tick > S.fuseW.until) { if (mw && !mw.dead && !mw.merging) RTS.issue(G, mw, null); S.fuseW = null; }
+    else if (Math.hypot(mw.x - mh.x, mw.y - mh.y) <= RTS.MERGE.range - 1) { if (!RTS.mergePick(G, mh, RTS.defs.merges[S.fuseW.recipe]).miss.length) cmd({ type: 'merge', unit: mh.id, recipe: S.fuseW.recipe }); S.fuseW = null; return; }
+    else return;
+  }
+  const have = id => G.ents.filter(e => e.team === t.id && !e.dead && e.def === id).length + (G.merges || []).filter(j => j.team === t.id && RTS.defs.merges[j.recipe].into === id).length;
+  const recipes = Object.values(RTS.defs.merges).filter(m => m.faction === t.faction && (lvl[m.at] || 0) >= 2)
+    .sort((a, b) => Object.keys(b.parts).length - Object.keys(a.parts).length || (a.id < b.id ? -1 : 1)); // 큰 합체 먼저
+  for (const m of recipes) {
+    const big = Object.keys(m.parts).some(p => D[p].gather); if (have(m.into) >= T.fuseCap[big ? 1 : 0]) continue;
+    const main = Object.keys(m.parts).filter(p => !D[p].gather).sort((a, b) => m.parts[b] - m.parts[a] || (a < b ? -1 : 1))[0];
+    for (const h of army.filter(u => u.def === main)) {
+      const { miss } = RTS.mergePick(G, h, m);
+      if (!miss.length) { cmd({ type: 'merge', unit: h.id, recipe: m.id }); return; }
+      if (miss.length === 1 && D[miss[0][0]].gather && miss[0][1] === 1) {
+        const w = workers.filter(w => !w.merging && !w.cargo && (!w.order || w.order.type === 'gather')).sort((a, b) => Math.hypot(a.x - h.x, a.y - h.y) - Math.hypot(b.x - h.x, b.y - h.y) || a.id - b.id)[0];
+        if (w) { S.fuseW = { w: w.id, host: h.id, recipe: m.id, until: G.tick + T.workerWait * RTS.HZ }; RTS.issue(G, w, { type: 'move', x: h.x, y: h.y }); return; }
+      }
+    }
+  }
+};
 RTS.aiHarass = function (G, t, diff, plan, allArmy) {
   const S = t.aiState, D = RTS.defs.entities, sec = G.tick / RTS.HZ; if (!diff.harass) return;
   const cur = (S.harass || []).map(id => G.byId[id]).filter(u => u && !u.dead);
@@ -1919,16 +2038,17 @@ RTS.netGameOpts = function (o) {
 RTS.mod({
   difficulties: {
     // 왕초보: 맵 전체 공개(reveal), 사람 플레이어 본진에 완공된 방어탑 towers[0]~towers[1]개를 무작위로 지어 둔다
+    // healers: AI 치료 유닛(의무병·정비봇·양육충) 최대 수. techAt: 고급 운영(건물 강화·★·합체) 시각 배율(RTS.AI_TECH, 0이면 안 함)
     // plans: 작전 가중치(속공 rush, 확장-발전 expand, 타이밍 공격 timing — RTS.AI_PLANS). attackMin·expandMin: 작전 배율 하한. perBase: 확장 기지당 일꾼 목표 증가율, bases: 최대 사령부 수, harass: 견제 부대
     // 2026-11 하향: 각 단계가 예전보다 두 단계 아래 수치를 쓴다(어려움 = 예전 쉬움, 보통 = 예전 왕초보, 쉬움·왕초보는 그보다 더 약하게)
     beginner: { name: '왕초보', reveal: true, towers: [5, 10], blurb: '맵 전체가 보이고 방어탑 5~10개를 갖고 시작', income: .4, interval: 90, maxWorkers: 10, waveSize: 3, waveGrow: 1, firstAttack: 720, expandAt: 1500, invest: 340, investEvery: 40, scoutAt: 600, stake: 100, allyArmy: 14,
-      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2 },
+      plans: { expand: 1, timing: 1 }, attackMin: 1, expandMin: .7, perBase: .3, bases: 2, techAt: 1.9, healers: 1 },
     easy:   { name: '쉬움',   income: .5,  interval: 75, maxWorkers: 12, waveSize: 3,  waveGrow: 1, firstAttack: 600, expandAt: 1000, invest: 330, investEvery: 35, scoutAt: 500, stake: 110, allyArmy: 13,
-      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2 },
+      plans: { expand: 1, timing: 1 }, attackMin: .85, expandMin: .5, perBase: .4, bases: 2, techAt: 1.45, healers: 2 },
     normal: { name: '보통',   income: .6,  interval: 60, maxWorkers: 14, waveSize: 4,  waveGrow: 2, firstAttack: 480, expandAt: 720, invest: 320, investEvery: 30, scoutAt: 420, stake: 120, allyArmy: 12,
-      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true },
+      plans: { rush: 1, expand: 1, timing: 1 }, perBase: .6, bases: 3, harass: true, techAt: 1, healers: 3 },
     hard:   { name: '어려움', income: .8,  interval: 40, maxWorkers: 18, waveSize: 6,  waveGrow: 3, firstAttack: 330, expandAt: 480, invest: 300, investEvery: 22, scoutAt: 300, stake: 150, allyArmy: 10,
-      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true },
+      plans: { rush: 1.2, expand: 1, timing: 1 }, perBase: .8, bases: 4, harass: true, guardExpo: true, techAt: .75, healers: 4 },
   },
   terrain: {
     ground: { name: '땅' }, rock: { name: '암벽' }, sand: { name: '모래' }, cliff: { name: '고지대 절벽' },
@@ -1973,7 +2093,7 @@ RTS.mod({
 
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], desc: '자원 채취와 건설' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8 }, desc: '자원 채취와 건설, 기계 유닛 수리(자원 소모), 건물 철거' },
     p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
       weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
@@ -1995,7 +2115,7 @@ RTS.mod({
 
     // ── 철갑회: 일꾼이 터만 잡으면 건물이 스스로 올라간다(selfBuild) ──
     i_worker:  { kind: 'unit', name: '수집봇', abbr: '수', key: 'W', art: 'iworker', r: .36, hp: 40, speed: 3.1, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['mech'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['i_relay', 'i_extractor', 'i_forge', 'i_core', 'i_turret', 'i_foundry', 'i_hq'], desc: '자원 채취와 건설 시작, 건물 철거' },
     i_blade:   { kind: 'unit', name: '칼날봇', abbr: '칼', key: 'B', art: 'bot', r: .42, hp: 75, armor: 1, speed: 3.2, sight: 7, supply: 1, cost: { ore: 75 }, time: 15, tags: ['mech'],
       weapon: { damage: 11, range: .4, cooldown: .9, air: false }, desc: '빠른 근접 돌격병. 지상만 공격' },
     i_striker: { kind: 'unit', name: '사수봇', abbr: '사', key: 'R', art: 'bot', tint: 1, r: .44, hp: 80, speed: 2.7, sight: 8, supply: 2, cost: { ore: 100, gas: 25 }, time: 20, tags: ['mech'],
@@ -2017,7 +2137,7 @@ RTS.mod({
 
     // ── 포자군락: 일꾼이 건물로 변태한다(morph, 일꾼 소모). 유닛·건물이 스스로 재생한다(regen) ──
     s_drone:   { kind: 'unit', name: '포자일꾼', abbr: '포', key: 'W', art: 'sworker', r: .36, hp: 40, speed: 3, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['s_pod', 's_extractor', 's_pool', 's_den', 's_spine', 's_nest', 's_hq'], desc: '자원 채취. 건설하면 그 건물로 변태해 사라진다' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['s_pod', 's_extractor', 's_pool', 's_den', 's_spine', 's_nest', 's_hq'], desc: '자원 채취. 건설하면 그 건물로 변태해 사라진다. 건물 철거' },
     s_claw:    { kind: 'unit', name: '갈퀴충', abbr: '갈', key: 'Z', art: 'claw', r: .34, hp: 38, speed: 3.6, sight: 7, supply: .5, count: 2, cost: { ore: 50 }, time: 14, tags: ['bio'],
       weapon: { damage: 6, range: .3, cooldown: .6, air: false }, desc: '한 번에 2기씩 태어나는 싸고 빠른 근접 무리. 지상만 공격' },
     s_spitter: { kind: 'unit', name: '산탄충', abbr: '산', key: 'R', art: 'spitter', r: .42, hp: 80, speed: 2.7, sight: 8, supply: 1, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], abilities: ['acid'],
@@ -3424,6 +3544,8 @@ RTS.mount = function (root, opts = {}) {
         items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
+      if (d.gather) items.push({ key: 'D', text: '철거', name: '건물 철거', desc: `철거할 내 건물을 누릅니다. 비용은 건물 값의 ${pct(RTS.SERVICE.demo)}%(돌려받지 않음), 시간은 건설 시간의 ${pct(RTS.SERVICE.demoTime)}%(${RTS.SERVICE.demoTimeMin}~${RTS.SERVICE.demoTimeMax}초). 생산 중인 건물은 철거할 수 없습니다. 건물을 길게 눌러도 됩니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'demolish' }); notice('철거할 내 건물을 누르세요', 'ok'); } });
+      if (d.repair) items.push({ key: 'R', text: '수리', name: '기계 수리', desc: `수리할 내 기계 유닛을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
@@ -3450,7 +3572,12 @@ RTS.mount = function (root, opts = {}) {
     return out; }
   // 길게 누르기 팝업 메뉴
   function popItems(e) { if (!app.G || app.demo || e.team !== app.team || e.dead) return []; const items = upgradeItems(e, app.sel.includes(e.id) ? app.sel : [e.id]);
+    const d = RTS.defOf(e); if (d.kind === 'building' && !e.company && !e.branch && RTS.complete(e)) { const why = RTS.demoBlock(app.G, e, app.team) || (demoWorker(e) ? '' : '철거할 일꾼이 없습니다');
+      items.push({ pl: e.demoPaid ? '철거 이어 하기' : '철거', note: `${Math.round(RTS.demoTicks(d) / RTS.HZ)}초 · 가까운 일꾼이 갑니다`, cost: e.demoPaid ? null : RTS.demoCost(d), ok: !why, why, run: () => { const w = demoWorker(e); if (w) send({ type: 'demolish', ids: [w.id], building: e.id }); } }); }
     return items.length ? items.concat({ pl: '정보 보기', ok: true, info: true }) : []; }
+  // 철거하러 갈 일꾼: 선택한 일꾼 중 가장 가까운 것, 없으면 짐 없는 채취 일꾼 중 가장 가까운 것
+  function demoWorker(b) { const G = app.G, mine = G.ents.filter(w => !w.dead && w.team === app.team && RTS.defOf(w).gather), near = l => l.sort((a, c) => Math.hypot(a.x - b.x, a.y - b.y) - Math.hypot(c.x - b.x, c.y - b.y))[0];
+    return near(mine.filter(w => app.sel.includes(w.id))) || near(mine.filter(w => !w.cargo && (!w.order || w.order.type === 'gather'))) || near(mine); }
   function closePop() { if (!app.pop) return; app.pop = null; $('k-pop').hidden = true; }
   function openPop(e, sx, sy) { hideHover(); const G = app.G, t = G.teams[app.team], d = RTS.defOf(e), items = popItems(e); if (!items.length) return;
     if (!app.sel.includes(e.id)) app.sel = [e.id]; app.menu = 'main'; app.pop = { id: e.id }; app.sfx('click');
@@ -3530,6 +3657,7 @@ RTS.mount = function (root, opts = {}) {
       if (d.resource) stats.push(`남은 양 ${e.amount}`);
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
+      if (e.demoPaid) stats.push(`철거 중 ${Math.floor((e.demo || 0) / RTS.demoTicks(RTS.defOf(e)) * 100)}%`);
       if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
@@ -3566,6 +3694,15 @@ RTS.mount = function (root, opts = {}) {
 
   // ── 입력 ──────────────────────────────────────────────
   const toWorld = (sx, sy) => [(sx / cam.z + cam.x) / TS, (sy / cam.z + cam.y) / TS];
+  // 확대·축소: 화면 점 (sx, sy)의 월드 위치(wx, wy, 타일)가 그 자리에 남도록 배율 z를 바꾼다. 범위 ZOOM
+  const ZOOM = [.5, 2];
+  function zoomAt(z, sx, sy, wx, wy) { cam.z = Math.max(ZOOM[0], Math.min(ZOOM[1], z)); cam.x = wx * TS - sx / cam.z; cam.y = wy * TS - sy / cam.z; clampCam(); }
+  // 두 손가락: 손가락 사이 거리 비율로 배율, 두 손가락 가운데 점을 따라 화면이 움직인다. 두 손가락이 닿은 뒤로는 모든 손가락을 뗄 때까지 탭·선택 명령을 내지 않는다
+  const touches = new Map(), pinch = { on: false, lock: false };
+  const ptAt = e => { const r = view.getBoundingClientRect(), k = view.width / r.width; return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k }; };
+  function pinchState() { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
+  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
+    drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
   const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
@@ -3593,12 +3730,18 @@ RTS.mount = function (root, opts = {}) {
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
+    const fixers = units.filter(e => RTS.defOf(e).repair && !RTS.repairBlock(G, e, t)).map(e => e.id);
+    if (t && fixers.length) { send({ type: 'order', ids: fixers, order: { type: 'repair', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#7dffa8' }); return true; }
     const gas = t && t.team === app.team && RTS.defOf(t).placeOn && RTS.complete(t), ore = t && RTS.defOf(t).resource === 'ore';
     if (t && (gas || ore) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'gather', node: t.id }, queue }); if (rest.length) send({ type: 'order', ids: rest, order: { type: 'move', x: wx, y: wy }, spread: spread(rest, wx, wy), queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ffc247' }); return true; }
     if (t && t.team === app.team && !RTS.complete(t) && workers.length) { send({ type: 'order', ids: workers, order: { type: 'build', site: t.id }, queue }); return true; }
     send({ type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
   function execMode(wx, wy, shift) { const G = app.G, m = app.mode, ids = selected().filter(e => e.team === app.team && RTS.defOf(e).kind === 'unit').map(e => e.id);
     if (m.type === 'place') { const [tx, ty] = app.placeTile(m.def), w = selected().filter(e => RTS.defOf(e).gather).sort((a, b) => (a.order && a.order.type === 'build' ? 1 : 0) - (b.order && b.order.type === 'build' ? 1 : 0)); send({ type: 'place', ids: w.map(e => e.id), def: m.def, tx, ty, queue: shift }); if (!shift) app.mode = null; return; }
+    if (m.svc) { const t = pick(wx, wy), ws = selected().filter(e => e.team === app.team && RTS.defOf(e).gather);
+      if (m.svc === 'demolish') { const why = t ? RTS.demoBlock(G, t, app.team) : '철거할 내 건물을 누르세요'; if (why) { notice(why, 'warn'); return; } send({ type: 'demolish', ids: ws.map(e => e.id), building: t.id, queue: shift }); }
+      else { const fx = ws.filter(e => RTS.defOf(e).repair), why = fx.length ? RTS.repairBlock(G, fx[0], t) : '수리할 수 있는 일꾼이 없습니다'; if (why) { notice(why, 'warn'); return; } send({ type: 'order', ids: fx.map(e => e.id), order: { type: 'repair', target: t.id }, queue: shift }); }
+      R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
@@ -3638,7 +3781,9 @@ RTS.mount = function (root, opts = {}) {
     if (w) h += row('공격', `${Math.round(st('damage', w.damage))} · 사거리 ${+st('range', w.range).toFixed(1)} · ${w.air === false ? '지상만' : '지상·공중'}${w.splash ? ' · 범위' : ''}`);
     if (d.siegeWeapon && !(e && e.sieged)) h += row('포격 모드', `공격 ${d.siegeWeapon.damage} · 사거리 ${d.siegeWeapon.range} · 범위`);
     const arm = e && e.team >= 0 ? RTS.stat(G, e, 'armor') : d.armor || 0; if (arm) h += row('방어', Math.round(arm));
-    if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'}`);
+    if (d.heal) h += row('치료', `${d.heal.amount} · 사거리 ${d.heal.range} · ${d.heal.tag === 'bio' ? '보병' : '기계'} · 대상 값의 ${Math.round(RTS.SERVICE.heal * 100)}%/가득`) + (t ? row('최대 수', `${RTS.healerCap(G, me)}기 (지금 ${RTS.healerCount(G, me)}기)`) : '');
+    if (d.repair) h += row('수리', `기계 ${d.repair.amount}/${d.repair.cooldown}초 · 대상 값의 ${Math.round(RTS.SERVICE.repair * 100)}%/가득`);
+    if (d.gather) h += row('철거', `건물 값의 ${Math.round(RTS.SERVICE.demo * 100)}% · 돌려받지 않음`);
     if (isUnit && d.speed) h += row('속도', +(e && e.team >= 0 ? RTS.stat(G, e, 'speed') : d.speed).toFixed(1));
     if (d.provides) h += row('보급 제공', '+' + (e && e.team >= 0 ? RTS.provides(e) : d.provides));
     if (!isUnit && RTS.canLevel(d) && mineE) h += row('강화', e ? `${e.lv || 0} / ${RTS.LEVEL.max}단계${e.lv ? ' · ' + RTS.levelFx(d, e.lv).join(' · ') : ''}` : `최대 ${RTS.LEVEL.max}단계`);
@@ -3667,13 +3812,18 @@ RTS.mount = function (root, opts = {}) {
   view.addEventListener('contextmenu', e => e.preventDefault());
   view.addEventListener('pointerenter', e => { setMouse(e); app.mouse.inside = true; }); // 위치를 먼저 잡아야 (0,0)으로 남은 좌표 때문에 가장자리 스크롤이 일어나지 않는다
   view.addEventListener('pointerleave', () => { app.mouse.inside = false; hideHover(); });
-  view.addEventListener('pointerdown', e => { unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over || performance.now() - (app.popShut || 0) < 80) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
+  view.addEventListener('pointerdown', e => { if (e.pointerType === 'touch') { touches.set(e.pointerId, ptAt(e)); if (touches.size >= 2) { if (!app.demo && app.G && !app.G.over) { view.setPointerCapture(e.pointerId); if (touches.size === 2) pinchStart(); } return; } if (pinch.lock) return; }
+    unlock(); view.focus({ preventScroll: true }); setMouse(e); if (app.demo || app.G.over || performance.now() - (app.popShut || 0) < 80) return; view.setPointerCapture(e.pointerId); const touch = e.pointerType === 'touch', wx = app.mouse.wx, wy = app.mouse.wy;
     hideHover(); closePop(); htip.long = false; if (!app.mode && e.button === 0) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved && !app.box) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t && popItems(t).length) { openPop(t, sx, sy); htip.long = true; } else if (t && touch) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
-  view.addEventListener('pointermove', e => { setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
+  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.on && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
+    setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  view.addEventListener('pointerup', e => { setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
+  const touchEnd = e => { if (e.pointerType !== 'touch') return false; touches.delete(e.pointerId); if (!pinch.lock) return false;
+    if (touches.size < 2) pinch.on = false; if (touches.size === 2) pinchStart(); if (!touches.size) pinch.lock = false; return true; };
+  view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
+  view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
     if (app.mode) { execMode(wx, wy, drag.shift); return; }
@@ -3684,7 +3834,7 @@ RTS.mount = function (root, opts = {}) {
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
     if (drag.shift && t.team === app.team && RTS.defOf(t).kind === 'unit') { app.sel = app.sel.includes(t.id) ? app.sel.filter(i => i !== t.id) : [...app.sel, t.id]; return; }
     app.sel = [t.id]; });
-  view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); const [wx, wy] = [app.mouse.wx, app.mouse.wy], z = Math.max(.55, Math.min(1.6, cam.z * (e.deltaY < 0 ? 1.1 : .91))); cam.z = z; cam.x = wx * TS - app.mouse.x / z; cam.y = wy * TS - app.mouse.y / z; clampCam(); }, { passive: false });
+  view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); if (!e.deltaY) return; zoomAt(cam.z * Math.pow(1.1, Math.max(-3, Math.min(3, -e.deltaY / (e.deltaMode ? 3 : 100)))), app.mouse.x, app.mouse.y, app.mouse.wx, app.mouse.wy); [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }, { passive: false });
   const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
   mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
   mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
