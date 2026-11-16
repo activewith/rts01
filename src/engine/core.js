@@ -67,6 +67,7 @@ RTS.createGame = function (opts) {
     const e = RTS.spawn(G, n.def, -1, n.tx + RTS.defs.entities[n.def].size[0] / 2, n.ty + RTS.defs.entities[n.def].size[1] / 2);
     e.amount = RTS.defs.entities[n.def].amount;
   });
+  RTS.pickStarts(G, spec, G.coop ? 2 : G.teams.length);
   const starts = G.bases.filter(b => b.start !== undefined), spots = G.coop ? RTS.coopBases(G) : G.teams.length > 2 ? RTS.ffaBases(G) : null;
   G.teams.forEach((t, i) => {
     const b = spots ? spots[i] : starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
@@ -85,19 +86,36 @@ RTS.createGame = function (opts) {
   return G;
 };
 
+// 시작 위치 고르기: 후보(spawn) 중에서 n곳을 무작위로 고른다. 고른 곳끼리는 spawnGap(기본: 맵 긴 변 × 0.38) 이상 떨어져야 한다.
+// 고른 기지에 start 0,1,(2)를 붙이고 나머지 후보는 확장 기지가 된다. 셋이 싸울 때 세 곳을 못 고르면 두 곳만 고르고 셋째는 ffaBases가 정한다.
+// 설정 randomStart를 끄거나 후보가 모자라면 맵 기본 자리(start 0과 맞은편)를 쓴다.
+RTS.pickStarts = function (G, spec, n) {
+  const sp = G.bases.filter(b => b.spawn), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), gap = spec.spawnGap || Math.max(G.w, G.h) * .38;
+  if (!RTS.cfg(G).randomStart || sp.length < 3) return;
+  const sets = [], k = Math.min(n, 3);
+  const walk = (from, cur) => { if (cur.length === k) { sets.push(cur.slice()); return; } for (let i = from; i < sp.length; i++) if (cur.every(c => d(c, sp[i]) >= gap)) { cur.push(sp[i]); walk(i + 1, cur); cur.pop(); } };
+  walk(0, []); if (!sets.length && k === 3) { sets.length = 0; const k2 = 2; const w2 = (from, cur) => { if (cur.length === k2) { sets.push(cur.slice()); return; } for (let i = from; i < sp.length; i++) if (cur.every(c => d(c, sp[i]) >= gap)) { cur.push(sp[i]); w2(i + 1, cur); cur.pop(); } }; w2(0, []); }
+  if (!sets.length) return;
+  let pick = sets[Math.floor(RTS.rand(G) * sets.length)];
+  if (G.coop) { const s0 = sp[Math.floor(RTS.rand(G) * sp.length)]; pick = [s0, sp.filter(b => b !== s0).sort((a, b) => d(b, s0) - d(a, s0))[0]]; } // 협동: 중립세력은 가장 먼 후보
+  if (!G.coop) for (let i = pick.length - 1; i > 0; i--) { const j = Math.floor(RTS.rand(G) * (i + 1)); [pick[i], pick[j]] = [pick[j], pick[i]]; } // 누가 어느 자리인지도 무작위
+  for (const b of G.bases) delete b.start; pick.forEach((b, i) => { b.start = i; });
+};
 // 협동 시작 위치: 0번 사람 = 시작 기지 0, 중립세력(2번) = 맞은편 시작 기지 1,
 // 1번 사람 = 시작 기지 0에서 가장 가까운 확장 기지(광맥 있는 곳). 두 사람이 같은 쪽에서 함께 막는다.
 RTS.coopBases = function (G) {
   const s0 = G.bases.find(b => b.start === 0), s1 = G.bases.find(b => b.start === 1);
   const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12));
-  rest.sort((a, b) => Math.hypot(a.x - s0.x, a.y - s0.y) - Math.hypot(b.x - s0.x, b.y - s0.y));
-  return [s0, rest[0], s1];
+  const d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y), mine = rest.filter(b => d(b, s0) < d(b, s1) * .8); // 중립세력보다 내 쪽에 가까운 기지만
+  (mine.length ? mine : rest).sort((a, b) => d(a, s0) - d(b, s0));
+  return [s0, (mine.length ? mine : rest)[0], s1];
 };
 // 셋이 서로 싸울 때: 0·1번은 시작 기지, 2번(중립세력)은 두 시작 기지와의 거리 차이가 가장 작은 확장 기지.
 // 대칭 맵에서는 같은 점수의 기지가 짝으로 나오므로 그중 무작위로 고른다(평균적으로 공평).
 RTS.ffaBases = function (G) {
   const s0 = G.bases.find(b => b.start === 0), s1 = G.bases.find(b => b.start === 1), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const rest = G.bases.filter(b => b.start === undefined && RTS.nearestNode(G, b.x, b.y, 'ore', 12)).map(b => ({ b, k: Math.round(Math.abs(d(b, s0) - d(b, s1))) }));
+  const s2 = G.bases.find(b => b.start === 2); if (s2) return [s0, s1, s2]; // pickStarts가 세 자리를 고른 경우
   const best = Math.min(...rest.map(r => r.k)), pick = rest.filter(r => r.k === best);
   return [s0, s1, pick[Math.floor(RTS.rand(G) * pick.length)].b];
 };
@@ -135,6 +153,7 @@ RTS.initRuntime = function (G) {
 RTS.step = function (G) {
   if (G.over) return;
   G.tick++;
+  RTS.rebuildGrid(G); // 공간 해시는 저장되지 않으므로 틱 시작마다 상태에서 다시 만든다(저장 복원 직후에도 같은 결과)
   for (const s of RTS.systems) s.run(G);
 };
 

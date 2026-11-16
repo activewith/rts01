@@ -5,7 +5,7 @@ let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); i
 const D = RTS.defs.entities;
 
 function setup(faction = 'pioneers', seed = 3) {
-  const G = RTS.createGame({ map: 'ridge', seed, players: [{ faction }, { faction: faction === 'pioneers' ? 'ironclad' : 'pioneers' }] });
+  const G = RTS.createGame({ map: 'ridge', seed, settings: { randomStart: false }, players: [{ faction }, { faction: faction === 'pioneers' ? 'ironclad' : 'pioneers' }] });
   const msgs = []; RTS.on(G, 'notice', n => { if (n.team === 0) msgs.push(n.text); }); G._msgs = msgs;
   G.teams[0].res.ore = G.teams[0].res.gas = 99999;
   return G;

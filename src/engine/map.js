@@ -70,7 +70,7 @@ RTS.findPath = function (G, sx, sy, goal) {
   AS.g[start] = 0; AS.stamp[start] = gen; AS.from[start] = -1; push(start, 0);
   let best = start, bestH = 1e9, found = -1, visited = 0;
   const DX = [1, -1, 0, 0, 1, 1, -1, -1], DY = [0, 0, 1, -1, 1, -1, 1, -1];
-  while (hn > 0 && visited < Math.max(7000, n * .7)) { // 큰 맵은 탐색 한도를 넓힌다
+  while (hn > 0 && visited < Math.max(7000, n * 1.6)) { // 큰 맵은 탐색 한도를 넓힌다(본진 입구가 반대쪽이라 돌아가는 긴 경로는 맵 전체를 훑는다)
     const cur = pop();
     if (AS.closed[cur] === gen) continue; AS.closed[cur] = gen; visited++;
     const cx = cur % w, cy = (cur / w) | 0;
@@ -150,12 +150,14 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
   const cx = w / 2, cy = h / 2;
   half.forEach((b, i) => {
     const dir = b.dir !== undefined ? b.dir : Math.atan2(b.y - cy, b.x - cx);
-    bases.push({ x: b.x, y: b.y, start: b.start }); bases.push({ x: w - b.x, y: h - b.y, start: b.start !== undefined ? 1 : undefined });
+    // spawn: 시작 위치 후보(맞은편도 후보). 후보는 광맥 8·분출구 2를 갖는다. 실제 시작 자리는 RTS.pickStarts가 고른다
+    const sp = b.spawn || b.start !== undefined;
+    bases.push({ x: b.x, y: b.y, start: b.start, spawn: sp || undefined }); bases.push({ x: w - b.x, y: h - b.y, start: b.start !== undefined ? 1 : undefined, spawn: sp || undefined });
     const add = (def, tx, ty, fw, fh) => { nodes.push({ def, tx, ty }); nodes.push({ def, tx: w - tx - fw, ty: h - ty - fh }); };
-    const ore = b.ore || 8;
+    const ore = (b.spawn ? 0 : b.ore) || 8;
     for (let k = 0; k < ore; k++) { const a = dir + (k - (ore - 1) / 2) * .36, d = 6.6 + (k % 2) * .9; add('ore_node', Math.round(b.x + Math.cos(a) * d - 1), Math.round(b.y + Math.sin(a) * d - .5), 2, 1); }
     add('vent', Math.round(b.x + Math.cos(dir + 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir + 2.05) * 7.5 - 1), 2, 2);
-    if (!b.oneVent) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
+    if (!b.oneVent || b.spawn) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
   });
   return { w, h, tiles, bases, nodes, sites, posts, tribe, elev };
 };
