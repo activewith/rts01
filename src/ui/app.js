@@ -96,7 +96,10 @@ RTS.mount = function (root, opts = {}) {
     bind(G); cam.z = 1; root.querySelector('.k-game').classList.add('demo'); layout(); const base = G.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff) || { x: G.w / 2, y: G.h / 2 }; centerOn(base.x - (view.width > 900 ? 5 : 0), base.y); }
   app.start = function (cfg) { Object.assign(app.cfg, cfg || {}); const f = Object.keys(RTS.defs.factions).filter(x => x !== app.cfg.faction), foe = f[Math.floor(Math.random() * f.length)]; /* 상대 AI 진영: 남은 진영 중 무작위 */ app.demo = false; app.team = 0; app.speed = 1; app.paused = false;
     const G = RTS.createGame({ map: app.cfg.map, seed: Date.now() % 100000, settings: app.settings, players: [{ faction: app.cfg.faction }, { faction: foe, ai: app.cfg.difficulty }] });
-    showGame(G); };
+    showGame(G); fogWarn(G); };
+  // 전장의 안개 설정이 꺼져 있으면 맵 전체가 보인다. 막지는 않고 알리기만 한다(왕초보 난이도·핸디캡 맵 공개는 의도된 것이라 제외).
+  const FOG_OFF_MSG = host => '전장의 안개가 꺼져 있어 맵 전체가 보입니다. ' + (host ? '설정 → 게임 → 전장의 안개에서 켜면 다음 판부터 적용됩니다.' : '방장 기기의 설정 → 게임 → 전장의 안개에서 켤 수 있습니다.');
+  function fogWarn(G) { if (G && G.cfg && G.cfg.fog === false) notice(FOG_OFF_MSG(!app.net || app.net.role === 'host'), 'warn', 9000); }
   function showGame(G) { hideHover(); bind(G); $('k-chatbtn').hidden = $('k-voicebtn').hidden = !app.net; $('k-chatbox').hidden = true; renderChat(); app.heat = 0; $('k-start').hidden = true; $('k-end').hidden = true; root.querySelector('.k-game').classList.remove('demo'); layout();
     cam.z = view.width < 700 ? .8 : 1; const hq = G.ents.find(e => e.team === app.team && RTS.defOf(e).dropoff); if (hq) { centerOn(hq.x, hq.y); app.sel = [hq.id]; } updateSpeed(); }
   app.toMenu = () => { if (app.net) { if (app.net.match && (app.net.away || (app.G && app.G.over))) dropResume(); netClose(true); } else if (app.G && !app.demo && !app.G.over) store.set('save', RTS.serialize(app.G)); $('k-again').hidden = false; $('k-end').hidden = true; $('k-start').hidden = false; renderMenu(); demo(); };
@@ -117,7 +120,7 @@ RTS.mount = function (root, opts = {}) {
 
   // ── 메시지와 HUD ──────────────────────────────────────
   app.notice = (t, k) => notice(t, k);
-  function notice(text, kind) { const box = $('k-msgs'), d = document.createElement('div'); if (box.lastChild && box.lastChild.textContent === text) return; d.textContent = text; d.className = 'k-msg ' + (kind || ''); box.appendChild(d); while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => d.remove(), 3800); if (kind === 'warn') app.sfx('warn'); }
+  function notice(text, kind, ms) { const box = $('k-msgs'), d = document.createElement('div'); if (box.lastChild && box.lastChild.textContent === text) return; d.textContent = text; d.className = 'k-msg ' + (kind || ''); box.appendChild(d); while (box.children.length > 4) box.firstChild.remove(); setTimeout(() => d.remove(), ms || 3800); if (kind === 'warn') app.sfx('warn'); }
   const cost = c => Object.keys(c || {}).map(k => `<span class="c-${k}">${k === 'ore' ? '광석' : '에테르'} ${c[k]}</span>`).join(' ');
   function selected() { return app.sel.map(i => app.G.byId[i]).filter(e => e && !e.dead); }
   function leader(list) { const own = list.filter(e => e.team === app.team); if (!own.length) return null; return own.slice().sort((a, b) => cardRank(b) - cardRank(a))[0]; }
@@ -535,7 +538,7 @@ RTS.mount = function (root, opts = {}) {
   // 방장이 정하는 내용: 전장, 진영(상대는 다른 진영), 팀별 핸디캡
   // 두 사람은 서로 다른 진영을 고른다. 남은 진영이 중립세력(AI)이 된다. 협동이면 중립세력과 둘이 싸우고, 대전이면 셋이 서로 싸운다
   const lobbyOf = () => { const N = app.net, fs = Object.keys(RTS.defs.factions), mine = app.cfg.faction, coop = N.mode === 'coop', other = N.fac1 && N.fac1 !== mine ? N.fac1 : fs.find(x => x !== mine);
-    return { map: app.cfg.map, factions: [mine, other], hc: N.hc.slice(), names: [myName(), N.peerName || '상대'], build: RTS.BUILD, coop, enemy: RTS.restFaction([mine, other]), boost: N.boost, level: RTS.COOP.level }; };
+    return { map: app.cfg.map, factions: [mine, other], hc: N.hc.slice(), names: [myName(), N.peerName || '상대'], build: RTS.BUILD, coop, enemy: RTS.restFaction([mine, other]), boost: N.boost, level: RTS.COOP.level, fog: app.settings.fog !== false }; };
   function sendLobby() { if (app.net && app.net.role === 'host') netSend({ t: 'lobby', lobby: lobbyOf() }); }
   function netMsg(m) { const N = app.net; if (!m || typeof m !== 'object') return; N.lastRx = performance.now();
     if (m.t === 'turn') { if (N.L) N.L.receive(m); else if (!N.match && !N.resync) (N.early = N.early || []).push(m); return; }
@@ -554,7 +557,7 @@ RTS.mount = function (root, opts = {}) {
     app.demo = false; app.team = team; app.speed = 1; app.paused = false; N.waitMs = 0;
     N.L = RTS.Lockstep({ team, send: netSend, onDesync }); N.match = true; N.team = team; N.lastRx = performance.now(); N.other = N.conn && N.conn.peer; saveResume();
     for (const m of N.early || []) N.L.receive(m); N.early = null;
-    $('k-net').hidden = true; $('k-again').hidden = true; showGame(RTS.createGame(o)); notice(o.coop ? `협동 시작. 동료 ${o.players[1 - team].name}와 함께 ${o.players[2].name}을 무찌르세요` : team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
+    $('k-net').hidden = true; $('k-again').hidden = true; const NG = RTS.createGame(o); showGame(NG); fogWarn(NG); notice(o.coop ? `협동 시작. 동료 ${o.players[1 - team].name}와 함께 ${o.players[2].name}을 무찌르세요` : team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
   // ── 둘이 대전 재접속 ─────────────────────────────────
   // 한쪽 기기가 나가거나 연결이 끊기면, 남은 기기는 게임을 멈춘 채 기다린다(대전 중단으로 끝내지 않는다).
   // 나간 기기는 시작 화면의 '대전 다시 접속'으로 남은 기기의 peer에 다시 연결한다(방장이 나갔어도 같은 방식).
@@ -690,6 +693,8 @@ RTS.mount = function (root, opts = {}) {
     } else { const lb = N.lobby;
       h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : '서로 대전 (셋이 싸움)'}</dd><dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd><dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
     const vb = verState(N); if (N.stage === 'lobby' && vb) h += `<p class="k-netst bad" role="alert">${vb}</p>`;
+    const fogOff = N.stage === 'lobby' && (N.role === 'host' ? app.settings.fog === false : !!(N.lobby && N.lobby.fog === false)); // 방장 기기 설정이 두 기기에 적용된다
+    if (fogOff) h += `<p class="k-netst bad" role="alert">${FOG_OFF_MSG(N.role === 'host')}</p>`;
     h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
     el.innerHTML = h;
     const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
