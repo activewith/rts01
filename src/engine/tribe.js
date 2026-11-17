@@ -1,6 +1,6 @@
 // tribe.js — AI로 움직이는 중립 세력 '잿빛 부족'. 플레이어가 고르는 진영이 아니다.
 // 팀 번호는 RTS.TRIBE(-2). 플레이어마다 관계(neutral | ally | hostile)를 따로 가진다.
-// 공병(일꾼)을 회당에 보내면 외교 미션 2개를 받는다. 성공 2 → 동맹, 1 → 중립 유지, 0 → 적대.
+// 공병(일꾼)을 회당에 보내면 외교 미션(초등 수학 문제) 2개를 받는다. 답만큼 광석을 보내면 성공. 성공 2 → 동맹, 1 → 중립 유지, 0 → 적대.
 // 동맹이면 내가 공격받을 때 확률로 지원군을 보낸다. 적대면 주기적으로 습격한다. 직접 공격해도 적대가 된다.
 RTS.TRIBE_RULES = {
   name: '잿빛 부족',
@@ -19,6 +19,8 @@ RTS.TRIBE_RULES = {
   homeR: 9,           // 이 거리보다 멀리 있는 한가한 부족 병력은 회당으로 돌아온다
   centerGap: 12,      // 맵 가운데에서 이만큼은 떨어진 곳에 둔다
   startGap: 20,       // 시작 기지에서 최소 거리
+  quizTries: 3,       // 수학 미션에서 틀려도 되는 횟수(이만큼 틀리면 실패)
+  quizMax: 9999,      // 보낼 수 있는 최대 값
 };
 const TR = () => RTS.TRIBE_RULES;
 const REL_NAME = { neutral: '중립', ally: '동맹', hostile: '적대' };
@@ -78,13 +80,29 @@ RTS.tribeBlock = function (G, team) { const T = G.tribe; if (!T) return '부족�
   if (T.rel.some((x, i) => i !== team && x === 'ally')) return '부족이 이미 다른 세력과 동맹 중입니다';
   return null; };
 RTS.tribeRequest = function (G, team) { const block = RTS.tribeBlock(G, team); if (block) { tTell(G, team, block, 'warn'); return false; }
-  const T = G.tribe, t = G.teams[team], ids = Object.keys(RTS.defs.tribeMissions), pick = [];
+  const T = G.tribe, t = G.teams[team], lv = RTS.mathLevel(G), all = Object.keys(RTS.defs.tribeMissions), pick = [];
+  const ids = all.filter(id => { const L = RTS.defs.tribeMissions[id].lv; return !L || (lv >= L[0] && lv <= L[1]); });
   while (pick.length < 2 && pick.length < ids.length) { const id = ids[Math.floor(RTS.rand(G) * ids.length)]; if (!pick.includes(id)) pick.push(id); }
-  T.missions[team] = pick.map(id => { const d = RTS.defs.tribeMissions[id], m = { id, until: G.tick + d.time * RTS.HZ, done: null, acc: 0 }; if (d.start) d.start(G, t, m); return m; });
+  T.missions[team] = pick.map(id => { const d = RTS.defs.tribeMissions[id], m = { id, until: G.tick + d.time * RTS.HZ, done: null, acc: 0 };
+    if (d.quiz) { const [q, ans] = d.quiz(G, lv, (a, b) => a + Math.floor(RTS.rand(G) * (b - a + 1))); m.q = q; m.ans = ans; m.tries = 0; }
+    if (d.start) d.start(G, t, m); return m; });
   tTell(G, team, '외교 미션: ' + pick.map(id => RTS.defs.tribeMissions[id].name).join(', '), 'ok'); RTS.emit(G, 'tribeMissions', { team });
   return true; };
-// 미션 진행도 [현재, 목표]
-RTS.missionProg = (G, team, m) => { const d = RTS.defs.tribeMissions[m.id]; return [Math.max(0, Math.min(d.need, d.prog(G, G.teams[team], m))), d.need]; };
+// 미션 진행도 [현재, 목표]. 수학 미션은 [성공 1/0, 1]
+RTS.missionProg = (G, team, m) => { const d = RTS.defs.tribeMissions[m.id]; if (d.quiz) return [m.done === true ? 1 : 0, 1]; return [Math.max(0, Math.min(d.need, d.prog(G, G.teams[team], m))), d.need]; };
+// 학습 문제 수준 1~3(설정 mathLevel)
+RTS.mathLevel = G => Math.max(1, Math.min(3, Math.round(RTS.cfg(G).mathLevel || 1)));
+// 수학 미션 답 보내기: 답과 같으면 그만큼 광석을 내고 성공. 틀리면 광석은 그대로, 많다/적다 힌트. quizTries번 틀리면 실패
+RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.teams[team]; if (!T || !t) return false;
+  const L = T.missions[team], m = L && L[idx], d = m && RTS.defs.tribeMissions[m.id]; if (!m || !d || !d.quiz || m.done !== null) return false;
+  const v = Math.floor(+value); if (!(v >= 0 && v <= TR().quizMax)) { tTell(G, team, '보낼 광석 수를 숫자로 넣으세요', 'warn'); return false; }
+  if (v > t.res.ore) { tTell(G, team, `가진 광석(${Math.floor(t.res.ore)})보다 많이 보낼 수 없습니다. 광석을 더 모으세요`, 'warn'); return false; }
+  if (v === m.ans) { t.res.ore -= v; m.done = true; tTell(G, team, `정답! ${m.q} = ${m.ans}. 광석 ${v}만큼 바쳤습니다`, 'ok'); RTS.emit(G, 'tribeAnswer', { team, ok: true }); return true; }
+  m.tries++; const left = TR().quizTries - m.tries;
+  if (left <= 0) { m.done = false; tTell(G, team, `외교 미션 실패: ${d.name}. ${m.q}의 답은 ${m.ans}입니다`, 'warn'); }
+  else tTell(G, team, `틀렸습니다. 답은 ${v}보다 ${v < m.ans ? '큽니다' : '작습니다'} (남은 기회 ${left}번)`, 'warn');
+  RTS.emit(G, 'tribeAnswer', { team, ok: false }); return false; };
+RTS.commands.tribeAnswer = (G, team, c) => { RTS.tribeAnswer(G, team, c.mission | 0, c.value); };
 
 // 공병이 회당까지 걸어가서 외교를 신청하고, 끝나면 일터로 돌아간다
 RTS.orders.envoy = function (G, u, o) { const h = G.byId[o.target];
@@ -130,8 +148,8 @@ RTS.addSystem({ id: 'tribe', run(G) {
   // 미션 진행
   G.teams.forEach(t => { const L = T.missions[t.id]; if (!L) return;
     for (const m of L) { if (m.done !== null) continue; const d = RTS.defs.tribeMissions[m.id]; if (d.tick) d.tick(G, t, m);
-      if (d.prog(G, t, m) >= d.need) { if (d.pay) for (const k of Object.keys(d.pay)) t.res[k] -= d.pay[k]; m.done = true; tTell(G, t.id, `외교 미션 성공: ${d.name}`, 'ok'); }
-      else if (G.tick >= m.until) { m.done = false; tTell(G, t.id, `외교 미션 실패: ${d.name}`, 'warn'); } }
+      if (!d.quiz && d.prog(G, t, m) >= d.need) { if (d.pay) for (const k of Object.keys(d.pay)) t.res[k] -= d.pay[k]; m.done = true; tTell(G, t.id, `외교 미션 성공: ${d.name}`, 'ok'); }
+      else if (G.tick >= m.until) { m.done = false; tTell(G, t.id, `외교 미션 실패(시간 초과): ${d.name}` + (d.quiz ? `. ${m.q}의 답은 ${m.ans}입니다` : ''), 'warn'); } }
     if (L.every(m => m.done !== null)) tribeSettle(G, t.id); });
   if (T.dead || !h) return;
   const units = tribeUnits(G);
@@ -148,7 +166,7 @@ RTS.addSystem({ id: 'tribe', run(G) {
     tTell(G, t.id, `${R.name}이 습격해 옵니다 (${go.length}기)`, 'warn'); RTS.emit(G, 'tribeRaid', { team: t.id, n: go.length }); });
 } }, { before: 'cleanup' });
 
-// 상대 AI: 부족을 찾으면 70% 확률로 동맹을 노린다. 공병을 보내고, 위치가 필요한 미션은 병력을 보내 돕는다
+// 상대 AI: 부족을 찾으면 70% 확률로 동맹을 노린다. 공병을 보내고, 광석이 모이면 수학 미션에 답한다
 RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead) return; const S = t.aiState, h = G.byId[T.hall], sec = G.tick / RTS.HZ; if (!h) return;
   const D = RTS.defs.entities, army = units.filter(u => !D[u.def].gather && !D[u.def].uncontrollable && u.id !== S.scout);
   if (!T.found[t.id]) { if (sec > diff.scoutAt + 40 && (!S.tScout || !G.byId[S.tScout])) { const u = army[0] || units.find(x => D[x.def].gather && !x.cargo); if (u) { S.tScout = u.id; RTS.issue(G, u, { type: 'move', x: h.x, y: h.y + 4 }); } } return; }
@@ -157,7 +175,8 @@ RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead
   const L = T.missions[t.id];
   if (!L) { if (RTS.tribeBlock(G, t.id)) return; const cur = S.envoy && G.byId[S.envoy]; if (cur && !cur.dead && cur.order && cur.order.type === 'envoy') return;
     const w = units.find(x => D[x.def].gather && !x.cargo && x.order && x.order.type === 'gather' && x.order.phase === 'go') || units.find(x => D[x.def].gather); if (w) { S.envoy = w.id; RTS.issue(G, w, { type: 'envoy', target: h.id }); } return; }
-  for (const m of L) { if (m.done !== null) continue;
-    if (m.id === 'guard') { const near = army.filter(u => Math.hypot(u.x - h.x, u.y - h.y) < 9); const need = 5 - near.length; if (need > 0) army.filter(u => Math.hypot(u.x - h.x, u.y - h.y) >= 9 && !(u.order && u.order.tribe)).slice(0, need).forEach(u => RTS.issue(G, u, { type: 'move', x: h.x + Math.cos(u.id) * 4, y: h.y + Math.sin(u.id) * 4, tribe: 1 })); }
-    if (m.id === 'scout' && !(S.tScoutM && G.byId[S.tScoutM] && G.byId[S.tScoutM].order)) { const u = army.find(x => !D[x.def].air) || army[0]; if (u) { S.tScoutM = u.id; RTS.issue(G, u, { type: 'move', x: m.x, y: m.y }); } } }
+  // 수학 미션: 광석이 답만큼 모이면 답한다. 가끔(20%) 틀리고, 틀리면 힌트 방향으로 고친다
+  L.forEach((m, i) => { const d = RTS.defs.tribeMissions[m.id]; if (m.done !== null || !d.quiz || G.tick < (S.tQuizAt || 0)) return;
+    const v = m.hint !== undefined ? m.ans : RTS.rand(G) < .2 ? Math.max(1, m.ans + (RTS.rand(G) < .5 ? -10 : 10)) : m.ans; if (t.res.ore < v) return;
+    S.tQuizAt = G.tick + 4 * RTS.HZ; if (!RTS.tribeAnswer(G, t.id, i, v) && m.done === null) m.hint = 1; });
 };

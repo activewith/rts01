@@ -84,6 +84,9 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tribe .tr-m{border-top:1px solid var(--line);padding-top:4px}.k-tribe .tr-h{display:flex;justify-content:space-between;font-weight:600}.k-tribe .tr-m.ok .tr-h{color:var(--ok)}.k-tribe .tr-m.bad .tr-h{color:var(--bad)}
 .k-tribe p{margin:1px 0 3px;color:var(--dim);font-size:12px;line-height:1.35}.k-tribe i{display:block;height:5px;background:#0a0f18}.k-tribe s{display:block;height:100%;background:#7bd65a;text-decoration:none}.k-tribe small{font:12px var(--num);color:var(--dim)}
 .k-game.demo .k-tribe{display:none}
+.k-tribe .tr-q{cursor:pointer}.k-tribe .tr-q.sel{outline:2px solid #7bd65a;outline-offset:2px}.k-tribe .tr-ask{color:#e6f7c6;font-size:14px;line-height:1.45}.k-tribe .tr-ask b{font:700 17px var(--num);color:#ffd36b;white-space:nowrap}
+.k-tribe .tr-ans{display:flex;align-items:baseline;gap:8px;border-top:1px solid var(--line);padding-top:5px}.k-tribe .tr-ans output{font:700 20px var(--num);color:#ffd36b;min-width:4ch}.k-tribe .tr-ans span{font-size:12px;color:var(--dim)}
+.k-tribe .tr-pad{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}.k-tribe .tr-pad button{margin:0;padding:0;height:32px;font:600 15px var(--num);touch-action:manipulation}.k-tribe .tr-pad .go{grid-column:span 1;font-size:12px;background:#2f5a26;border-color:#7bd65a;color:#e9ffd9}
 .k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:4px 12px;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 .k-paused{position:absolute;inset:0;display:grid;place-items:center;font:400 44px var(--display);letter-spacing:.06em;background:rgba(8,12,22,.45);pointer-events:none}
 .k-bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;background:var(--panel);border-top:2px solid var(--brass);padding-block:8px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));min-height:176px}
@@ -194,7 +197,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '8264d20';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '9a77686';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -1491,7 +1494,7 @@ RTS.aiDiplomacy = function (G, t, diff, units) {
 
 // tribe.js — AI로 움직이는 중립 세력 '잿빛 부족'. 플레이어가 고르는 진영이 아니다.
 // 팀 번호는 RTS.TRIBE(-2). 플레이어마다 관계(neutral | ally | hostile)를 따로 가진다.
-// 공병(일꾼)을 회당에 보내면 외교 미션 2개를 받는다. 성공 2 → 동맹, 1 → 중립 유지, 0 → 적대.
+// 공병(일꾼)을 회당에 보내면 외교 미션(초등 수학 문제) 2개를 받는다. 답만큼 광석을 보내면 성공. 성공 2 → 동맹, 1 → 중립 유지, 0 → 적대.
 // 동맹이면 내가 공격받을 때 확률로 지원군을 보낸다. 적대면 주기적으로 습격한다. 직접 공격해도 적대가 된다.
 RTS.TRIBE_RULES = {
   name: '잿빛 부족',
@@ -1510,6 +1513,8 @@ RTS.TRIBE_RULES = {
   homeR: 9,           // 이 거리보다 멀리 있는 한가한 부족 병력은 회당으로 돌아온다
   centerGap: 12,      // 맵 가운데에서 이만큼은 떨어진 곳에 둔다
   startGap: 20,       // 시작 기지에서 최소 거리
+  quizTries: 3,       // 수학 미션에서 틀려도 되는 횟수(이만큼 틀리면 실패)
+  quizMax: 9999,      // 보낼 수 있는 최대 값
 };
 const TR = () => RTS.TRIBE_RULES;
 const REL_NAME = { neutral: '중립', ally: '동맹', hostile: '적대' };
@@ -1569,13 +1574,29 @@ RTS.tribeBlock = function (G, team) { const T = G.tribe; if (!T) return '부족�
   if (T.rel.some((x, i) => i !== team && x === 'ally')) return '부족이 이미 다른 세력과 동맹 중입니다';
   return null; };
 RTS.tribeRequest = function (G, team) { const block = RTS.tribeBlock(G, team); if (block) { tTell(G, team, block, 'warn'); return false; }
-  const T = G.tribe, t = G.teams[team], ids = Object.keys(RTS.defs.tribeMissions), pick = [];
+  const T = G.tribe, t = G.teams[team], lv = RTS.mathLevel(G), all = Object.keys(RTS.defs.tribeMissions), pick = [];
+  const ids = all.filter(id => { const L = RTS.defs.tribeMissions[id].lv; return !L || (lv >= L[0] && lv <= L[1]); });
   while (pick.length < 2 && pick.length < ids.length) { const id = ids[Math.floor(RTS.rand(G) * ids.length)]; if (!pick.includes(id)) pick.push(id); }
-  T.missions[team] = pick.map(id => { const d = RTS.defs.tribeMissions[id], m = { id, until: G.tick + d.time * RTS.HZ, done: null, acc: 0 }; if (d.start) d.start(G, t, m); return m; });
+  T.missions[team] = pick.map(id => { const d = RTS.defs.tribeMissions[id], m = { id, until: G.tick + d.time * RTS.HZ, done: null, acc: 0 };
+    if (d.quiz) { const [q, ans] = d.quiz(G, lv, (a, b) => a + Math.floor(RTS.rand(G) * (b - a + 1))); m.q = q; m.ans = ans; m.tries = 0; }
+    if (d.start) d.start(G, t, m); return m; });
   tTell(G, team, '외교 미션: ' + pick.map(id => RTS.defs.tribeMissions[id].name).join(', '), 'ok'); RTS.emit(G, 'tribeMissions', { team });
   return true; };
-// 미션 진행도 [현재, 목표]
-RTS.missionProg = (G, team, m) => { const d = RTS.defs.tribeMissions[m.id]; return [Math.max(0, Math.min(d.need, d.prog(G, G.teams[team], m))), d.need]; };
+// 미션 진행도 [현재, 목표]. 수학 미션은 [성공 1/0, 1]
+RTS.missionProg = (G, team, m) => { const d = RTS.defs.tribeMissions[m.id]; if (d.quiz) return [m.done === true ? 1 : 0, 1]; return [Math.max(0, Math.min(d.need, d.prog(G, G.teams[team], m))), d.need]; };
+// 학습 문제 수준 1~3(설정 mathLevel)
+RTS.mathLevel = G => Math.max(1, Math.min(3, Math.round(RTS.cfg(G).mathLevel || 1)));
+// 수학 미션 답 보내기: 답과 같으면 그만큼 광석을 내고 성공. 틀리면 광석은 그대로, 많다/적다 힌트. quizTries번 틀리면 실패
+RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.teams[team]; if (!T || !t) return false;
+  const L = T.missions[team], m = L && L[idx], d = m && RTS.defs.tribeMissions[m.id]; if (!m || !d || !d.quiz || m.done !== null) return false;
+  const v = Math.floor(+value); if (!(v >= 0 && v <= TR().quizMax)) { tTell(G, team, '보낼 광석 수를 숫자로 넣으세요', 'warn'); return false; }
+  if (v > t.res.ore) { tTell(G, team, `가진 광석(${Math.floor(t.res.ore)})보다 많이 보낼 수 없습니다. 광석을 더 모으세요`, 'warn'); return false; }
+  if (v === m.ans) { t.res.ore -= v; m.done = true; tTell(G, team, `정답! ${m.q} = ${m.ans}. 광석 ${v}만큼 바쳤습니다`, 'ok'); RTS.emit(G, 'tribeAnswer', { team, ok: true }); return true; }
+  m.tries++; const left = TR().quizTries - m.tries;
+  if (left <= 0) { m.done = false; tTell(G, team, `외교 미션 실패: ${d.name}. ${m.q}의 답은 ${m.ans}입니다`, 'warn'); }
+  else tTell(G, team, `틀렸습니다. 답은 ${v}보다 ${v < m.ans ? '큽니다' : '작습니다'} (남은 기회 ${left}번)`, 'warn');
+  RTS.emit(G, 'tribeAnswer', { team, ok: false }); return false; };
+RTS.commands.tribeAnswer = (G, team, c) => { RTS.tribeAnswer(G, team, c.mission | 0, c.value); };
 
 // 공병이 회당까지 걸어가서 외교를 신청하고, 끝나면 일터로 돌아간다
 RTS.orders.envoy = function (G, u, o) { const h = G.byId[o.target];
@@ -1621,8 +1642,8 @@ RTS.addSystem({ id: 'tribe', run(G) {
   // 미션 진행
   G.teams.forEach(t => { const L = T.missions[t.id]; if (!L) return;
     for (const m of L) { if (m.done !== null) continue; const d = RTS.defs.tribeMissions[m.id]; if (d.tick) d.tick(G, t, m);
-      if (d.prog(G, t, m) >= d.need) { if (d.pay) for (const k of Object.keys(d.pay)) t.res[k] -= d.pay[k]; m.done = true; tTell(G, t.id, `외교 미션 성공: ${d.name}`, 'ok'); }
-      else if (G.tick >= m.until) { m.done = false; tTell(G, t.id, `외교 미션 실패: ${d.name}`, 'warn'); } }
+      if (!d.quiz && d.prog(G, t, m) >= d.need) { if (d.pay) for (const k of Object.keys(d.pay)) t.res[k] -= d.pay[k]; m.done = true; tTell(G, t.id, `외교 미션 성공: ${d.name}`, 'ok'); }
+      else if (G.tick >= m.until) { m.done = false; tTell(G, t.id, `외교 미션 실패(시간 초과): ${d.name}` + (d.quiz ? `. ${m.q}의 답은 ${m.ans}입니다` : ''), 'warn'); } }
     if (L.every(m => m.done !== null)) tribeSettle(G, t.id); });
   if (T.dead || !h) return;
   const units = tribeUnits(G);
@@ -1639,7 +1660,7 @@ RTS.addSystem({ id: 'tribe', run(G) {
     tTell(G, t.id, `${R.name}이 습격해 옵니다 (${go.length}기)`, 'warn'); RTS.emit(G, 'tribeRaid', { team: t.id, n: go.length }); });
 } }, { before: 'cleanup' });
 
-// 상대 AI: 부족을 찾으면 70% 확률로 동맹을 노린다. 공병을 보내고, 위치가 필요한 미션은 병력을 보내 돕는다
+// 상대 AI: 부족을 찾으면 70% 확률로 동맹을 노린다. 공병을 보내고, 광석이 모이면 수학 미션에 답한다
 RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead) return; const S = t.aiState, h = G.byId[T.hall], sec = G.tick / RTS.HZ; if (!h) return;
   const D = RTS.defs.entities, army = units.filter(u => !D[u.def].gather && !D[u.def].uncontrollable && u.id !== S.scout);
   if (!T.found[t.id]) { if (sec > diff.scoutAt + 40 && (!S.tScout || !G.byId[S.tScout])) { const u = army[0] || units.find(x => D[x.def].gather && !x.cargo); if (u) { S.tScout = u.id; RTS.issue(G, u, { type: 'move', x: h.x, y: h.y + 4 }); } } return; }
@@ -1648,9 +1669,10 @@ RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead
   const L = T.missions[t.id];
   if (!L) { if (RTS.tribeBlock(G, t.id)) return; const cur = S.envoy && G.byId[S.envoy]; if (cur && !cur.dead && cur.order && cur.order.type === 'envoy') return;
     const w = units.find(x => D[x.def].gather && !x.cargo && x.order && x.order.type === 'gather' && x.order.phase === 'go') || units.find(x => D[x.def].gather); if (w) { S.envoy = w.id; RTS.issue(G, w, { type: 'envoy', target: h.id }); } return; }
-  for (const m of L) { if (m.done !== null) continue;
-    if (m.id === 'guard') { const near = army.filter(u => Math.hypot(u.x - h.x, u.y - h.y) < 9); const need = 5 - near.length; if (need > 0) army.filter(u => Math.hypot(u.x - h.x, u.y - h.y) >= 9 && !(u.order && u.order.tribe)).slice(0, need).forEach(u => RTS.issue(G, u, { type: 'move', x: h.x + Math.cos(u.id) * 4, y: h.y + Math.sin(u.id) * 4, tribe: 1 })); }
-    if (m.id === 'scout' && !(S.tScoutM && G.byId[S.tScoutM] && G.byId[S.tScoutM].order)) { const u = army.find(x => !D[x.def].air) || army[0]; if (u) { S.tScoutM = u.id; RTS.issue(G, u, { type: 'move', x: m.x, y: m.y }); } } }
+  // 수학 미션: 광석이 답만큼 모이면 답한다. 가끔(20%) 틀리고, 틀리면 힌트 방향으로 고친다
+  L.forEach((m, i) => { const d = RTS.defs.tribeMissions[m.id]; if (m.done !== null || !d.quiz || G.tick < (S.tQuizAt || 0)) return;
+    const v = m.hint !== undefined ? m.ans : RTS.rand(G) < .2 ? Math.max(1, m.ans + (RTS.rand(G) < .5 ? -10 : 10)) : m.ans; if (t.res.ore < v) return;
+    S.tQuizAt = G.tick + 4 * RTS.HZ; if (!RTS.tribeAnswer(G, t.id, i, v) && m.done === null) m.hint = 1; });
 };
 
 // ai.js — 데이터 주도 AI. 진영의 ai 블록(빌드 오더, 병력 비율, 연구 순서)만 읽는다.
@@ -2220,19 +2242,40 @@ RTS.mod({
     rail:   { name: '철로조합', base: .35, need: '완공 건물 5개 이상', perkText: '보급 +12, 90초마다 에테르 80 수레', check: (G, t) => Object.values(t.have).reduce((s, n) => s + n, 0) >= 5, perk: { supply: 12, caravan: { res: 'gas', amount: 80, every: 90 } } },
     roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
   },
-  // 잿빛 부족 외교 미션. 공병이 회당에 가면 이 중 2개를 무작위로 받는다.
-  // need 목표치, prog(G,t,m) 현재치, time 제한(초). start는 시작 시 기준값, tick은 1초마다, pay는 성공 순간 내는 자원
+  // 잿빛 부족 외교 미션: 초등 수학 문제. 공병이 회당에 가면 수준(설정 mathLevel)에 맞는 문제 2개를 무작위로 받는다.
+  // 답만큼 광석을 부족 패널에서 보내면 성공. 틀리면 '더 많다/적다' 힌트, 3번 틀리면 실패(틀린 답은 광석을 내지 않는다).
+  // quiz(G, lv, ri)는 [문제 문장, 답]을 돌려준다. ri(a,b)는 a~b 정수(시드 난수). lv: 1 = 1~2학년, 2 = 3~4학년, 3 = 5~6학년
   tribeMissions: {
-    oreGift:  { name: '광석 공물', time: 100, need: 250, pay: { ore: 250 }, text: '광석 250을 모으면 자동으로 바친다', prog: (G, t) => t.res.ore },
-    gasGift:  { name: '에테르 공물', time: 150, need: 100, pay: { gas: 100 }, text: '에테르 100을 모으면 자동으로 바친다', prog: (G, t) => t.res.gas },
-    guard:    { name: '회당 경비', time: 150, need: 20, unit: '초', text: '전투 유닛 4기 이상을 회당 8칸 안에 모두 합쳐 20초 둔다', prog: (G, t, m) => m.acc,
-      tick(G, t, m) { const T = G.tribe; let n = 0; for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable && Math.hypot(e.x - T.x, e.y - T.y) < 8) n++; if (n >= 4) m.acc++; } },
-    hunt:     { name: '침입자 토벌', time: 180, need: 4, text: '상대 유닛이나 건물 4개를 파괴한다', start: (G, t, m) => { m.k0 = t.stats.kills; }, prog: (G, t, m) => t.stats.kills - m.k0 },
-    scout:    { name: '정찰 의뢰', time: 120, need: 1, text: '표시된 지점에 유닛을 보낸다(5칸 안)', prog: (G, t, m) => m.acc,
-      start(G, t, m) { const hq = G.ents.find(e => e.team === t.id && RTS.defOf(e).dropoff) || { x: 0, y: 0 }, L = G.bases.filter(b => Math.hypot(b.x - hq.x, b.y - hq.y) > 15 && b.start === undefined); const b = L[Math.floor(RTS.rand(G) * L.length)] || G.bases[0]; m.x = b.x; m.y = b.y; },
-      tick(G, t, m) { for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && Math.hypot(e.x - m.x, e.y - m.y) < 5) { m.acc = 1; return; } } },
-    build:    { name: '교역로 건설', time: 150, need: 2, text: '건물 2개를 새로 완공한다', start: (G, t, m) => { m.b0 = Object.values(t.have).reduce((s, n) => s + n, 0); }, prog: (G, t, m) => Object.values(t.have).reduce((s, n) => s + n, 0) - m.b0 },
-    muster:   { name: '병력 과시', time: 150, need: 8, text: '전투 유닛 8기를 동시에 갖춘다', prog: (G, t) => G.ents.filter(e => e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length },
+    add:   { name: '덧셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { if (ri(0, 1)) { const a = ri(1, 15) * 10, b = ri(1, 10) * 10; return [`${a} + ${b}`, a + b]; } const a = ri(12, 89), b = ri(11, 99); return [`${a} + ${b}`, a + b]; }
+      if (lv === 2) { const a = ri(105, 199), b = ri(25, 99); return [`${a} + ${b}`, a + b]; }
+      const a = ri(35, 99), b = ri(35, 99), c = ri(25, 99); return [`${a} + ${b} + ${c}`, a + b + c]; } },
+    sub:   { name: '뺄셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(40, 160), b = ri(12, a - 15); return [`${a} − ${b}`, a - b]; }
+      if (lv === 2) { const n = ri(45, 280), b = ri(55, 199); return [`${n + b} − ${b}`, n]; }
+      const n = ri(40, 280), b = ri(40, 150), c = ri(20, 99); return [`${n + b + c} − ${b} − ${c}`, n]; } },
+    mul:   { name: '곱셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(2, 5), b = ri(2, 9); return [`${a} × ${b}`, a * b]; }
+      if (lv === 2) { if (ri(0, 1)) { const a = ri(6, 9), b = ri(3, 9); return [`${a} × ${b}`, a * b]; } const b = ri(2, 6), a = ri(12, Math.floor(280 / b)); return [`${a} × ${b}`, a * b]; }
+      if (ri(0, 1)) { const a = ri(2, 6), b = ri(3, 9), c = ri(2, 5); return [`${a} × ${b} × ${c}`, a * b * c]; } const a = ri(11, 25), b = ri(11, 14); return [`${a} × ${b}`, a * b]; } },
+    place: { name: '자릿값', time: 180, lv: [1, 2], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(1, 2), b = ri(0, 9), c = ri(1, 9); return [`100이 ${a}개, 10이 ${b}개, 1이 ${c}개인 수`, a * 100 + b * 10 + c]; }
+      const b = ri(11, 29), c = ri(1, 9); return [`10이 ${b}개, 1이 ${c}개인 수`, b * 10 + c]; } },
+    word:  { name: '문장제', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const n = ri(3, 9), k = [5, 10, 20][ri(0, 2)]; return [`전사 ${n}명에게 광석을 ${k}씩 나눠 주면 모두 얼마일까?`, n * k]; }
+      if (lv === 2) { const n = ri(3, 8), q = ri(6, 30); return [`광석 ${n * q}을 마을 ${n}곳에 똑같이 나누면 한 곳에 얼마일까?`, q]; }
+      const per = ri(12, 30), n = ri(4, 9), left = ri(10, 60); return [`망루 ${n}개를 고치는 데 하나에 광석 ${per}씩 들고, ${left}이 남았다. 처음 광석은 얼마였을까?`, per * n + left]; } },
+    div:   { name: '나눗셈', time: 180, lv: [2, 3], quiz(G, lv, ri) {
+      if (lv === 2) { const n = ri(2, 9), q = ri(2, 9) * 10; return [`${n * q} ÷ ${n}`, q]; }
+      const n = ri(3, 9), q = ri(12, Math.min(60, Math.floor(540 / n))); return [`${n * q} ÷ ${n}`, q]; } },
+    mixed: { name: '혼합 계산', time: 180, lv: [2, 3], quiz(G, lv, ri) {
+      if (lv === 2) { const a = ri(5, 20) * 10, b = ri(3, 12) * 10, c = ri(1, Math.floor((a + b) / 10) - 1) * 10; return [`${a} + ${b} − ${c}`, a + b - c]; }
+      const k = ri(0, 2);
+      if (k === 0) { const a = ri(10, 90), b = ri(3, 9), c = ri(4, 20); return [`${a} + ${b} × ${c}`, a + b * c]; }
+      if (k === 1) { const b = ri(5, 30), a = b + ri(8, 40), c = ri(3, 6); return [`(${a} − ${b}) × ${c}`, (a - b) * c]; }
+      const a = ri(6, 15), b = ri(8, 20), c = ri(10, a * b - 20); return [`${a} × ${b} − ${c}`, a * b - c]; } },
+    frac:  { name: '분수', time: 180, lv: [3, 3], quiz(G, lv, ri) {
+      const n = [2, 3, 4, 5, 6, 8, 10][ri(0, 6)], k = ri(1, n - 1), m = ri(3, Math.floor(300 / n)); return [`${n * m}의 ${k}/${n}`, k * m]; } },
   },
   factions: {
     pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', defense: 'p_turret', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',
@@ -2321,6 +2364,7 @@ RTS.SETTINGS = [
     { id: 'supplyCap', label: '최대 보급', min: 40, max: 200, step: 10, def: 100 },
     { id: 'fog', label: '전장의 안개', type: 'toggle', def: true, startOnly: true },
     { id: 'randomStart', label: '시작 위치 무작위', desc: '맵마다 시작 위치 후보 4곳 이상 중에서 무작위로 고릅니다. 끄면 예전처럼 맵의 기본 두 자리(대각 대치)', type: 'toggle', def: true, startOnly: true },
+    { id: 'mathLevel', label: '부족 수학 문제 수준', desc: '잿빛 부족 외교 미션의 문제. 1~2학년: 두 자리 덧셈·뺄셈, 2~5단, 자릿값 / 3~4학년: 세 자리, 구구단, 나눗셈 / 5~6학년: 혼합 계산, 분수', min: 1, max: 3, step: 1, def: 1, labels: ['1~2학년', '3~4학년', '5~6학년'] },
   ] },
   { group: '시장 뉴스', items: [
     { id: 'newsEvery', label: '뉴스 평균 간격', desc: '실제 간격은 이 값의 ±33%에서 무작위로 정해집니다', min: 0, max: 180, step: 10, def: 60, unit: '초', zero: '뉴스 없음' },
@@ -3695,14 +3739,23 @@ RTS.mount = function (root, opts = {}) {
   function renderTribe() { const G = app.G, T = G.tribe, el = $('k-tribe'), me = app.team; if (!T || me < 0 || !T.found[me]) { if (!el.hidden) { el.hidden = true; app.tribeSig = ''; } return; }
     const r = T.dead ? 'gone' : T.rel[me], L = T.missions[me], wait = T.wait[me] > G.tick ? Math.ceil((T.wait[me] - G.tick) / 20) : 0;
     let h = `<div class="tr-top"><b>잿빛 부족</b><em class="tr-${r}">${T.dead ? '회당 무너짐' : RTS.tribeRelName(r)}</em><button type="button" class="tr-go" aria-label="회당 보기">보기</button></div>`;
-    if (L) h += L.map(m => { const d = RTS.defs.tribeMissions[m.id], [cur, need] = RTS.missionProg(G, me, m), left = Math.max(0, Math.ceil((m.until - G.tick) / 20)), st = m.done === true ? '성공' : m.done === false ? '실패' : left + '초';
-      return `<div class="tr-m ${m.done === true ? 'ok' : m.done === false ? 'bad' : ''}"><div class="tr-h"><span>${d.name}</span><span>${st}</span></div><p>${d.text}</p><i><s style="width:${Math.round(cur / need * 100)}%"></s></i><small>${Math.floor(cur)} / ${need}${d.unit || ''}</small>${m.id === 'scout' && m.done === null ? `<button type="button" class="tr-pt" data-x="${m.x}" data-y="${m.y}">지점 보기</button>` : ''}</div>`; }).join('');
+    if (L) { const key = L.map(m => m.q + m.until).join('|'), A = app.tAns && app.tAns.key === key ? app.tAns : (app.tAns = { key, i: -1, v: '' });
+      if (!(L[A.i] && L[A.i].q !== undefined && L[A.i].done === null)) { A.i = L.findIndex(m => m.q !== undefined && m.done === null); A.v = ''; }
+      h += L.map((m, i) => { const d = RTS.defs.tribeMissions[m.id], [cur, need] = RTS.missionProg(G, me, m), left = Math.max(0, Math.ceil((m.until - G.tick) / 20)), st = m.done === true ? '성공' : m.done === false ? '실패' : left + '초';
+        if (d.quiz) { const ask = m.q.endsWith('?') ? `${m.q}<br>그 답만큼 광석을 보내라` : `광석을 <b>${m.q}</b>만큼 보내라`, tries = RTS.TRIBE_RULES.quizTries, chance = '●'.repeat(Math.max(0, tries - m.tries)) + '○'.repeat(Math.min(tries, m.tries));
+          return `<div class="tr-m tr-q ${m.done === true ? 'ok' : m.done === false ? 'bad' : ''}${i === A.i ? ' sel' : ''}" data-i="${i}"><div class="tr-h"><span>${d.name}</span><span>${st}</span></div><p class="tr-ask">${ask}</p><small>${m.done === null ? '기회 ' + chance : m.done ? '정답 ' + m.ans : '답 ' + m.ans}</small></div>`; }
+        return `<div class="tr-m ${m.done === true ? 'ok' : m.done === false ? 'bad' : ''}"><div class="tr-h"><span>${d.name}</span><span>${st}</span></div><p>${d.text}</p><i><s style="width:${Math.round(cur / need * 100)}%"></s></i><small>${Math.floor(cur)} / ${need}${d.unit || ''}</small></div>`; }).join('');
+      if (A.i >= 0) h += `<div class="tr-ans"><output>${A.v || '?'}</output><span>보낼 광석</span></div><div class="tr-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '←', '보내기'].map(k => `<button type="button" data-k="${k}"${k === '보내기' ? ' class="go"' : ''}>${k}</button>`).join('')}</div>`; }
     else if (!T.dead && r === 'neutral') h += `<p class="tr-n">${wait ? `다시 외교까지 ${wait}초` : (RTS.tribeBlock(G, me) || '공병을 선택하고 회당을 우클릭하면 미션 2개를 받습니다. 2개 성공 동맹 · 1개 중립 · 0개 적대')}</p>`;
     else if (r === 'ally') h += `<p class="tr-n">공격받으면 ${Math.round(RTS.TRIBE_RULES.helpChance * 100)}% 확률로 지원군을 보냅니다</p>`;
     else if (r === 'hostile') h += `<p class="tr-n">주기적으로 습격해 옵니다. 회당을 무너뜨리면 광석 +${RTS.TRIBE_RULES.loot}</p>`;
     if (h === app.tribeSig) return; app.tribeSig = h; el.innerHTML = h; el.hidden = false;
     el.querySelector('.tr-go').onclick = () => { const e = G.byId[T.hall]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
-    el.querySelectorAll('.tr-pt').forEach(b => { b.onclick = () => centerOn(+b.dataset.x, +b.dataset.y); }); }
+    // 숫자판: 패널이 1초마다 다시 그려지므로 click 대신 pointerdown으로 받는다
+    el.querySelectorAll('.tr-q').forEach(b => { b.onpointerdown = () => { const L = T.missions[me], i = +b.dataset.i; if (app.tAns && L && L[i] && L[i].done === null && app.tAns.i !== i) { app.tAns.i = i; app.tAns.v = ''; renderTribe(); } }; });
+    el.querySelectorAll('.tr-pad button').forEach(b => { b.onpointerdown = ev => { ev.preventDefault(); const A = app.tAns, k = b.dataset.k; if (!A || A.i < 0) return;
+      if (k === '←') A.v = A.v.slice(0, -1); else if (k === '보내기') { if (!A.v) { notice('숫자를 먼저 누르세요', 'warn'); return; } send({ type: 'tribeAnswer', mission: A.i, value: +A.v }); A.v = ''; } else if (A.v.length < 4) A.v = (A.v === '0' ? '' : A.v) + k;
+      renderTribe(); }; }); }
   function renderMini() { const G = app.G, c = mini.getContext('2d'), W = mini.width, H = mini.height, sc = Math.min(W / G.w, H / G.h), ox = (W - G.w * sc) / 2, oy = (H - G.h * sc) / 2; app.miniT = { sc, ox, oy };
     c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
     const t = G.teams[app.team], fogged = t && !G.nofog;
@@ -3883,7 +3936,7 @@ RTS.mount = function (root, opts = {}) {
   window.addEventListener('keydown', onKey); window.addEventListener('keyup', offKey);
   // ── 설정 메뉴: RTS.SETTINGS를 읽어 자동 생성한다. 게임 중에는 일시정지되고 바로 적용된다 ──
   const liveGame = () => app.G && !app.demo && !app.G.over;
-  const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.zero && v === 0 ? s.zero : v + (s.unit || '');
+  const fmtSet = (s, v) => s.type === 'toggle' ? (v ? '켬' : '끔') : s.labels ? s.labels[v - s.min] : s.zero && v === 0 ? s.zero : v + (s.unit || '');
   function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (s.id === 'music') applyMusic(); if (s.id === 'voiceVol') $('k-voiceout').volume = v / 100; if (liveGame() && !app.net && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
   function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
     el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live && app.net ? '둘이 대전 중에는 게임 규칙을 바꿀 수 없습니다. 화면과 소리만 바꿀 수 있고, 게임은 계속 진행됩니다.' : live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
