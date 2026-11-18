@@ -164,19 +164,40 @@ RTS.mod({
     rail:   { name: '철로조합', base: .35, need: '완공 건물 5개 이상', perkText: '보급 +12, 90초마다 에테르 80 수레', check: (G, t) => Object.values(t.have).reduce((s, n) => s + n, 0) >= 5, perk: { supply: 12, caravan: { res: 'gas', amount: 80, every: 90 } } },
     roam:   { name: '유랑용병단', base: .3, need: '전투 유닛 8기 이상', perkText: '정예 용병 5기 즉시 합류', check: (G, t) => G.ents.filter(e => e.team === t.id && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length >= 8, perk: { mercs: 5 } },
   },
-  // 잿빛 부족 외교 미션. 공병이 회당에 가면 이 중 2개를 무작위로 받는다.
-  // need 목표치, prog(G,t,m) 현재치, time 제한(초). start는 시작 시 기준값, tick은 1초마다, pay는 성공 순간 내는 자원
+  // 잿빛 부족 외교 미션: 초등 수학 문제. 공병이 회당에 가면 수준(설정 mathLevel)에 맞는 문제 2개를 무작위로 받는다.
+  // 답만큼 광석을 부족 패널에서 보내면 성공. 틀리면 '더 많다/적다' 힌트, 3번 틀리면 실패(틀린 답은 광석을 내지 않는다).
+  // quiz(G, lv, ri)는 [문제 문장, 답]을 돌려준다. ri(a,b)는 a~b 정수(시드 난수). lv: 1 = 1~2학년, 2 = 3~4학년, 3 = 5~6학년
   tribeMissions: {
-    oreGift:  { name: '광석 공물', time: 100, need: 250, pay: { ore: 250 }, text: '광석 250을 모으면 자동으로 바친다', prog: (G, t) => t.res.ore },
-    gasGift:  { name: '에테르 공물', time: 150, need: 100, pay: { gas: 100 }, text: '에테르 100을 모으면 자동으로 바친다', prog: (G, t) => t.res.gas },
-    guard:    { name: '회당 경비', time: 150, need: 20, unit: '초', text: '전투 유닛 4기 이상을 회당 8칸 안에 모두 합쳐 20초 둔다', prog: (G, t, m) => m.acc,
-      tick(G, t, m) { const T = G.tribe; let n = 0; for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable && Math.hypot(e.x - T.x, e.y - T.y) < 8) n++; if (n >= 4) m.acc++; } },
-    hunt:     { name: '침입자 토벌', time: 180, need: 4, text: '상대 유닛이나 건물 4개를 파괴한다', start: (G, t, m) => { m.k0 = t.stats.kills; }, prog: (G, t, m) => t.stats.kills - m.k0 },
-    scout:    { name: '정찰 의뢰', time: 120, need: 1, text: '표시된 지점에 유닛을 보낸다(5칸 안)', prog: (G, t, m) => m.acc,
-      start(G, t, m) { const hq = G.ents.find(e => e.team === t.id && RTS.defOf(e).dropoff) || { x: 0, y: 0 }, L = G.bases.filter(b => Math.hypot(b.x - hq.x, b.y - hq.y) > 15 && b.start === undefined); const b = L[Math.floor(RTS.rand(G) * L.length)] || G.bases[0]; m.x = b.x; m.y = b.y; },
-      tick(G, t, m) { for (const e of G.ents) if (e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && Math.hypot(e.x - m.x, e.y - m.y) < 5) { m.acc = 1; return; } } },
-    build:    { name: '교역로 건설', time: 150, need: 2, text: '건물 2개를 새로 완공한다', start: (G, t, m) => { m.b0 = Object.values(t.have).reduce((s, n) => s + n, 0); }, prog: (G, t, m) => Object.values(t.have).reduce((s, n) => s + n, 0) - m.b0 },
-    muster:   { name: '병력 과시', time: 150, need: 8, text: '전투 유닛 8기를 동시에 갖춘다', prog: (G, t) => G.ents.filter(e => e.team === t.id && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).uncontrollable).length },
+    add:   { name: '덧셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { if (ri(0, 1)) { const a = ri(1, 15) * 10, b = ri(1, 10) * 10; return [`${a} + ${b}`, a + b]; } const a = ri(12, 89), b = ri(11, 99); return [`${a} + ${b}`, a + b]; }
+      if (lv === 2) { const a = ri(105, 199), b = ri(25, 99); return [`${a} + ${b}`, a + b]; }
+      const a = ri(35, 99), b = ri(35, 99), c = ri(25, 99); return [`${a} + ${b} + ${c}`, a + b + c]; } },
+    sub:   { name: '뺄셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(40, 160), b = ri(12, a - 15); return [`${a} − ${b}`, a - b]; }
+      if (lv === 2) { const n = ri(45, 280), b = ri(55, 199); return [`${n + b} − ${b}`, n]; }
+      const n = ri(40, 280), b = ri(40, 150), c = ri(20, 99); return [`${n + b + c} − ${b} − ${c}`, n]; } },
+    mul:   { name: '곱셈', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(2, 5), b = ri(2, 9); return [`${a} × ${b}`, a * b]; }
+      if (lv === 2) { if (ri(0, 1)) { const a = ri(6, 9), b = ri(3, 9); return [`${a} × ${b}`, a * b]; } const b = ri(2, 6), a = ri(12, Math.floor(280 / b)); return [`${a} × ${b}`, a * b]; }
+      if (ri(0, 1)) { const a = ri(2, 6), b = ri(3, 9), c = ri(2, 5); return [`${a} × ${b} × ${c}`, a * b * c]; } const a = ri(11, 25), b = ri(11, 14); return [`${a} × ${b}`, a * b]; } },
+    place: { name: '자릿값', time: 180, lv: [1, 2], quiz(G, lv, ri) {
+      if (lv === 1) { const a = ri(1, 2), b = ri(0, 9), c = ri(1, 9); return [`100이 ${a}개, 10이 ${b}개, 1이 ${c}개인 수`, a * 100 + b * 10 + c]; }
+      const b = ri(11, 29), c = ri(1, 9); return [`10이 ${b}개, 1이 ${c}개인 수`, b * 10 + c]; } },
+    word:  { name: '문장제', time: 180, lv: [1, 3], quiz(G, lv, ri) {
+      if (lv === 1) { const n = ri(3, 9), k = [5, 10, 20][ri(0, 2)]; return [`전사 ${n}명에게 광석을 ${k}씩 나눠 주면 모두 얼마일까?`, n * k]; }
+      if (lv === 2) { const n = ri(3, 8), q = ri(6, 30); return [`광석 ${n * q}을 마을 ${n}곳에 똑같이 나누면 한 곳에 얼마일까?`, q]; }
+      const per = ri(12, 30), n = ri(4, 9), left = ri(10, 60); return [`망루 ${n}개를 고치는 데 하나에 광석 ${per}씩 들고, ${left}이 남았다. 처음 광석은 얼마였을까?`, per * n + left]; } },
+    div:   { name: '나눗셈', time: 180, lv: [2, 3], quiz(G, lv, ri) {
+      if (lv === 2) { const n = ri(2, 9), q = ri(2, 9) * 10; return [`${n * q} ÷ ${n}`, q]; }
+      const n = ri(3, 9), q = ri(12, Math.min(60, Math.floor(540 / n))); return [`${n * q} ÷ ${n}`, q]; } },
+    mixed: { name: '혼합 계산', time: 180, lv: [2, 3], quiz(G, lv, ri) {
+      if (lv === 2) { const a = ri(5, 20) * 10, b = ri(3, 12) * 10, c = ri(1, Math.floor((a + b) / 10) - 1) * 10; return [`${a} + ${b} − ${c}`, a + b - c]; }
+      const k = ri(0, 2);
+      if (k === 0) { const a = ri(10, 90), b = ri(3, 9), c = ri(4, 20); return [`${a} + ${b} × ${c}`, a + b * c]; }
+      if (k === 1) { const b = ri(5, 30), a = b + ri(8, 40), c = ri(3, 6); return [`(${a} − ${b}) × ${c}`, (a - b) * c]; }
+      const a = ri(6, 15), b = ri(8, 20), c = ri(10, a * b - 20); return [`${a} × ${b} − ${c}`, a * b - c]; } },
+    frac:  { name: '분수', time: 180, lv: [3, 3], quiz(G, lv, ri) {
+      const n = [2, 3, 4, 5, 6, 8, 10][ri(0, 6)], k = ri(1, n - 1), m = ri(3, Math.floor(300 / n)); return [`${n * m}의 ${k}/${n}`, k * m]; } },
   },
   factions: {
     pioneers: { name: '개척단', hq: 'p_hq', worker: 'p_worker', supply: 'p_depot', defense: 'p_turret', blurb: '일꾼이 공사를 끝까지 맡는다. 보병과 포격으로 전선을 민다.',

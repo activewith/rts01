@@ -7,6 +7,7 @@ RTS.SETTINGS = [
     { id: 'supplyCap', label: '최대 보급', min: 40, max: 200, step: 10, def: 100 },
     { id: 'fog', label: '전장의 안개', type: 'toggle', def: true, startOnly: true },
     { id: 'randomStart', label: '시작 위치 무작위', desc: '맵마다 시작 위치 후보 4곳 이상 중에서 무작위로 고릅니다. 끄면 예전처럼 맵의 기본 두 자리(대각 대치)', type: 'toggle', def: true, startOnly: true },
+    { id: 'mathLevel', label: '부족 수학 문제 수준', desc: '잿빛 부족 외교 미션의 문제. 1~2학년: 두 자리 덧셈·뺄셈, 2~5단, 자릿값 / 3~4학년: 세 자리, 구구단, 나눗셈 / 5~6학년: 혼합 계산, 분수', min: 1, max: 3, step: 1, def: 1, labels: ['1~2학년', '3~4학년', '5~6학년'] },
   ] },
   { group: '시장 뉴스', items: [
     { id: 'newsEvery', label: '뉴스 평균 간격', desc: '실제 간격은 이 값의 ±33%에서 무작위로 정해집니다', min: 0, max: 180, step: 10, def: 60, unit: '초', zero: '뉴스 없음' },
