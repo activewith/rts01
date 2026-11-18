@@ -1,4 +1,4 @@
-// 잿빛 부족: 배치·도달, 발견, 공병 외교 미션(수학 문제: 수준별 출제·답 범위·정답/오답/힌트/시간 초과), 결과(동맹/중립/적대), 직접 공격, 동맹 지원(확률), 습격, 회당 함락, 저장 복원
+// 잿빛 부족: 배치·도달, 발견, 동맹 요청(고르기·협공·기지방어·자원공유·바꾸기), 공병 외교 미션(수학 문제: 수준별 출제·답 범위·정답/오답/힌트/시간 초과), 결과(동맹/중립/적대), 직접 공격, 동맹 지원(확률), 습격, 회당 함락, 저장 복원
 const fs = require('fs'), path = require('path'), assert = require('assert');
 for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const mk = (seed, map = 'ridge', ai) => RTS.createGame({ map, seed, players: [{ faction: 'pioneers' }, { faction: 'ironclad', ai }] });
@@ -68,13 +68,43 @@ const notes = g => { const L = []; RTS.on(g, 'notice', d => { if (d.team === 0) 
   const g3 = mk(12), v = TU(g3)[0], hp = v.hp; RTS.rebuildGrid(g3); RTS.hit(g3, null, v.x, v.y, 30, { splash: 2 }, { team: 0 }); assert.equal(v.hp, hp, '범위 피해가 중립에 들어감'); assert.equal(g3.tribe.rel[0], 'neutral'); }
 
 // 7) 동맹 지원은 확률: 여러 번 시도하면 보낼 때와 안 보낼 때가 모두 나온다
-{ let yes = 0, no = 0; for (let s = 20; s < 50; s++) { const g = mk(s); g.tribe.rel[0] = 'ally'; const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y);
+{ let yes = 0, no = 0; for (let s = 20; s < 50; s++) { const g = mk(s); g.tribe.rel[0] = 'ally'; g.tribe.req[0] = 'defend'; const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y);
     RTS.damage(g, hq, 5, atk); if (TU(g).some(u => u.order && u.order.help)) { yes++; assert(RTS.foe(g, RTS.TRIBE, 1), '지원 중에는 공격자와 적'); } else no++; }
   console.log('지원 30회: 보냄', yes, '안 보냄', no); assert(yes > 5 && no > 5); }
-{ const g = mk(21); g.tribe.rel[0] = 'ally'; const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y); let sent = 0;
+{ const g = mk(21); g.tribe.rel[0] = 'ally'; g.tribe.req[0] = 'defend'; const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y); let sent = 0;
   for (let k = 0; k < 40 && !sent; k++) { g.tribe.helpNext = 0; RTS.damage(g, hq, 1, atk); sent = TU(g).filter(u => u.order && u.order.help).length; }
   assert(sent >= 1 && sent <= RTS.TRIBE_RULES.helpMax); assert(TU(g).length - sent >= RTS.TRIBE_RULES.guards, '경비 남김');
   run(g, 50); assert(TU(g).some(u => u.order && u.order.help) || TU(g).some(u => Math.hypot(u.x - hq.x, u.y - hq.y) < 12), '지원군 도착'); assert(!RTS.foe(g, RTS.TRIBE, 1) || g.tribe.war[1] > g.tick, '지원 전쟁은 끝난다'); }
+
+// 7-2) 동맹 요청: 동맹을 맺으면 고르기, 고르기 전에는 혜택 없음, 협공·기지방어(방어탑)·자원공유, 바꾸기는 문제 2개 성공해야
+{ const g = mk(22), t = g.teams[0]; g.tribe.missions[0] = [quiz(g, 50), quiz(g, 90)]; t.res.ore = 500;
+  RTS.command(g, 0, { type: 'tribeAnswer', mission: 0, value: 50 }); RTS.command(g, 0, { type: 'tribeAnswer', mission: 1, value: 90 }); run(g, 2);
+  assert.equal(g.tribe.rel[0], 'ally'); assert(g.tribe.pick[0], '동맹 직후 요청 고르기'); assert.equal(RTS.tribeReqOf(g, 0), null);
+  const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y); RTS.damage(g, hq, 1, atk); assert(!TU(g).some(u => u.order && u.order.help), '고르기 전에는 지원 없음');
+  RTS.command(g, 0, { type: 'tribeReq', req: 'share' }); RTS.step(g); assert.equal(RTS.tribeReqOf(g, 0), 'share'); assert(!g.tribe.pick[0]);
+  RTS.command(g, 0, { type: 'tribeReq', req: 'strike' }); RTS.step(g); assert.equal(RTS.tribeReqOf(g, 0), 'share', '문제 없이 못 바꿈');
+  const o0 = t.res.ore, g0 = t.res.gas; run(g, 60); const gotO = g.tribe.got[0].ore, gotG = g.tribe.got[0].gas; console.log('자원공유 60초: 광석', gotO, '에테르', gotG);
+  assert(gotO >= 80 && gotO <= 130 && gotG >= 15, '자원공유 양'); assert(t.res.gas - g0 >= gotG - 1);
+  // 바꾸기: 1개만 맞히면 그대로 + 대기, 2개 맞히면 다시 고르기
+  RTS.command(g, 0, { type: 'tribeRenew' }); RTS.step(g); const M = g.tribe.missions[0]; assert(M && M.length === 2, '바꾸기 문제');
+  t.res.ore = 999; RTS.command(g, 0, { type: 'tribeAnswer', mission: 0, value: M[0].ans }); for (const v of [1, 2, 3]) RTS.command(g, 0, { type: 'tribeAnswer', mission: 1, value: v }); run(g, 2);
+  assert.equal(g.tribe.rel[0], 'ally', '실패해도 동맹 유지'); assert.equal(RTS.tribeReqOf(g, 0), 'share'); assert(RTS.tribeRenewBlock(g, 0).includes('기다려야'));
+  g.tribe.wait[0] = 0; RTS.command(g, 0, { type: 'tribeRenew' }); RTS.step(g); const M2 = g.tribe.missions[0];
+  M2.forEach((m, i) => RTS.command(g, 0, { type: 'tribeAnswer', mission: i, value: m.ans })); run(g, 2); assert(g.tribe.pick[0], '2개 성공 → 다시 고르기'); assert.equal(RTS.tribeReqOf(g, 0), 'share', '고르기 전엔 이전 요청 유지');
+  RTS.command(g, 0, { type: 'tribeReq', req: 'strike' }); RTS.step(g); assert.equal(RTS.tribeReqOf(g, 0), 'strike');
+  // 협공: 내가 적을 때리면 확률로 원군, 그동안 부족과 그 적은 서로 적
+  let sent = 0; for (let k = 0; k < 40 && !sent; k++) { g.tribe.strikeNext = 0; RTS.damage(g, atk, 1, hq); sent = TU(g).filter(u => u.order && u.order.help).length; }
+  assert(sent >= 1 && sent <= RTS.TRIBE_RULES.helpMax, '협공 원군'); assert(RTS.foe(g, RTS.TRIBE, 1)); }
+{ let yes = 0; for (let s = 60; s < 90; s++) { const g = mk(s); g.tribe.rel[0] = 'ally'; g.tribe.req[0] = 'strike'; const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), en = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y); RTS.damage(g, en, 1, hq); if (TU(g).some(u => u.order && u.order.help)) yes++; }
+  console.log('협공 30회: 보냄', yes); assert(yes > 5 && yes < 25); }
+// 기지방어 방어탑: 확률로 내 방어탑, 최대 towerMax개, 일꾼이 맞을 때는 발동 안 함
+{ const g = mk(23), t = g.teams[0]; g.tribe.rel[0] = 'ally'; g.tribe.req[0] = 'defend'; const D = RTS.defs.factions[t.faction].defense, n0 = g.ents.filter(e => e.def === D && e.team === 0).length;
+  const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y), wk = g.ents.find(e => e.team === 0 && RTS.defOf(e).gather);
+  RTS.damage(g, wk, 1, atk); assert.equal(g.tribe.helpNext, 0, '일꾼 피격은 기지방어 대상 아님');
+  for (let k = 0; k < 60; k++) { g.tribe.helpNext = 0; RTS.damage(g, hq, 1, atk); } const n = g.ents.filter(e => e.def === D && e.team === 0 && !e.dead).length - n0;
+  console.log('기지방어 방어탑', n); assert.equal(n, RTS.TRIBE_RULES.towerMax); }
+// 배신하면 요청이 사라진다
+{ const g = mk(24); g.tribe.rel[0] = 'ally'; g.tribe.req[0] = 'share'; RTS.damage(g, TU(g)[0], 5, { team: 0 }); assert.equal(g.tribe.req[0], null); assert.equal(RTS.tribeReqOf(g, 0), null); }
 
 // 8) 회당 함락: 약탈 + 외교 불가 + 생산 중단
 { const g = mk(13), H = g.byId[g.tribe.hall], o0 = g.teams[1].res.ore; g.tribe.rel[1] = 'hostile'; while (!H.dead) RTS.damage(g, H, 200, { team: 1 });

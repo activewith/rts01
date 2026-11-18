@@ -248,7 +248,7 @@ RTS.mount = function (root, opts = {}) {
   function renderInfo() { const G = app.G, el = $('k-info'), list = selected(); app.sel = list.map(e => e.id);
     let h = ''; if (!list.length) { const sig0 = 'none'; if (app.infoSig !== sig0) { el.innerHTML = '<p class="k-empty">유닛이나 건물을 선택하세요.</p>'; app.infoSig = sig0; } return; }
     const e = list[0], d = RTS.defOf(e), f = e.team >= 0 ? G.teams[e.team].faction : 'pioneers';
-    if (list.length === 1 && e.tribeHall && G.tribe) { const T = G.tribe, r = T.rel[app.team]; h = `<div class="k-one"><img src="${R.icon(e.def, RTS.TRIBE, f)}" alt=""><div><h3>잿빛 부족 회당</h3><p class="k-hp">${Math.ceil(e.hp)} / ${d.hp}</p><p class="k-st">${RTS.tribeRelName(r)} · ${r === 'ally' ? '공격받으면 확률로 지원군을 보냅니다' : r === 'hostile' ? '주기적으로 습격해 옵니다' : '공병으로 우클릭해 외교'}</p></div></div>`;
+    if (list.length === 1 && e.tribeHall && G.tribe) { const T = G.tribe, r = T.rel[app.team]; h = `<div class="k-one"><img src="${R.icon(e.def, RTS.TRIBE, f)}" alt=""><div><h3>잿빛 부족 회당</h3><p class="k-hp">${Math.ceil(e.hp)} / ${d.hp}</p><p class="k-st">${RTS.tribeRelName(r)} · ${r === 'ally' ? (T.req && T.req[app.team] ? '요청: ' + RTS.TRIBE_REQS[T.req[app.team]].name : '부족 패널에서 요청을 고르세요') : r === 'hostile' ? '주기적으로 습격해 옵니다' : '공병으로 우클릭해 외교'}</p></div></div>`;
     } else if (list.length === 1 && e.branch) { const b = G.dip.list[e.branch], d2 = RTS.defs.branches[e.branch]; h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${d2.name}</h3><p class="k-st">${b.ally < 0 ? '중립 지부' : b.ally === app.team ? '내 동맹' : RTS.ally(G, app.team, b.ally) ? '동료 동맹' : '상대 동맹'} · ${d2.perkText}</p></div></div>`;
     } else if (list.length === 1 && e.company) { const c = G.market.cos[e.company], co = RTS.defs.companies[e.company], hp = d.hp, dn = e.downUntil > G.tick;
       h = `<div class="k-one"><img src="${R.icon(e.def, -1, f)}" alt=""><div><h3>${co.name}</h3><p class="k-hp">${Math.ceil(e.hp)} / ${hp}${dn ? ' · 가동 중단' : ''}</p><p class="k-st">주가 ${c.price.toFixed(1)} · 내 지분 ${c.shares[app.team]}주 · ${c.owner < 0 ? '경영권 없음' : c.owner === app.team ? '내 경영권' : RTS.ally(G, app.team, c.owner) ? '동료 경영권' : '상대 경영권'}</p></div></div>`;
@@ -280,11 +280,18 @@ RTS.mount = function (root, opts = {}) {
         return `<div class="tr-m ${m.done === true ? 'ok' : m.done === false ? 'bad' : ''}"><div class="tr-h"><span>${d.name}</span><span>${st}</span></div><p>${d.text}</p><i><s style="width:${Math.round(cur / need * 100)}%"></s></i><small>${Math.floor(cur)} / ${need}${d.unit || ''}</small></div>`; }).join('');
       if (A.i >= 0) h += `<div class="tr-ans"><output>${A.v || '?'}</output><span>보낼 광석</span></div><div class="tr-pad">${['1', '2', '3', '4', '5', '6', '7', '8', '9', '0', '←', '보내기'].map(k => `<button type="button" data-k="${k}"${k === '보내기' ? ' class="go"' : ''}>${k}</button>`).join('')}</div>`; }
     else if (!T.dead && r === 'neutral') h += `<p class="tr-n">${wait ? `다시 외교까지 ${wait}초` : (RTS.tribeBlock(G, me) || '공병을 선택하고 회당을 우클릭하면 미션 2개를 받습니다. 2개 성공 동맹 · 1개 중립 · 0개 적대')}</p>`;
-    else if (r === 'ally') h += `<p class="tr-n">공격받으면 ${Math.round(RTS.TRIBE_RULES.helpChance * 100)}% 확률로 지원군을 보냅니다</p>`;
-    else if (r === 'hostile') h += `<p class="tr-n">주기적으로 습격해 옵니다. 회당을 무너뜨리면 광석 +${RTS.TRIBE_RULES.loot}</p>`;
+    if (r === 'ally') { const Q = RTS.TRIBE_REQS, R = RTS.TRIBE_RULES, cur = T.req && T.req[me];
+      if (T.pick && T.pick[me] && !L) h += `<p class="tr-n">${cur ? '새 요청을 고르세요 (지금: ' + Q[cur].name + ')' : '동맹 성공! 부족에게 할 요청을 하나 고르세요'}</p>` + Object.keys(Q).map(k => `<button type="button" class="tr-req${k === cur ? ' on' : ''}" data-r="${k}"><b>${Q[k].name}</b><small>${Q[k].text()}</small></button>`).join('');
+      else if (cur) { h += `<div class="tr-cur">요청 <b>${Q[cur].name}</b></div><p class="tr-n">${Q[cur].text()}</p>`;
+        if (cur === 'share') h += `<small>창고 광석 ${Math.floor(T.stock.ore)} · 에테르 ${Math.floor(T.stock.gas)} / 받은 양 광석 ${T.got[me].ore} · 에테르 ${T.got[me].gas}</small>`;
+        if (cur === 'defend') h += `<small>지어 준 방어탑 ${T.towers[me]} / ${R.towerMax}</small>`;
+        if (!L) { const why = RTS.tribeRenewBlock(G, me); h += `<button type="button" class="tr-renew"${why ? ' disabled' : ''}>요청 바꾸기 (동맹 문제 2개)</button>${why ? `<small>${why}</small>` : ''}`; } } }
+    if (r === 'hostile' && !L) h += `<p class="tr-n">주기적으로 습격해 옵니다. 회당을 무너뜨리면 광석 +${RTS.TRIBE_RULES.loot}</p>`;
     if (h === app.tribeSig) return; app.tribeSig = h; el.innerHTML = h; el.hidden = false;
     el.querySelector('.tr-go').onclick = () => { const e = G.byId[T.hall]; if (e) { centerOn(e.x, e.y); app.sel = [e.id]; } };
     // 숫자판: 패널이 1초마다 다시 그려지므로 click 대신 pointerdown으로 받는다
+    el.querySelectorAll('.tr-req').forEach(b => { b.onpointerdown = ev => { ev.preventDefault(); send({ type: 'tribeReq', req: b.dataset.r }); }; });
+    const rn = el.querySelector('.tr-renew'); if (rn) rn.onpointerdown = ev => { ev.preventDefault(); if (!rn.disabled) send({ type: 'tribeRenew' }); };
     el.querySelectorAll('.tr-q').forEach(b => { b.onpointerdown = () => { const L = T.missions[me], i = +b.dataset.i; if (app.tAns && L && L[i] && L[i].done === null && app.tAns.i !== i) { app.tAns.i = i; app.tAns.v = ''; renderTribe(); } }; });
     el.querySelectorAll('.tr-pad button').forEach(b => { b.onpointerdown = ev => { ev.preventDefault(); const A = app.tAns, k = b.dataset.k; if (!A || A.i < 0) return;
       if (k === '←') A.v = A.v.slice(0, -1); else if (k === '보내기') { if (!A.v) { notice('숫자를 먼저 누르세요', 'warn'); return; } send({ type: 'tribeAnswer', mission: A.i, value: +A.v }); A.v = ''; } else if (A.v.length < 4) A.v = (A.v === '0' ? '' : A.v) + k;
