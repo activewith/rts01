@@ -62,7 +62,7 @@ RTS.addSystem({ id: 'diplomacy', run(G) {
 } }, { before: 'cleanup' });
 // AI: 난이도별 시점에 정찰을 보내고, 조건이 맞으면 동맹금을 건다.
 RTS.aiDiplomacy = function (G, t, diff, units) {
-  const S = t.aiState, m = G.dip, sec = G.tick / RTS.HZ; if (!m || sec < diff.scoutAt || !units.length) return;
+  const S = t.aiState, m = G.dip, sec = G.tick / RTS.HZ; if (!m || S.noDip || sec < diff.scoutAt || !units.length) return; /* noDip: 캠페인 앞 장에서 정찰·지부 외교 금지 */
   if (!S.scout || !G.byId[S.scout]) { const open = Object.values(m.list).filter(b => !b.found[t.id] && b.ally < 0).sort((a, b) => { const A = G.byId[a.site], B = G.byId[b.site], H = units[0]; return Math.hypot(A.x - H.x, A.y - H.y) - Math.hypot(B.x - H.x, B.y - H.y); })[0];
     const u = units.find(x => !RTS.defOf(x).gather && !RTS.defOf(x).uncontrollable && !RTS.defOf(x).heal) || units.find(x => RTS.defOf(x).gather && x.order && x.order.phase === 'go');
     if (open && u) { S.scout = u.id; S.scoutTo = open.id; const e = G.byId[open.site]; RTS.issue(G, u, { type: 'move', x: e.x, y: e.y + 3 }); } }

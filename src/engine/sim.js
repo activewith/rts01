@@ -477,7 +477,7 @@ RTS.systems.push(
   } },
   { id: 'fog', run: G => RTS.updateFog(G) },
   { id: 'victory', run(G) {
-    if (G.tick % 10) return;
+    if (G.tick % 10 || G.camp) return; // 캠페인은 campaign 시스템이 승패를 정한다
     RTS.census(G);
     const live = G.teams.filter(t => t.alive > 0);
     if (G.coop) { // 협동: 편 단위로 판정. 사람 둘 중 하나만 남아도 계속한다

@@ -28,6 +28,8 @@ RTS.TRIBE_RULES = {
   homeR: 9,           // 이 거리보다 멀리 있는 한가한 부족 병력은 회당으로 돌아온다
   centerGap: 12,      // 맵 가운데에서 이만큼은 떨어진 곳에 둔다
   startGap: 20,       // 시작 기지에서 최소 거리
+  aiWin: .075,       // 상대 AI가 외교(문제 2개)에 성공할 확률. 실패하면 1개만 맞혀 중립으로 끝난다
+  aiWait: [240, 360], // 상대 AI가 외교에 실패한 뒤 다시 시도할 때까지(초, 이 범위에서 무작위)
   quizTries: 3,       // 수학 미션에서 틀려도 되는 횟수(이만큼 틀리면 실패)
   quizMax: 9999,      // 보낼 수 있는 최대 값
 };
@@ -180,7 +182,7 @@ function tribeSettle(G, team) { const T = reqInit(G.tribe), L = T.missions[team]
     else { T.wait[team] = G.tick + TR().retrySec * RTS.HZ; tTell(G, team, `동맹 문제 ${ok}개 성공: 요청은 그대로입니다. ${TR().retrySec}초 뒤 다시 도전할 수 있습니다`, 'market'); }
     RTS.emit(G, 'tribeRel', { team, rel: 'ally', ok }); return; }
   if (ok >= 2 && !other) { T.rel[team] = 'ally'; T.req[team] = null; T.pick[team] = true; for (const o of G.teams) tTell(G, o.id, o.id === team ? `미션 2개 성공: ${name}과 동맹을 맺었습니다. 부족 패널에서 요청을 고르세요` : `${G.teams[team].name}이(가) ${name}과 동맹을 맺었습니다`, o.id === team ? 'ok' : 'market'); }
-  else if (ok >= 1) { T.wait[team] = G.tick + TR().retrySec * RTS.HZ; tTell(G, team, ok >= 2 ? `${name}이 이미 상대와 동맹이라 중립을 유지합니다` : `미션 1개 성공: ${name}은 중립을 유지합니다. ${TR().retrySec}초 뒤 다시 외교할 수 있습니다`, 'market'); }
+  else if (ok >= 1) { const R = TR(), ai = G.teams[team].ai; T.wait[team] = G.tick + Math.round((ai ? R.aiWait[0] + RTS.rand(G) * (R.aiWait[1] - R.aiWait[0]) : R.retrySec) * RTS.HZ); tTell(G, team, ok >= 2 ? `${name}이 이미 상대와 동맹이라 중립을 유지합니다` : `미션 1개 성공: ${name}은 중립을 유지합니다. ${TR().retrySec}초 뒤 다시 외교할 수 있습니다`, 'market'); }
   else { T.rel[team] = 'hostile'; T.nextRaid[team] = G.tick + TR().raidFirst * RTS.HZ; for (const o of G.teams) tTell(G, o.id, o.id === team ? `미션 모두 실패: ${name}이 적대 관계가 되었습니다` : `${G.teams[team].name}이(가) ${name}과 적대 관계가 되었습니다`, o.id === team ? 'warn' : 'market'); }
   RTS.emit(G, 'tribeRel', { team, rel: T.rel[team], ok }); }
 
@@ -215,7 +217,7 @@ RTS.addSystem({ id: 'tribe', run(G) {
 } }, { before: 'cleanup' });
 
 // 상대 AI: 부족을 찾으면 70% 확률로 동맹을 노린다. 공병을 보내고, 광석이 모이면 수학 미션에 답한다
-RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead) return; const S = t.aiState, h = G.byId[T.hall], sec = G.tick / RTS.HZ; if (!h) return;
+RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead || t.aiState.noTribe) return; /* noTribe: 캠페인에서 외교 금지 */ const S = t.aiState, h = G.byId[T.hall], sec = G.tick / RTS.HZ; if (!h) return;
   const D = RTS.defs.entities, army = units.filter(u => !D[u.def].gather && !D[u.def].uncontrollable && u.id !== S.scout);
   if (!T.found[t.id]) { if (sec > diff.scoutAt + 40 && (!S.tScout || !G.byId[S.tScout])) { const u = army[0] || units.find(x => D[x.def].gather && !x.cargo); if (u) { S.tScout = u.id; RTS.issue(G, u, { type: 'move', x: h.x, y: h.y + 4 }); } } return; }
   if (S.tPlan === undefined) S.tPlan = RTS.rand(G) < .7 ? 'ally' : 'ignore';
@@ -224,8 +226,10 @@ RTS.aiTribe = function (G, t, diff, units) { const T = G.tribe; if (!T || T.dead
   const L = T.missions[t.id];
   if (!L) { if (RTS.tribeBlock(G, t.id)) return; const cur = S.envoy && G.byId[S.envoy]; if (cur && !cur.dead && cur.order && cur.order.type === 'envoy') return;
     const w = units.find(x => D[x.def].gather && !x.cargo && x.order && x.order.type === 'gather' && x.order.phase === 'go') || units.find(x => D[x.def].gather); if (w) { S.envoy = w.id; RTS.issue(G, w, { type: 'envoy', target: h.id }); } return; }
-  // 수학 미션: 광석이 답만큼 모이면 답한다. 가끔(20%) 틀리고, 틀리면 힌트 방향으로 고친다
+  // 수학 미션: 문제를 받을 때 한 번 성공 여부를 정한다(aiWin). 성공이면 광석이 모일 때 둘 다 맞히고,
+  // 실패면 하나는 맞히고 다른 하나는 세 번 틀려 중립으로 끝난다(다음 시도까지 aiWait)
+  const key = L.map(m => m.until).join(':'); if (S.tKey !== key) { S.tKey = key; S.tWin = RTS.rand(G) < TR().aiWin; S.tMiss = Math.floor(RTS.rand(G) * L.length); }
   L.forEach((m, i) => { const d = RTS.defs.tribeMissions[m.id]; if (m.done !== null || !d.quiz || G.tick < (S.tQuizAt || 0)) return;
-    const v = m.hint !== undefined ? m.ans : RTS.rand(G) < .2 ? Math.max(1, m.ans + (RTS.rand(G) < .5 ? -10 : 10)) : m.ans; if (t.res.ore < v) return;
-    S.tQuizAt = G.tick + 4 * RTS.HZ; if (!RTS.tribeAnswer(G, t.id, i, v) && m.done === null) m.hint = 1; });
+    const wrong = !S.tWin && i === S.tMiss, v = wrong ? Math.max(1, m.ans + (m.tries % 2 ? -10 : 10)) : m.ans; if (t.res.ore < v) return;
+    S.tQuizAt = G.tick + 4 * RTS.HZ; RTS.tribeAnswer(G, t.id, i, v); });
 };
