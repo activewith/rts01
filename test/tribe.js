@@ -117,5 +117,10 @@ const notes = g => { const L = []; RTS.on(g, 'notice', d => { if (d.team === 0) 
 { let tried = 0; for (const s of [31, 32, 33, 34]) { const g = mk(s, 'crossroads', 'hard'); g.teams[0].ai = 'hard'; run(g, 900); const T2 = g.tribe;
     if (T2.rel.some(x => x !== 'neutral') || T2.missions.some(Boolean) || T2.wait.some(x => x > 0)) tried++; console.log('AI 대전', s, '발견', T2.found.join(','), '관계', T2.rel.join(','), '지원', T2.sent); }
   assert(tried >= 2, 'AI가 부족 외교를 하지 않음'); }
+// AI 외교 성공률은 aiWin(약 7.5%), 실패하면 aiWait 동안 다시 못 한다
+{ let win = 0, n = 0, waits = []; for (let s = 100; s < 220; s++) { const g = mk(s, 'ridge', 'normal'), T = g.tribe, t = g.teams[1]; T.found[1] = true; t.aiState.tPlan = 'ally'; RTS.tribeRequest(g, 1); t.res.ore = 5000;
+    const hq = g.ents.find(e => e.team === 1 && RTS.defOf(e).dropoff); for (let k = 0; k < 40 && T.missions[1]; k++) { g.tick += 4 * RTS.HZ; RTS.aiTribe(g, t, RTS.aiDiff(t), g.ents.filter(e => e.team === 1 && RTS.defOf(e).kind === 'unit')); g.tick -= 4 * RTS.HZ; for (let i = 0; i < 4 * RTS.HZ; i++) RTS.step(g); }
+    n++; if (T.rel[1] === 'ally') win++; else { assert.equal(T.rel[1], 'neutral', 'AI 실패는 중립'); waits.push((T.wait[1] - g.tick) / RTS.HZ); } }
+  console.log(`AI 외교 ${n}회: 성공 ${win} (${(win / n * 100).toFixed(1)}%), 재시도 대기 ${Math.round(Math.min(...waits))}~${Math.round(Math.max(...waits))}초`); assert(win >= 2 && win <= 20, 'AI 성공률'); assert(Math.min(...waits) >= RTS.TRIBE_RULES.aiWait[0] - 2); }
 { const a = mk(40, 'lake', 'hard'); a.teams[0].ai = 'hard'; run(a, 200); const b = RTS.deserialize(RTS.serialize(a)); run(a, 120); run(b, 120); assert.equal(RTS.serialize(a), RTS.serialize(b), '저장 복원 결정성'); }
 console.log('잿빛 부족 검사 통과');

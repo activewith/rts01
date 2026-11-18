@@ -173,7 +173,7 @@ RTS.aiThink = function (G, t) {
     const r = rally(), idle = army.filter(u => (!u.order || (S.retreat && G.tick - S.retreat < 30)) && Math.hypot(u.x - r.x, u.y - r.y) > 5).map(u => u.id);
     if (idle.length) cmd({ type: 'order', ids: idle, order: { type: S.retreat && G.tick - S.retreat < 200 ? 'move' : 'amove', x: r.x, y: r.y } });
   }
-  if (!S.attacking && army.length >= S.wave && G.tick > firstAttack * RTS.HZ && G.tick - (S.retreat || -1e9) > 25 * RTS.HZ) {
+  if (!S.hold && !S.attacking && army.length >= S.wave && G.tick > firstAttack * RTS.HZ && G.tick - (S.retreat || -1e9) > 25 * RTS.HZ) {
     S.attacking = true; S.sent = army.length; S.attackAt = G.tick; S.wave = Math.min(45, S.wave + Math.max(1, Math.round(diff.waveGrow * plan.wave)));
     // 적 팀이 여럿이면(중립세력) 공격 대상을 공격마다 번갈아 정한다. 가까운 쪽만 계속 때리지 않게 한다
     const foes = G.teams.filter(o => o.id !== t.id && RTS.foe(G, t.id, o.id) && o.alive > 0); S.waves = (S.waves || 0) + 1; S.tgt = foes.length ? foes[S.waves % foes.length].id : -1;
@@ -272,7 +272,7 @@ RTS.aiHarass = function (G, t, diff, plan, allArmy) {
   const cur = (S.harass || []).map(id => G.byId[id]).filter(u => u && !u.dead);
   if (cur.length) { if (G.tick - S.harassAt > 40 * RTS.HZ || cur.length < Math.ceil(S.harassN / 2)) { S.harass = []; S.nextHarass = G.tick + (70 + RTS.rand(G) * 40) * RTS.HZ; } else S.harass = cur.map(u => u.id); return; }
   S.harass = [];
-  if (sec < diff.firstAttack * .8 || G.tick < (S.nextHarass || 0) || S.attacking || allArmy.length < 10) return;
+  if (S.hold || sec < diff.firstAttack * .8 || G.tick < (S.nextHarass || 0) || S.attacking || allArmy.length < 10) return;
   const fast = allArmy.filter(u => RTS.weapon(u)).sort((a, b) => (D[b.def].air ? 2 : 0) + (D[b.def].speed || 0) - (D[a.def].air ? 2 : 0) - (D[a.def].speed || 0)).slice(0, 4);
   const g = RTS.aiGoal(G, t, 'workers', -1, null, G.byId[S.home] || fast[0]); if (!g || fast.length < 3) return;
   S.harass = fast.map(u => u.id); S.harassN = fast.length; S.harassAt = G.tick;
