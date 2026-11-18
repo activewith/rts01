@@ -4,7 +4,7 @@
   const C = () => RTS.camp, me = 0, foe = 1;
   const oreGot = G => [Math.floor(G.teams[me].stats.ore), 200];
   const hqLeft = G => G.ents.filter(e => e.team === foe && !e.dead && RTS.defOf(e).dropoff && RTS.defOf(e).kind === 'building').length;
-  RTS.CAMPAIGN = { id: 'gray', name: '잿빛 광맥', missions: [
+  RTS.CAMPAIGN = { id: 'gray', name: '잿빛 광맥 (테스트용)', missions: [
     { id: 'c1', title: '1장 · 첫 착륙', map: 'ridge', faction: 'pioneers', enemy: 'ironclad', tribe: false, aiState: { hold: true, noTribe: true, noDip: true },
       brief: ['개척단 착륙선이 낯선 행성 「회색 대지」에 내렸다.', '이 땅 깊은 곳에는 우주선 연료가 되는 광석이 잠들어 있다.', '먼저 기지를 꾸리고, 스스로를 지킬 힘을 길러야 한다.'],
       stages: [

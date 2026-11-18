@@ -31,7 +31,7 @@ const HTML = `
       <h2>진영</h2><div class="k-opts" id="k-fac"></div>
       <h2>전장</h2><div class="k-opts" id="k-map"></div>
       <h2>상대 AI</h2><div class="k-opts k-three" id="k-dif"></div>
-      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-campopen" title="이어지는 이야기 속 미션을 차례로 깹니다">캠페인</button><button id="k-netopen" title="다른 기기와 대전하거나 협동(인터넷 연결 필요)">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-rejoin" hidden title="끊긴 둘이 대전에 다시 들어갑니다">대전 다시 접속</button><button id="k-setopen">설정</button></div>
+      <div class="k-go"><button class="k-primary" id="k-play">출격</button><button id="k-campopen" title="이어지는 이야기 속 미션을 차례로 깹니다(테스트용 시범판)">캠페인 (테스트용)</button><button id="k-netopen" title="다른 기기와 대전하거나 협동(인터넷 연결 필요)">둘이 하기</button><button id="k-resume" hidden>이어하기</button><button id="k-rejoin" hidden title="끊긴 둘이 대전에 다시 들어갑니다">대전 다시 접속</button><button id="k-setopen">설정</button></div>
       <details class="k-help"><summary>조작법</summary><dl>
         <dt>좌클릭·드래그</dt><dd>선택 / 범위 선택. 더블클릭은 같은 유닛 전체 선택</dd>
         <dt>우클릭</dt><dd>이동, 공격, 채취, 건설 재개. 건물은 집결지 지정. Shift는 명령 예약</dd>
