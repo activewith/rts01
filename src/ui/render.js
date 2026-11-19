@@ -204,7 +204,9 @@ function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서�
 }
 
 RTS.Renderer = function (canvas, app) {
-  const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], tracks: [], ghosts: {}, pings: [] }, built = new Map();
+  const ctx = canvas.getContext('2d'), R = { cam: { x: 0, y: 0, z: 1 }, fx: [], decals: [], tracks: [], ghosts: {}, pings: [], bubbles: [] }, built = new Map();
+  // 유닛 말풍선: 동시에 2개까지, 같은 유닛이 다시 말하면 바꾼다
+  R.say = (id, text, faction) => { R.bubbles = R.bubbles.filter(b => b.id !== id); R.bubbles.push({ id, text, faction, t0: performance.now(), dur: Math.max(1600, text.length * 120 + 900) }); if (R.bubbles.length > 2) R.bubbles.shift(); };
   // 고급 그래픽(WebGL): 전장은 world(화면 밖 2D 캔버스)에 그리고 glfx가 조명·안개를 입혀 아래 캔버스에 낸다.
   // 체력 바·건설 미리보기·드래그 상자 같은 표시는 원래 캔버스(투명)에 그려 조명과 안개를 받지 않게 한다.
   const world = document.createElement('canvas'), wctx = world.getContext('2d'); let gfx = null, gfxTried = false, LON = false, slow = 0, lastNow = 0;
@@ -508,12 +510,24 @@ RTS.Renderer = function (canvas, app) {
       o.strokeStyle = '#ffd36b'; o.lineWidth = 3; o.setLineDash([12, 9]); o.lineDashOffset = -t * .5; o.beginPath(); o.arc(X, Y, rr, 0, TAU); o.stroke(); o.setLineDash([]); o.lineDashOffset = 0;
       o.globalAlpha = .25 + pul * .35; o.fillStyle = '#ffd36b'; o.beginPath(); o.arc(X, Y, 6 + pul * 6, 0, TAU); o.fill(); o.globalAlpha = 1;
       if (q.label) { o.font = '700 14px "IBM Plex Sans KR",sans-serif'; o.textAlign = 'center'; const tw = o.measureText(q.label).width + 14; o.fillStyle = 'rgba(8,12,22,.82)'; o.fillRect(X - tw / 2, Y - rr - 26, tw, 20); o.fillStyle = '#ffd36b'; o.fillText(q.label, X, Y - rr - 11); o.textAlign = 'start'; } }
+    if (R.bubbles.length) drawBubbles(o, G);
     R.pings = R.pings.filter(p => { p.life--; const k = p.life / p.max; o.strokeStyle = p.c; o.lineWidth = 2; o.globalAlpha = k; o.beginPath(); o.arc(p.x * TS, p.y * TS, (1 - k) * 22 + 4, 0, TAU); o.stroke(); o.globalAlpha = 1; return p.life > 0; });
     o.setTransform(1, 0, 0, 1, 0, 0);
     if (glOn) gfx.render({ src: world, lights: screenLights(cam, ox, oy), amb: amb().amb, tint: amb().tint, cam, shake: [ox, oy], map: [G.w * TS, G.h * TS], fog: fogOn ? fogGL : null, shocks: shocks(cam, ox, oy), time: now / 1000, clouds: app.settings.clouds === false ? 0 : 1 });
     perf(G, now, o, W, H);
     if (app.box) { const b = app.box; o.strokeStyle = '#7dffa8'; o.lineWidth = 1.5; o.fillStyle = 'rgba(125,255,168,.1)'; o.fillRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); o.strokeRect(b.x0, b.y0, b.x1 - b.x0, b.y1 - b.y0); }
   };
+  // 말풍선 그리기: 유닛 머리 위. 진영마다 테두리 색, 철갑회는 각진 모양
+  const BUB = { pioneers: '#8fd0ff', ironclad: '#c9d2dc', swarm: '#c79bff' };
+  function drawBubbles(c, G) { c.font = '700 13px "IBM Plex Sans KR",sans-serif'; c.textAlign = 'center';
+    const now = performance.now(); // 시간 기준(느린 기기에서도 같은 시간 동안 보인다)
+    R.bubbles = R.bubbles.filter(b => { const age = now - b.t0, left = b.dur - age, e = G.byId[b.id]; if (!e || e.dead || left <= 0) return false; const d = RTS.defOf(e);
+      const a = Math.min(1, left / 200, (age + 16) / 120), X = e.x * TS, Y = e.y * TS - d.r * TS - (d.air ? 40 : 20) - (1 - Math.min(1, age / 120)) * 6;
+      const w = c.measureText(b.text).width + 16, h = 22, x = X - w / 2, y = Y - h, col = BUB[b.faction] || '#ffffff', r = b.faction === 'ironclad' ? 2 : 9;
+      c.globalAlpha = a; c.fillStyle = 'rgba(10,14,24,.86)'; c.strokeStyle = col; c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.lineTo(X + 5, y + h); c.lineTo(X, y + h + 6); c.lineTo(X - 5, y + h); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); c.fill(); c.stroke();
+      c.fillStyle = '#f4f7fb'; c.fillText(b.text, X, y + 15); c.globalAlpha = 1; return true; });
+    c.textAlign = 'start'; }
   function selBox(c, e, d) { const r = RTS.rectOf(e); c.strokeStyle = ringCol(e); c.lineWidth = 2; c.strokeRect(r.x0 * TS - 2, r.y0 * TS - 2, r.w * TS + 4, r.h * TS + 4); }
   // 부드러운 빛 원: 색마다 한 번 만든 방사형 그림을 늘려 찍는다(그라디언트를 매번 만들지 않는다).
   const glows = {};

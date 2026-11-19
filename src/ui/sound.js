@@ -115,14 +115,28 @@ RTS.Sound = function (ac, opt) {
     const end = speak(RTS.syllables(text, 34), V, ac.currentTime + .03, .55 * v, keep); talk = { until: end, nodes: keep }; return end - ac.currentTime; }
   // 유닛 대답(고를 때·명령할 때): 2~3음절. size가 클수록 낮은 목소리. 이야기 대사 중에는 내지 않는다
   let ackT = 0; const ACK = { select: [[0, 13], [5, 0], [4, 8, 0], [20, 0]], move: [[8, 4], [0, 8], [13, 0, 4]], attack: [[0, 0, 20], [4, 20, 0], [8, 0]] };
-  function ack(faction, size, kind) { const v = o().speech; if (!(v > 0) || ac.currentTime < talk.until || ac.currentTime < ackT) return; const V = Object.assign({}, RTS.VOICES[faction] || RTS.VOICES.pioneers);
+  function ack(faction, size, kind, force) { const v = o().speech; if (!(v > 0) || ac.currentTime < talk.until || (!force && ac.currentTime < ackT)) return; const V = Object.assign({}, RTS.VOICES[faction] || RTS.VOICES.pioneers);
     const s = Math.max(.6, Math.min(2.2, size || 1)); V.pitch /= Math.sqrt(s); V.formant /= Math.pow(s, .3); V.rate *= 1.25; if (kind === 'attack') { V.pitch *= 1.12; V.range *= 1.4; }
     const pick = ACK[kind] || ACK.select, vs = pick[Math.floor(Math.random() * pick.length)], keep = [];
     const end = speak(vs.map((x, i) => ({ v: x, on: i === 0 || Math.random() < .6, cons: [0, 2, 3, 6, 7, 9][Math.floor(Math.random() * 6)], fin: i === vs.length - 1 && Math.random() < .4, pause: 0 })), V, ac.currentTime + .02, .4 * v, keep);
-    ackT = end + .35; }
-  return { sfx, say, ack, stopTalk, talking: () => ac.currentTime < talk.until, stop() { stopTalk(); try { master.disconnect(); } catch (e) {} } };
+    ackT = Math.max(ackT, end + .35); }
+  // 유닛 대답을 낼 수 있는지(이야기 대사 중이거나 앞 대답이 끝나지 않았으면 안 됨). hold(sec)로 다음 대답까지 막는다
+  const ackFree = () => ac.currentTime >= talk.until && ac.currentTime >= ackT;
+  const ackHold = sec => { ackT = Math.max(ackT, ac.currentTime + sec); };
+  // 녹음 파일(유닛 대답): 미리 받아서 풀어 둔다. 실패한 파일은 null로 기억하고 다시 받지 않는다
+  const clips = {};
+  function preload(urls) { if (typeof fetch === 'undefined') return; for (const url of urls) { if (url in clips) continue; clips[url] = undefined;
+      fetch(url).then(r => { if (!r.ok) throw 0; return r.arrayBuffer(); }).then(b => new Promise((ok, no) => ac.decodeAudioData(b, ok, no))).then(buf => { clips[url] = buf; }, () => { clips[url] = null; }); } }
+  // 받아 둔 파일이면 재생하고 길이(초)를 돌려준다. 아직 없으면 0
+  function clip(url, vol) { const buf = clips[url], v = o().speech; if (!buf || !(v > 0)) return 0; const s = ac.createBufferSource(), g = ac.createGain();
+    s.buffer = buf; g.gain.value = Math.min(2, (vol || 1) * v); s.connect(g); g.connect(master); s.start(ac.currentTime + .01); ackHold(buf.duration + .3); return buf.duration; }
+  return { sfx, say, ack, ackFree, ackHold, preload, clip, stopTalk, talking: () => ac.currentTime < talk.until, stop() { stopTalk(); try { master.disconnect(); } catch (e) {} } };
 };
 // 기기 음성으로 대사 읽기(설정 '대사 읽기'). 한국어 음성이 없으면 false
 RTS.speakTTS = function (who, text, faction, vol) { const S = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null; if (!S) return false;
   const ko = S.getVoices().filter(v => /^ko/i.test(v.lang)); if (!ko.length) return false; const V = RTS.voiceOf(who, faction), u = new SpeechSynthesisUtterance(String(text).replace(/[()]/g, ' '));
-  u.lang = 'ko-KR'; u.voice = ko[0]; u.pitch = Math.max(0, Math.min(2, V.pitch / 150)); u.rate = Math.max(.6, Math.min(1.6, V.rate / 11)); u.volume = Math.max(0, Math.min(1, vol)); S.cancel(); S.speak(u); return true; };
+  u.lang = 'ko-KR'; u.voice = ko[0]; u.pitch = Math.max(0, Math.min(2, V.pitch / 150)); u.rate = Math.max(.6, Math.min(1.6, V.rate / 11)); u.volume = Math.max(0, Math.min(1, vol)); S.cancel(); RTS.ttsStory = true; u.onend = u.onerror = () => { RTS.ttsStory = false; }; S.speak(u); return true; };
+// 개척단 유닛 대답을 기기 음성으로(녹음 파일이 없을 때). 이야기 대사를 읽는 중이면 끊지 않고 false. size가 클수록 낮게
+RTS.speakUnit = function (text, size, vol) { const S = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null; if (!S || RTS.ttsStory) return false;
+  const ko = S.getVoices().filter(v => /^ko/i.test(v.lang)); if (!ko.length) return false; const u = new SpeechSynthesisUtterance(String(text).replace(/[…]/g, ' ')), k = Math.max(.6, Math.min(2.6, size || 1));
+  u.lang = 'ko-KR'; u.voice = ko[0]; u.pitch = Math.max(.3, Math.min(1.6, 1.15 / Math.sqrt(k))); u.rate = 1.15; u.volume = Math.max(0, Math.min(1, vol)); S.cancel(); S.speak(u); return true; };
