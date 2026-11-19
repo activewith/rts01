@@ -5,7 +5,7 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
 const mk = (map, seed, n = 2, settings) => RTS.createGame({ map, seed, settings, players: [{ faction: 'pioneers' }, { faction: 'ironclad', ai: 'normal' }, { faction: 'swarm', ai: 'normal' }].slice(0, n) });
 const hqs = G => G.ents.filter(e => RTS.defOf(e).dropoff).sort((a, b) => a.team - b.team);
 const key = G => hqs(G).map(h => Math.round(h.x) + ',' + Math.round(h.y)).join(' vs ');
-for (const m of Object.keys(RTS.defs.maps)) {
+for (const m of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) {
   const G = mk(m, 1), sp = G.bases.filter(b => b.spawn), spec = RTS.defs.maps[m], gap = spec.spawnGap || Math.max(G.w, G.h) * .38;
   const res = sp.map(b => [G.ents.filter(e => e.def === 'ore_node' && Math.hypot(e.x - b.x, e.y - b.y) < 10).length, G.ents.filter(e => e.def === 'vent' && Math.hypot(e.x - b.x, e.y - b.y) < 10).length]);
   ok(sp.length >= 4 && res.every(([o, v]) => o >= 8 && v === 2), `${spec.name}: 후보 ${sp.length}곳, 모두 광맥 8·분출구 2`);

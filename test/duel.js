@@ -2,7 +2,7 @@
 const fs = require('fs'), path = require('path'), assert = require('assert');
 for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const opts = o => JSON.parse(JSON.stringify(RTS.netGameOpts(Object.assign({ map: 'ridge', seed: 7, settings: RTS.defaultSettings(), factions: ['pioneers', 'swarm'], names: ['a', 'b'], hc: ['none', 'none'], duel: true }, o))));
-for (const map of Object.keys(RTS.defs.maps)) { const G = RTS.createGame(opts({ map }));
+for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) { const G = RTS.createGame(opts({ map }));
   assert.equal(G.teams.length, 2, map + ' 두 팀'); assert(!G.coop && G.teams.every(t => !t.ai), map + ' AI 없음');
   const hq = G.teams.map(t => G.ents.find(e => e.team === t.id && RTS.defOf(e).dropoff)); assert(hq[0] && hq[1], map + ' 본진'); assert(RTS.foe(G, 0, 1));
   console.log(map, '본진 거리', Math.round(Math.hypot(hq[0].x - hq[1].x, hq[0].y - hq[1].y))); }

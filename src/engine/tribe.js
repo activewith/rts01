@@ -49,6 +49,7 @@ const tTell = (G, team, text, kind) => RTS.emit(G, 'notice', { team, text, kind 
 // 회당 자리: 게임마다 무작위. 맵 가운데, 시작 기지·확장 기지·자원·회사 거점·지부 근처는 피하고, 두 시작 기지에서 걸어서 닿아야 한다
 const nearRamp = (G, px, py) => { for (let y = (py | 0) - 6; y <= (py | 0) + 6; y++) for (let x = (px | 0) - 6; x <= (px | 0) + 6; x++) if (x >= 0 && y >= 0 && x < G.w && y < G.h && (G.elev[y * G.w + x] & 3)) return true; return false; };
 RTS.tribeSpotPick = function (G) {
+  if (G.tribeFixed && G.tribeSpot) return G.tribeSpot; // 캠페인 맵: 정해 둔 자리
   const H = RTS.defs.entities.t_hall, starts = G.bases.filter(b => b.start !== undefined), cx = G.w / 2, cy = G.h / 2, R = TR();
   const keep = [...G.siteSpots, ...G.postSpots], res = G.ents.filter(e => RTS.defOf(e).kind === 'resource');
   const reach = (x, y, tx, ty) => starts.every(b => { const p = RTS.findPath(G, b.x, b.y + 4, { x0: tx - 1, y0: ty - 1, x1: tx + H.size[0], y1: ty + H.size[1] }), l = p[p.length - 1]; return l && Math.hypot(l[0] - x, l[1] - y) < 4.5; });

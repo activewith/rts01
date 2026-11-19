@@ -42,7 +42,7 @@ const run = (G, n) => { for (let i = 0; i < n && !G.over; i++) RTS.step(G); };
 
 // 5. 셋이 대전(협동 아님): 시작 위치, 서로 적, 나만 전멸해도 계속, 마지막 남은 쪽 승리
 const vsOpts = (o = {}) => JSON.parse(JSON.stringify(RTS.netGameOpts(Object.assign({ map: 'ridge', seed: 11, settings: RTS.defaultSettings(), factions: ['pioneers', 'ironclad'], names: ['아빠', '아들'], hc: ['none', 'none'] }, o))));
-for (const map of Object.keys(RTS.defs.maps)) { const G = RTS.createGame(vsOpts({ map })), h = [0, 1, 2].map(t => hqOf(G, t)), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) { const G = RTS.createGame(vsOpts({ map })), h = [0, 1, 2].map(t => hqOf(G, t)), d = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
   const diff = Math.abs(d(h[2], h[0]) - d(h[2], h[1]));
   ok(h.every(Boolean) && G.teams[2].faction === 'swarm' && RTS.foe(G, 0, 1) && RTS.foe(G, 0, 2) && RTS.foe(G, 1, 2), `${map}: 사령부 3, 셋 다 적, 중립세력 거리 차 ${diff.toFixed(1)} (0번 ${d(h[2], h[0]).toFixed(0)} · 1번 ${d(h[2], h[1]).toFixed(0)})`); }
 { const G = RTS.createGame(vsOpts()); for (const e of G.ents) if (e.team === 0) RTS.kill(G, e, null, true); run(G, 20);

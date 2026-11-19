@@ -20,7 +20,12 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-game button:hover{border-color:var(--brass)}
 .k-game button:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
 .k-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border-bottom:2px solid var(--brass);padding-block:6px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
-.k-res{display:flex;gap:14px}
+.k-res{display:flex;gap:14px;flex:none}
+/* 상단 바 줄 수 고정: 숫자·버튼 글자가 바뀌어도 폭이 변하지 않게 칸 폭을 정한다(폭이 변하면 메뉴가 2줄↔1줄로 계속 바뀌었다) */
+.k-chip b{display:inline-block;min-width:5.6ch;white-space:nowrap}.k-chip.sup b{min-width:7.8ch}
+.k-clock{flex:none;min-width:5.8ch}
+.k-tools button{white-space:nowrap}#k-idlen{display:inline-block;min-width:2.4ch;text-align:center}
+#k-speed{min-width:5.2em}#k-mute{min-width:5.2em}#k-voicebtn{min-width:6.6em}#k-pause{min-width:3.6em}
 .k-chip{display:inline-flex;align-items:center;gap:6px;font:700 17px var(--num);font-variant-numeric:tabular-nums}
 .k-chip i{width:13px;height:13px;display:block;transform:rotate(45deg)}
 .k-chip.ore i{background:var(--ore)}.k-chip.gas i{background:var(--gas);border-radius:50%}.k-chip.sup i{background:var(--ok);clip-path:polygon(50% 0,100% 100%,0 100%);transform:none}

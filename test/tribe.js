@@ -6,7 +6,7 @@ const run = (G, sec) => { for (let i = 0; i < sec * RTS.HZ; i++) RTS.step(G); };
 const TU = G => G.ents.filter(e => e.team === RTS.TRIBE && !e.dead && RTS.defOf(e).kind === 'unit');
 
 // 1) 모든 맵: 회당·망루·병력 배치, 무작위 위치(가운데·시작 기지 근처 제외), 두 시작 기지에서 걸어서 닿는다
-for (const m of Object.keys(RTS.defs.maps)) { const G = mk(3, m), T = G.tribe, h = G.byId[T.hall];
+for (const m of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) { const G = mk(3, m), T = G.tribe, h = G.byId[T.hall];
   assert(h && h.tribeHall, m + ' 회당'); assert.equal(G.ents.filter(e => e.def === 't_tower').length, 2, m + ' 망루 2'); assert.equal(TU(G).length, 4, m + ' 시작 병력');
   const d = G.bases.filter(b => b.start !== undefined).map(b => { const p = RTS.findPath(G, b.x, b.y + 4, { x0: Math.round(h.x - 3), y0: Math.round(h.y - 2.5), x1: Math.round(h.x + 2), y1: Math.round(h.y + 1.5) }), l = p[p.length - 1]; assert(Math.hypot(l[0] - h.x, l[1] - h.y) < 4.5, m + ' 도달 불가'); return Math.hypot(b.x - h.x, b.y - h.y); });
   assert(Math.hypot(h.x - G.w / 2, h.y - G.h / 2) >= RTS.TRIBE_RULES.centerGap, m + ' 가운데에 놓임'); assert(Math.min(...d) >= RTS.TRIBE_RULES.startGap, m + ' 시작 기지에 너무 가까움');
