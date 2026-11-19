@@ -282,7 +282,7 @@
       ],
       win: G => [[lead(G, 0), '유적 아래로 길이 열렸다. 행성의 한가운데로.'], [aide(G, 0), '심장 바로 앞에 홀린 자들의 마지막 본진이 있어요.']] },
 
-    { id: 'd5', title: '5장 · 심장 앞', map: 'cm_core', players: 2, tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { easy: 1, normal: 1, hard: 1.15 } } }),
+    { id: 'd5', title: '5장 · 심장 앞', map: 'cm_core', music: 'boss', players: 2, tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { easy: 1, normal: 1, hard: 1.15 } } }),
       brief: ['잿빛 심장 바로 앞, 홀린 세력의 마지막 본진.', '모든 본진을 무너뜨리면 연합 전선은 끝난다.', '…정말 그것으로 끝일까?'],
       setup(G) { guards(G, 60, 60, 3, 4); },
       stages: [
@@ -294,7 +294,7 @@
 
   // ════════════════════ 히든 미션 ════════════════════
   const hidden = [
-    { id: 'x1', title: '히든 미션 · 심연의 문', map: 'cm_ruins', players: 2, levels: ['normal', 'hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { normal: 1, hard: 1.15 } } }),
+    { id: 'x1', title: '히든 미션 · 심연의 문', map: 'cm_ruins', music: 'boss', players: 2, levels: ['normal', 'hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { normal: 1, hard: 1.15 } } }),
       brief: ['고대 유적 한가운데, 오래 닫혀 있던 「심연의 문」이 열리려 한다.', '문을 지키는 거대한 수호자(보통 2기, 어려움 3기)를 쓰러뜨리고, 문이 열릴 때까지 그 앞을 지켜라.', '1인으로 하면 AI 동료가 함께 싸운다.'],
       setup(G) { const n = C().npc(G), f = C().fac(G, n); G.camp.flags.bosses = C().spawnAt(G, n, C().army(f, 'boss', G.camp.level === 'hard' ? 3 : 2), 52, 52);
         G.camp.flags.wards = [[44, 44], [60, 44], [44, 60], [60, 60]].map(([x, y]) => { const e = C().building(G, n, C().rid(f, 'defense'), x, y, G.camp.level === 'hard' ? 2 : 1); return e && e.id; }).filter(Boolean);
@@ -330,7 +330,7 @@
       ],
       win: G => [['???', '…이제… 나를 보아라…'], [lead(G, 0), '심장이 깨어난다. 최종장이다.']] },
 
-    { id: 'h3', title: '최종장 · 잿빛 심장', map: 'cm_core', players: 2, levels: ['hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true } } }),
+    { id: 'h3', title: '최종장 · 잿빛 심장', map: 'cm_core', music: 'boss', players: 2, levels: ['hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true } } }),
       brief: ['행성의 한가운데, 잿빛 심장이 깨어났다.', '심장을 지키는 결계 넷을 부수고 심장을 멈춰라. 심장은 쉬지 않고 괴물을 뿜어낸다.', '난이도: 어려움(고정)'],
       setup(G) { const n = C().npc(G), f = C().fac(G, n), heart = C().building(G, n, RTS.defs.factions[f].hq, 60, 60, 8); G.camp.flags.heart = heart ? [heart.id] : [];
         G.camp.flags.wards = [[50, 50], [70, 50], [50, 70], [70, 70]].map(([x, y]) => { const e = C().building(G, n, C().rid(f, 'defense'), x, y, 2); return e && e.id; }).filter(Boolean);

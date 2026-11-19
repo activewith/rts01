@@ -53,6 +53,9 @@ RTS.SETTINGS = [
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
+    { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
+    { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
+    { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
     { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },

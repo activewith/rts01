@@ -68,24 +68,34 @@ RTS.mount = function (root, opts = {}) {
   const send = c => { if (!app.G) return; if (app.net && (app.net.L || app.net.match)) { if (app.net.L) app.net.L.local(c); } else RTS.command(app.G, app.team, c); };
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
-  let ac = null, music = null, muted = store.get('mute') === '1'; const last = {};
-  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); } };
+  let ac = null, music = null, snd = null, muted = store.get('mute') === '1'; const last = {};
+  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); }
+    if (ac && !snd && RTS.Sound) snd = RTS.Sound(ac, () => ({ sfx: muted ? 0 : app.settings.volume / 100, speech: muted ? 0 : (app.settings.speech === undefined ? 100 : app.settings.speech) / 100, low: !!app.settings.lowSpec })); };
   // 배경음악: 메뉴·대기실은 잔잔한 곡, 게임 중에는 전투 곡. 음성 채팅으로 상대 목소리가 들어오는 동안은 음악을 줄인다
-  function applyMusic() { if (!music) return; const duck = voice.inCall ? .4 : 1; music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? 'game' : 'menu') : 'off'); }
+  // 상대 음성·캐릭터 대사 중에는 음악을 줄인다
+  function applyMusic() { if (!music) return; const duck = (voice.inCall ? .4 : 1) * (snd && snd.talking() ? .55 : 1); music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? musicTrack(app.G) : 'menu') : 'off'); }
+  // 곡 고르기: 캠페인은 미션의 music, 없으면 지금 단계 목표 종류(지점 이동 → 탐험, 버티기·지키기 → 방어), 그 밖에는 내 진영 곡
+  function musicTrack(G) { const me = G.teams[app.team], fac = me && RTS.MUSIC_SONGS[me.faction] ? me.faction : 'game'; if (!G.camp) return fac; const M = RTS.campDef(G.camp.id); if (!M) return fac; if (M.music) return M.music;
+    const S = M.stages[Math.max(0, G.camp.stage)]; if (!S) return fac; const goals = S.goals.filter(g => { const [c, n] = g.key ? [G.camp.flags[g.key] || 0, g.acc ? g.need : 1] : g.prog(G); return c < n; });
+    if (goals.some(g => g.acc || /버티기|지키기/.test(typeof g.text === 'string' ? g.text : ''))) return 'defense'; if (goals.some(g => g.at && !g.acc)) return 'adventure'; return fac; }
   function tone(f, f2, dur, type, vol) { vol *= app.settings.volume / 100; if (vol <= 0) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
   app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
+    if (snd) { const t = at && at.team !== undefined && app.G && app.G.teams[at.team], f = t ? t.faction : app.G && app.G.teams[app.team] ? app.G.teams[app.team].faction : null; snd.sfx(k, f); return; } // 진영별 무기 소리(src/ui/sound.js)
     ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
 
   // ── 메뉴 ──────────────────────────────────────────────
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs, rec = loadResume(); $('k-rejoin').hidden = !rec; if (rec) $('k-rejoin').textContent = `대전 다시 접속 (방 ${rec.code})`; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).filter(m => !m.camp).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; app.outShown = false; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
+  function bind(G) { app.G = G; app.outShown = false; app.selVoice = undefined; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     storyReset(); RTS.on(G, 'story', d => storyPush(d)); app.objSig = ''; $('k-obj').hidden = true; $('k-next').hidden = true; $('k-again').textContent = '다시 하기';
-    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
-    RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
-    RTS.on(G, 'merged', ({ e, from }) => { if (e.team !== app.team) return; app.sfx('ok'); if (from.some(i => app.sel.includes(i))) app.sel = [...app.sel.filter(i => !from.includes(i)), e.id]; });
+    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); app.sfx('alarm'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
+    RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('built'); });
+    RTS.on(G, 'trained', ({ e }) => { if (e.team === app.team) app.sfx('trained', e); }); RTS.on(G, 'researched', ({ team }) => { if (team === app.team) app.sfx('research'); });
+    RTS.on(G, 'morph', d => { const e = d && (d.e || d.b); if (e && e.team === app.team) app.sfx('morph'); }); RTS.on(G, 'heal', d => { const e = d && (d.e || d.t); if (e && e.team === app.team) app.sfx('heal', e); });
+    RTS.on(G, 'campStage', d => { if (d.stage > 0 && music) music.sting('stage'); });
+    RTS.on(G, 'merged', ({ e, from }) => { if (e.team !== app.team) return; app.sfx('merge'); if (from.some(i => app.sel.includes(i))) app.sel = [...app.sel.filter(i => !from.includes(i)), e.id]; });
     RTS.on(G, 'leveled', ({ e }) => { if (e.team === app.team) app.sfx('ok'); }); closePop();
     RTS.on(G, 'gameover', o => { if (!app.demo) finish(o); else setTimeout(demo, 2500); });
   }
@@ -112,7 +122,7 @@ RTS.mount = function (root, opts = {}) {
     if (G.camp) { campFinish(G, m, s); return; }
     const win = !out && (G.coop ? o.side === a.side : o.winner === app.team), foes = G.teams.filter(t => !RTS.ally(G, app.team, t.id)), b = foes[0] || G.teams.find(t => t.id !== app.team);
     const cols = [a, ...RTS.allyTeams(G, app.team), ...foes], neu = G.teams.find(t => t.ai && t.boost), neuTxt = neu ? `${neu.name} ${RTS.defs.factions[neu.faction].name} (${RTS.defs.difficulties[neu.ai].name} AI의 ${Math.round(neu.boost * 100)}%)` : '';
-    store.del('save'); $('k-endt').textContent = win ? '승리' : '패배';
+    store.del('save'); if (music && !out) music.sting(win ? 'win' : 'lose'); $('k-endt').textContent = win ? '승리' : '패배';
     $('k-ends').textContent = `${m}분 ${s}초 · ` + (out ? `${G.coop ? '협동' : '서로 대전'} · 내 건물과 유닛이 모두 없어졌습니다. 게임은 계속 진행되며 관전할 수 있습니다` : G.coop ? `협동 · ${neuTxt}` : neu ? `서로 대전(1:1:1) · ${neuTxt}` : b.ai ? `${b.name} AI ${RTS.defs.difficulties[b.ai].name}` : `${b.name} (사람)`);
     if (app.net) { $('k-again').hidden = true; app.net.endShown = true; if (!out) dropResume(); }
     if (out) $('k-tomenu').textContent = '관전 계속'; else $('k-tomenu').textContent = '메뉴로';
@@ -336,7 +346,10 @@ RTS.mount = function (root, opts = {}) {
     const inBox = G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).uncontrollable && e.x >= x0 && e.x <= x1 && e.y >= y0 && e.y <= y1); const army = inBox.filter(e => !RTS.defOf(e).gather), chosen = army.length ? army : inBox;
     if (!chosen.length && !add) return; app.sel = add ? [...new Set([...app.sel, ...chosen.map(e => e.id)])] : chosen.map(e => e.id); app.menu = 'main'; app.mode = null; }
   function spread(ids, x, y) { const n = ids.length, cols = Math.ceil(Math.sqrt(n)), out = {}; const s = .95; ids.forEach((id, i) => { const row = (i / cols) | 0, col = i % cols; out[id] = { x: x + (col - (cols - 1) / 2) * s, y: y + (row - (cols - 1) / 2) * s }; }); return out; }
-  function context(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
+  // 우클릭 명령 + 유닛 대답(공격 대상이면 공격 대답)
+  function context(wx, wy, queue) { const ok = contextRaw(wx, wy, queue); if (ok) { const G = app.G, t = pick(wx, wy), u = selected().find(e => e.team === app.team && RTS.defOf(e).kind === 'unit'); if (u) unitVoice(u, t && t.team >= 0 && RTS.foe(G, app.team, t.team) ? 'attack' : 'move'); } return ok; }
+  function unitVoice(u, kind) { if (!snd || muted || app.settings.unitVoice === false) return; const d = RTS.defOf(u); snd.ack(app.G.teams[u.team].faction, (d.r || .5) / .5, kind); }
+  function contextRaw(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
@@ -729,7 +742,7 @@ RTS.mount = function (root, opts = {}) {
     showGame(RTS.createGame(RTS.campGameOpts(id, campLv(M, p.level), Date.now() % 100000, app.settings, p.carry, M.players === 2 ? { factions: [p.fac] } : {}))); }
   // 미션이 끝났을 때: 이긴 경우 기록·이어지는 값 저장, 새로 열린 것 알림. 둘이 하기면 두 기기 모두 자기 브라우저에 기록한다
   function campFinish(G, m, s) { const C = G.camp, M = RTS.campDef(C.id), win = !!(C.result && C.result.win), next = RTS.campNext(C.id), net = !!app.net;
-    store.del('save'); let news = [];
+    store.del('save'); let news = []; if (music) music.sting(win ? 'win' : 'lose');
     if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick);
       if (M.carryOut) { const o = M.carryOut(G) || {}; for (const k of Object.keys(o)) if (o[k] !== null && o[k] !== undefined) p.carry[k] = o[k]; }
       campSave(p); const after = RTS.campStatus(p);
@@ -754,10 +767,13 @@ RTS.mount = function (root, opts = {}) {
     const M = RTS.campDef(G.camp.id), L = RTS.campGoals(G), h = `<b>${esc(M.title)}</b>` + L.map(g => `<p class="${g.done ? 'ok' : ''}">${g.done ? '✓' : '·'} ${esc(g.text)}${g.need > 1 ? ` <small>${Math.floor(g.cur)}/${g.need}</small>` : ''}</p>`).join('');
     if (h !== app.objSig) { app.objSig = h; el.innerHTML = h; } el.hidden = false; }
   // 대사: 한 줄씩 차례로 띄운다. 누르면 다음 줄
-  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
+  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; if (snd) snd.stopTalk(); try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch (e) {} const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
   function storyPush(d) { app.storyQ.push(d); if (!app.storyT) storyNext(); }
   function storyNext() { const el = $('k-story'); clearTimeout(app.storyT); const d = app.storyQ.shift(); if (!d) { el.hidden = true; app.storyT = 0; return; }
-    el.innerHTML = (d.who ? `<b>${esc(d.who)}</b>` : '') + `<span>${esc(d.text)}</span>`; el.hidden = false; app.storyT = setTimeout(storyNext, Math.max(3500, d.text.length * 110)); }
+    el.innerHTML = (d.who ? `<b>${esc(d.who)}</b>` : '') + `<span>${esc(d.text)}</span>`; el.hidden = false; app.storyT = setTimeout(storyNext, Math.max(3500, d.text.length * 110)); storyVoice(d); }
+  // 대사 음성: 설정 '대사 읽기'가 켜져 있고 기기에 한국어 음성이 있으면 기기 음성, 아니면 캐릭터 합성 음성(src/ui/sound.js)
+  function storyVoice(d) { if (!d.who || muted || !ac) return; const G = app.G, f = G && G.teams[app.team] ? G.teams[app.team].faction : null, v = (app.settings.speech === undefined ? 100 : app.settings.speech) / 100;
+    if (v <= 0) return; if (app.settings.tts && RTS.speakTTS(d.who, d.text, f, Math.min(1, v))) return; if (snd) { const sec = snd.say(d.who, d.text, f); applyMusic(); if (sec > 0) setTimeout(applyMusic, sec * 1000 + 100); } }
   function renderNet() { const N = app.net, el = $('k-netp'); if (!N) return; const d = RTS.defs, st = N.status ? `<p class="k-netst${N.bad ? ' bad' : ''}" role="status">${esc(N.status)}</p>` : '';
     const opt = (id, on, b, sub) => `<button class="k-opt${on ? ' on' : ''}" aria-pressed="${on}" data-v="${id}"><b>${esc(b)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</button>`;
     const coopNow = N.stage === 'lobby' && (N.role === 'host' ? N.mode === 'coop' : !!(N.lobby && N.lobby.coop)), duelNow = N.stage === 'lobby' && (N.role === 'host' ? N.mode === 'duel' : !!(N.lobby && N.lobby.duel));
@@ -873,7 +889,7 @@ RTS.mount = function (root, opts = {}) {
       if (app.settings.edgeScroll && m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
       if (dx || dy) { cam.x += dx; cam.y += dy; clampCam(); [m.wx, m.wy] = toWorld(m.x, m.y); }
       view.style.cursor = app.mode ? 'crosshair' : 'default';
-      if (app.frame % 12 === 0) { renderHud(); renderObj(); // 셋 이상 게임에서 나만 전멸하면 패배를 알리고 관전으로 남는다(두 기기 계산은 계속 돌아야 한다)
+      if (app.frame % 12 === 0) { renderHud(); renderObj(); { const sg = app.sel.join(); if (sg !== app.selVoice) { const u = app.sel.length && G.byId[app.sel[0]]; if (app.selVoice !== undefined && u && !u.dead && u.team === app.team && RTS.defOf(u).kind === 'unit') unitVoice(u, 'select'); app.selVoice = sg; } } // 고른 유닛 대답 // 셋 이상 게임에서 나만 전멸하면 패배를 알리고 관전으로 남는다(두 기기 계산은 계속 돌아야 한다)
         if (G.teams.length > 2 && !G.over && !app.outShown && G.teams[app.team] && (G.camp ? !G.ents.some(e => e.team === app.team && !e.dead) : G.teams[app.team].alive === 0)) { app.outShown = true; if (G.camp) notice('내 부대가 모두 쓰러졌습니다. 동료가 남아 있으면 미션은 계속됩니다', 'warn'); else finish(null, true); } } }
     if (app.frame % 15 === 0 && !app.demo) renderMini();
     if (music && app.frame % 12 === 0) { if (!app.demo && !G.over) { if (G.ents.some(e => e.team === app.team && e.firedAt > G.tick - 8)) app.heat = Math.max(app.heat || 0, .75); app.heat = (app.heat || 0) * .965; music.setIntensity(Math.max(app.heat, Math.min(.3, G.tick / 20 / 900))); } if (app.frame % 36 === 0) applyMusic(); }

@@ -210,7 +210,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '7251058';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'e3b2210';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -2728,6 +2728,9 @@ RTS.SETTINGS = [
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
+    { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
+    { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
+    { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
     { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },
@@ -3039,7 +3042,7 @@ RTS.HANDICAPS = {
       ],
       win: G => [[lead(G, 0), '유적 아래로 길이 열렸다. 행성의 한가운데로.'], [aide(G, 0), '심장 바로 앞에 홀린 자들의 마지막 본진이 있어요.']] },
 
-    { id: 'd5', title: '5장 · 심장 앞', map: 'cm_core', players: 2, tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { easy: 1, normal: 1, hard: 1.15 } } }),
+    { id: 'd5', title: '5장 · 심장 앞', map: 'cm_core', music: 'boss', players: 2, tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { easy: 1, normal: 1, hard: 1.15 } } }),
       brief: ['잿빛 심장 바로 앞, 홀린 세력의 마지막 본진.', '모든 본진을 무너뜨리면 연합 전선은 끝난다.', '…정말 그것으로 끝일까?'],
       setup(G) { guards(G, 60, 60, 3, 4); },
       stages: [
@@ -3051,7 +3054,7 @@ RTS.HANDICAPS = {
 
   // ════════════════════ 히든 미션 ════════════════════
   const hidden = [
-    { id: 'x1', title: '히든 미션 · 심연의 문', map: 'cm_ruins', players: 2, levels: ['normal', 'hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { normal: 1, hard: 1.15 } } }),
+    { id: 'x1', title: '히든 미션 · 심연의 문', map: 'cm_ruins', music: 'boss', players: 2, levels: ['normal', 'hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true }, boost: { normal: 1, hard: 1.15 } } }),
       brief: ['고대 유적 한가운데, 오래 닫혀 있던 「심연의 문」이 열리려 한다.', '문을 지키는 거대한 수호자(보통 2기, 어려움 3기)를 쓰러뜨리고, 문이 열릴 때까지 그 앞을 지켜라.', '1인으로 하면 AI 동료가 함께 싸운다.'],
       setup(G) { const n = C().npc(G), f = C().fac(G, n); G.camp.flags.bosses = C().spawnAt(G, n, C().army(f, 'boss', G.camp.level === 'hard' ? 3 : 2), 52, 52);
         G.camp.flags.wards = [[44, 44], [60, 44], [44, 60], [60, 60]].map(([x, y]) => { const e = C().building(G, n, C().rid(f, 'defense'), x, y, G.camp.level === 'hard' ? 2 : 1); return e && e.id; }).filter(Boolean);
@@ -3087,7 +3090,7 @@ RTS.HANDICAPS = {
       ],
       win: G => [['???', '…이제… 나를 보아라…'], [lead(G, 0), '심장이 깨어난다. 최종장이다.']] },
 
-    { id: 'h3', title: '최종장 · 잿빛 심장', map: 'cm_core', players: 2, levels: ['hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true } } }),
+    { id: 'h3', title: '최종장 · 잿빛 심장', map: 'cm_core', music: 'boss', players: 2, levels: ['hard'], tribe: false, teams: duo(0, 1, 2, { foe: { aiState: { noTribe: true } } }),
       brief: ['행성의 한가운데, 잿빛 심장이 깨어났다.', '심장을 지키는 결계 넷을 부수고 심장을 멈춰라. 심장은 쉬지 않고 괴물을 뿜어낸다.', '난이도: 어려움(고정)'],
       setup(G) { const n = C().npc(G), f = C().fac(G, n), heart = C().building(G, n, RTS.defs.factions[f].hq, 60, 60, 8); G.camp.flags.heart = heart ? [heart.id] : [];
         G.camp.flags.wards = [[50, 50], [70, 50], [50, 70], [70, 70]].map(([x, y]) => { const e = C().building(G, n, C().rid(f, 'defense'), x, y, 2); return e && e.id; }).filter(Boolean);
@@ -4085,15 +4088,48 @@ RTS.lowSpecGuess = function () {
 };
 
 // music.js — 배경음악. 외부 소리 파일 없이 WebAudio로 그 자리에서 합성한다. DOM 없음.
-// const m = RTS.Music(audioContext); m.setMode('menu'|'game'|'off'); m.setIntensity(0~1); m.setVolume(0~1); m.stop();
-// 곡은 SONGS에 데이터로 추가한다. 음은 MIDI 번호(60 = 가운데 도), 한 칸은 16분음표.
-RTS.MUSIC_SONGS = {
+// const m = RTS.Music(audioContext); m.setMode(곡 이름 | 'off'); m.setIntensity(0~1); m.setVolume(0~1); m.sting('win'|'lose'); m.stop();
+// 곡은 RTS.MUSIC_SONGS에 데이터로 추가한다. 음은 MIDI 번호(60 = 가운데 도), 한 칸은 16분음표, 한 마디 16칸.
+//   chords: 마디마다 화음, bass: 마디마다 베이스 음, arp: 칸마다 화음 안 음 번호(-1 쉼), lead: 마디별 선율 [칸마다 화음 뿌리 기준 반음 수 또는 null]
+//   pad/arpType/leadType: 소리 종류(sawtooth·square·triangle·sine), cut: 저역 필터, drums: 'none'|'soft'|'march'|'machine'|'tribal'|'drive'|'boss'
+//   heat(긴장도)가 오르면 드럼·아르페지오·선율이 더해진다. minHeat: 곡이 늘 유지하는 최소 긴장도
+RTS.MUSIC_SONGS = (() => { const _ = null; return {
   // 메뉴: 느리고 넓은 화음, 드럼 없음
-  menu: { bpm: 72, steps: 16, chords: [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], bass: [45, 41, 36, 43],
-    arp: [0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 1, -1, -1, -1], arpOct: 12, padVol: .05, arpVol: .022, drums: false },
-  // 전투: 빠른 박, 긴장도에 따라 킥·스네어·16분 아르페지오가 더해진다
-  game: { bpm: 112, steps: 16, chords: [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59], [50, 53, 57], [53, 57, 60], [52, 56, 59], [52, 56, 59]],
-    bass: [45, 41, 43, 40, 38, 41, 40, 40], arp: [0, 1, 2, 1, 0, 1, 2, 3, 0, 1, 2, 1, 0, 2, 1, 2], arpOct: 12, padVol: .032, arpVol: .018, drums: true },
+  menu: { bpm: 72, chords: [[57, 60, 64], [53, 57, 60], [48, 52, 55], [55, 59, 62]], bass: [45, 41, 36, 43],
+    arp: [0, -1, -1, -1, 1, -1, -1, -1, 2, -1, -1, -1, 1, -1, -1, -1], arpOct: 12, padVol: .05, arpVol: .022, arpType: 'sine', arpLen: 6, drums: 'none' },
+  // 예전 전투 곡(일반 게임에서 진영 곡이 없을 때)
+  game: { bpm: 112, chords: [[57, 60, 64], [53, 57, 60], [55, 59, 62], [52, 55, 59], [50, 53, 57], [53, 57, 60], [52, 56, 59], [52, 56, 59]],
+    bass: [45, 41, 43, 40, 38, 41, 40, 40], arp: [0, 1, 2, 1, 0, 1, 2, 3, 0, 1, 2, 1, 0, 2, 1, 2], arpOct: 12, padVol: .032, arpVol: .018, drums: 'drive' },
+  // 개척단: 장조, 행진곡 스네어, 금관 같은 톱니파 선율
+  pioneers: { bpm: 108, chords: [[60, 64, 67], [57, 60, 64], [53, 57, 60], [55, 59, 62]], bass: [48, 45, 41, 43], drums: 'march',
+    arp: [0, -1, 1, -1, 2, -1, 1, -1, 0, -1, 1, -1, 2, -1, 1, 2], arpOct: 12, padVol: .03, arpVol: .016, arpType: 'triangle', leadType: 'sawtooth', leadCut: 2400, leadVol: .028,
+    lead: [[12, _, _, _, 7, _, 12, _, 14, _, 16, _, 14, _, 12, _], [12, _, _, _, 7, _, _, _, 4, _, 7, _, 12, _, _, _], [12, _, 14, _, 16, _, _, _, 17, _, 16, _, 14, _, 12, _], [14, _, _, _, 11, _, 7, _, 11, _, 14, _, 19, _, _, _]] },
+  // 철갑회: 단조, 기계 박자(금속 타격), 사각파 펄스 베이스
+  ironclad: { bpm: 120, chords: [[57, 60, 64], [57, 60, 64], [53, 57, 60], [52, 56, 59]], bass: [45, 45, 41, 40], drums: 'machine', bassPulse: true,
+    arp: [0, 0, 2, 0, 1, 0, 2, 0, 0, 0, 2, 0, 1, 2, 1, 0], arpOct: 0, padVol: .022, arpVol: .016, arpType: 'square', arpCut: 1400, leadType: 'square', leadCut: 1600, leadVol: .02,
+    lead: [[12, _, _, 12, _, _, 15, _, 12, _, _, _, 10, _, _, _], [12, _, _, 12, _, _, 15, _, 17, _, 15, _, 12, _, _, _], [12, _, _, 12, _, _, 15, _, 12, _, _, _, 8, _, _, _], [11, _, _, 11, _, _, 14, _, 11, _, 8, _, 7, _, _, _]] },
+  // 포자군락: 프리지안 느낌의 불안한 화음, 낮은 웅웅거림, 부족 북 같은 타격
+  swarm: { bpm: 96, chords: [[52, 55, 59], [53, 57, 60], [52, 55, 59], [50, 53, 58]], bass: [40, 41, 40, 38], drums: 'tribal', drone: 28,
+    arp: [0, -1, -1, 1, -1, -1, 2, -1, 0, -1, 1, -1, -1, 2, -1, 1], arpOct: 12, padVol: .03, arpVol: .02, arpType: 'sine', arpLen: 3, leadType: 'triangle', leadVol: .03, leadBend: true,
+    lead: [[12, _, _, _, 13, _, _, _, 12, _, _, _, 10, _, _, _], [_, _, _, _, 12, _, 13, _, 15, _, _, _, 13, _, _, _], [12, _, _, _, 13, _, _, _, 17, _, 15, _, 13, _, _, _], [12, _, _, _, _, _, 10, _, _, _, 8, _, 7, _, _, _]] },
+  // 탐험(부대 이동 미션): 가볍고 성긴 뜯는 소리
+  adventure: { bpm: 92, chords: [[50, 53, 57], [55, 58, 62], [53, 57, 60], [57, 61, 64]], bass: [38, 43, 41, 45], drums: 'soft',
+    arp: [0, -1, 2, -1, 1, -1, 2, -1, 0, -1, 2, 1, -1, 2, -1, -1], arpOct: 12, padVol: .022, arpVol: .026, arpType: 'triangle', arpLen: 2.2, leadType: 'sine', leadVol: .026,
+    lead: [[12, _, _, _, _, _, 15, _, 14, _, _, _, 12, _, _, _], [_, _, _, _, 10, _, 12, _, 14, _, _, _, _, _, _, _], [12, _, _, _, 16, _, _, _, 19, _, 17, _, 16, _, _, _], [16, _, _, _, 15, _, _, _, 12, _, _, _, _, _, _, _]], minHeat: .1 },
+  // 방어(버티기·거점 지키기): 빠른 8분 반복음, 긴장감
+  defense: { bpm: 128, chords: [[57, 60, 64], [58, 62, 65], [57, 60, 64], [56, 59, 64]], bass: [45, 46, 45, 44], drums: 'drive', bassPulse: true,
+    arp: [0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 2, 0, 2, 1, 3], arpOct: 12, padVol: .026, arpVol: .016, arpType: 'sawtooth', arpCut: 1800, leadType: 'square', leadCut: 1400, leadVol: .018,
+    lead: [[12, _, _, _, _, _, _, _, 13, _, _, _, _, _, _, _], [13, _, _, _, _, _, _, _, 15, _, _, _, 13, _, _, _], [12, _, _, _, _, _, _, _, 16, _, _, _, _, _, _, _], [15, _, _, _, 13, _, _, _, 12, _, _, _, 11, _, _, _]], minHeat: .45 },
+  // 보스·최종장: 무거운 박, 낮은 화음
+  boss: { bpm: 136, chords: [[45, 48, 52], [46, 49, 53], [45, 48, 52], [43, 47, 50]], bass: [33, 34, 33, 31], drums: 'boss', drone: 21, bassPulse: true,
+    arp: [0, 1, 2, 1, 0, 1, 2, 1, 0, 1, 2, 3, 2, 1, 0, 1], arpOct: 24, padVol: .03, arpVol: .014, arpType: 'sawtooth', arpCut: 2600, leadType: 'sawtooth', leadCut: 1800, leadVol: .026,
+    lead: [[12, _, 12, _, 13, _, _, _, 12, _, _, _, 8, _, _, _], [13, _, 13, _, 15, _, _, _, 13, _, _, _, 10, _, _, _], [12, _, 12, _, 13, _, 15, _, 17, _, _, _, 15, _, _, _], [14, _, _, _, 13, _, _, _, 11, _, _, _, 7, _, _, _]], minHeat: .6 },
+}; })();
+// 짧은 알림 음악(한 번만): 승리·패배·미션 단계 넘어감
+RTS.MUSIC_STINGS = {
+  win: { bpm: 120, notes: [[0, 60, 2], [2, 64, 2], [4, 67, 2], [6, 72, 6], [6, 64, 6], [6, 67, 6]], type: 'sawtooth', vol: .05 },
+  lose: { bpm: 80, notes: [[0, 64, 3], [3, 63, 3], [6, 62, 3], [9, 61, 8], [9, 52, 8]], type: 'triangle', vol: .06 },
+  stage: { bpm: 140, notes: [[0, 67, 1], [1, 72, 3]], type: 'triangle', vol: .04 },
 };
 RTS.Music = function (ac) {
   const SONGS = RTS.MUSIC_SONGS, hz = m => 440 * Math.pow(2, (m - 69) / 12);
@@ -4102,47 +4138,205 @@ RTS.Music = function (ac) {
   // 가벼운 메아리(딜레이)로 공간감
   const dly = ac.createDelay(1), fb = ac.createGain(), wet = ac.createGain(); fb.gain.value = .25; wet.gain.value = .18;
   bus.connect(dly); dly.connect(fb); fb.connect(dly); dly.connect(wet); wet.connect(out);
+  const stingOut = ac.createGain(); stingOut.gain.value = .5; stingOut.connect(ac.destination);
   const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = noise.getChannelData(0); let seed = 7;
   for (let i = 0; i < nd.length; i++) { seed = (seed * 16807) % 2147483647; nd[i] = seed / 1073741823.5 - 1; }
-  const S = { mode: 'off', song: null, step: 0, bar: 0, next: 0, vol: .5, heat: 0, timer: 0, fading: false };
+  const S = { mode: 'off', song: null, step: 0, bar: 0, next: 0, vol: .5, heat: 0, timer: 0, fading: false, drone: null };
 
   function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(peak, t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
-  function osc(type, f, t, dur, peak, a, cut, detune) { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f; if (detune) o.detune.value = detune;
+  function osc(type, f, t, dur, peak, a, cut, detune, dest, bend) { const o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(bend ? f * .94 : f, t); if (bend) o.frequency.exponentialRampToValueAtTime(f, t + .08); if (detune) o.detune.value = detune;
     let node = o; if (cut) { const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; o.connect(lp); node = lp; }
-    node.connect(g); g.connect(bus); env(g, t, a, peak, dur); o.start(t); o.stop(t + a + dur + .05); }
-  function hit(t, type, f, q, peak, dur) { const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noise; fl.type = type; fl.frequency.value = f; fl.Q.value = q;
-    s.connect(fl); fl.connect(g); g.connect(bus); env(g, t, .002, peak, dur); s.start(t); s.stop(t + dur + .05); }
-  function kick(t) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(140, t); o.frequency.exponentialRampToValueAtTime(42, t + .12); o.connect(g); g.connect(bus); env(g, t, .003, .38, .26); o.start(t); o.stop(t + .32); }
+    node.connect(g); g.connect(dest || bus); env(g, t, a, peak, dur); o.start(t); o.stop(t + a + dur + .05); }
+  function hit(t, type, f, q, peak, dur) { const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noise; s.playbackRate.value = .7 + Math.random() * .6; fl.type = type; fl.frequency.value = f; fl.Q.value = q;
+    s.connect(fl); fl.connect(g); g.connect(bus); env(g, t, .002, peak, dur); s.start(t, Math.random() * .5); s.stop(t + dur + .05); }
+  function kick(t, f0, f1, v) { const o = ac.createOscillator(), g = ac.createGain(); o.frequency.setValueAtTime(f0 || 140, t); o.frequency.exponentialRampToValueAtTime(f1 || 42, t + .12); o.connect(g); g.connect(bus); env(g, t, .003, v || .38, .26); o.start(t); o.stop(t + .32); }
+  function clang(t, v) { osc('square', 1240, t, .09, v, .001, 3800); osc('square', 1873, t, .07, v * .7, .001, 4200); } // 금속 타격(철갑회)
 
-  function play(sg, step, bar, t, sp) { const ci = bar % sg.chords.length, ch = sg.chords[ci], h = S.mode === 'game' ? S.heat : 0;
-    if (step === 0) { for (const m of ch) { osc('sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, 900, -6); osc('sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, 900, 6); }
-      if (!sg.drums) osc('triangle', hz(sg.bass[ci]), t, sp * 14, .12, .05, 0); }
-    if (sg.drums) {
-      if (step % 2 === 0) osc('triangle', hz(sg.bass[ci] + (step % 8 === 6 ? 12 : 0)), t, sp * 1.6, .11, .008, 0); // 8분음 베이스
-      if (step % 2 === 0) hit(t, 'highpass', 7000, .7, step % 4 === 2 ? .045 : .025, .04);
-      if (h > .25 && (step === 0 || step === 8 || (h > .7 && step === 10))) kick(t);
-      if (h > .55 && (step === 4 || step === 12)) { hit(t, 'bandpass', 1800, .9, .12, .12); osc('triangle', 190, t, .08, .06, .002, 0); }
+  // 드럼 묶음. h = 긴장도
+  function drums(style, step, t, h) {
+    if (style === 'none') return;
+    if (style === 'soft') { if (step === 0 && h > .2) kick(t, 90, 40, .18); if (step % 4 === 2) hit(t, 'highpass', 8000, .7, .012, .03); return; }
+    if (style === 'march') { if (step % 4 === 0 && h > .2) kick(t, 120, 45, .3); if (step === 4 || step === 12) hit(t, 'bandpass', 2200, .8, .1, .1);
+      if (h > .5 && (step === 14 || step === 15 || step === 6)) hit(t, 'bandpass', 2400, .8, .06, .05); if (step % 2 === 0) hit(t, 'highpass', 7000, .7, .015, .03); return; }
+    if (style === 'machine') { if ((step === 0 || step === 6 || step === 10) && h > .2) kick(t, 160, 38, .34); if (step === 4 || step === 12) clang(t, .03 + h * .03);
+      if (step % 2 === 1 && h > .4) hit(t, 'highpass', 9000, 1.2, .018, .02); return; }
+    if (style === 'tribal') { if ((step === 0 || step === 3 || step === 8 || step === 11) && h > .15) kick(t, 110, 55, .26); if (step === 6 || step === 14) osc('triangle', 220, t, .1, .06 + h * .04, .003, 0);
+      if (h > .5 && step % 2 === 1) hit(t, 'bandpass', 900, 3, .03, .06); return; }
+    if (style === 'drive') { if (step % 2 === 0) hit(t, 'highpass', 7000, .7, step % 4 === 2 ? .045 : .025, .04);
+      if (h > .25 && (step === 0 || step === 8 || (h > .7 && step === 10))) kick(t); if (h > .55 && (step === 4 || step === 12)) { hit(t, 'bandpass', 1800, .9, .12, .12); osc('triangle', 190, t, .08, .06, .002, 0); } return; }
+    if (style === 'boss') { if (step % 4 === 0 || (h > .7 && step % 4 === 3)) kick(t, 100, 30, .42); if (step === 4 || step === 12) { hit(t, 'bandpass', 1500, .7, .14, .16); clang(t, .02); } if (step % 2 === 0) hit(t, 'highpass', 6000, .7, .03, .04); }
+  }
+  function play(sg, step, bar, t, sp) { const ci = bar % sg.chords.length, ch = sg.chords[ci], h = Math.max(sg.minHeat || 0, S.mode === 'menu' ? 0 : S.heat), style = sg.drums || 'none', beat = style !== 'none';
+    if (step === 0) { for (const m of ch) { osc(sg.pad || 'sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, sg.padCut || 900, -6); osc(sg.pad || 'sawtooth', hz(m), t, sp * 15, sg.padVol, sp * 1.5, sg.padCut || 900, 6); }
+      if (!beat) osc('triangle', hz(sg.bass[ci]), t, sp * 14, .12, .05, 0); }
+    if (beat) {
+      if (sg.bassPulse ? true : step % 2 === 0) { if (step % 2 === 0 || h > .5) osc(sg.bassPulse ? 'square' : 'triangle', hz(sg.bass[ci] + (step % 8 === 6 ? 12 : 0)), t, sp * (sg.bassPulse ? .9 : 1.6), sg.bassPulse ? .05 : .11, .008, sg.bassPulse ? 500 : 0); }
+      drums(style, step, t, h);
     }
-    const a = sg.arp[step], arpOn = a >= 0 && (sg.drums ? (h > .45 || step % 2 === 0) : true);
-    if (arpOn) osc(sg.drums ? 'square' : 'sine', hz(ch[a % ch.length] + sg.arpOct + (a >= ch.length ? 12 : 0)), t, sp * (sg.drums ? 1.2 : 6), sg.arpVol * (sg.drums ? .6 + h * .6 : 1), .005, sg.drums ? 2200 : 0); }
+    const a = sg.arp[step], arpOn = a >= 0 && (beat ? (h > .45 || step % 2 === 0) : true);
+    if (arpOn) osc(sg.arpType || (beat ? 'square' : 'sine'), hz(ch[a % ch.length] + sg.arpOct + (a >= ch.length ? 12 : 0)), t, sp * (sg.arpLen || (beat ? 1.2 : 6)), sg.arpVol * (beat ? .6 + h * .6 : 1), .005, sg.arpCut || (beat ? 2200 : 0));
+    // 선율: 두 마디 중 하나는 쉬고, 긴장도가 오르면 매 마디 연주
+    if (sg.lead && (h > .35 || bar % 2 === 0)) { const L = sg.lead[ci % sg.lead.length], n = L[step];
+      if (n !== null && n !== undefined) { let len = 1; while (step + len < 16 && L[step + len] === null) len++; osc(sg.leadType || 'triangle', hz(ch[0] + n), t, sp * Math.min(len, 6) * .9, sg.leadVol || .025, .02, sg.leadCut || 0, 0, null, sg.leadBend); } } }
+  // 낮은 웅웅거림(포자군락·보스): 곡이 바뀔 때까지 이어진다
+  function droneOn(m) { droneOff(); if (!m) return; const o = ac.createOscillator(), o2 = ac.createOscillator(), g = ac.createGain(), lfo = ac.createOscillator(), lg = ac.createGain();
+    o.type = 'sawtooth'; o2.type = 'sine'; o.frequency.value = hz(m); o2.frequency.value = hz(m) * 1.005; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 180;
+    lfo.frequency.value = .13; lg.gain.value = 60; lfo.connect(lg); lg.connect(lp.frequency); o.connect(lp); o2.connect(lp); lp.connect(g); g.connect(bus); g.gain.value = .0001; g.gain.linearRampToValueAtTime(.05, ac.currentTime + 2);
+    [o, o2, lfo].forEach(x => x.start()); S.drone = { nodes: [o, o2, lfo], g }; }
+  function droneOff() { const d = S.drone; if (!d) return; S.drone = null; const t = ac.currentTime; d.g.gain.cancelScheduledValues(t); d.g.gain.setValueAtTime(d.g.gain.value, t); d.g.gain.linearRampToValueAtTime(.0001, t + .6); d.nodes.forEach(x => x.stop(t + .7)); }
 
   function tick() { if (!S.song || S.fading) return; if (typeof document !== 'undefined' && document.hidden) { S.next = 0; return; } // 숨긴 탭에서는 쉬고, 돌아오면 이어서
-    const sg = SONGS[S.song], sp = 60 / sg.bpm / 4; if (S.next < ac.currentTime) S.next = ac.currentTime + .05;
-    while (S.next < ac.currentTime + .2) { play(sg, S.step, S.bar, S.next, sp); S.next += sp; if (++S.step >= sg.steps) { S.step = 0; S.bar++; } } }
+    const sg = SONGS[S.song] || SONGS.game, sp = 60 / sg.bpm / 4; if (S.next < ac.currentTime) S.next = ac.currentTime + .05;
+    while (S.next < ac.currentTime + .2) { play(sg, S.step, S.bar, S.next, sp); S.next += sp; if (++S.step >= 16) { S.step = 0; S.bar++; } } }
   function level() { return S.mode === 'off' ? 0 : S.vol; }
   function ramp(v, sec) { const t = ac.currentTime; out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.linearRampToValueAtTime(v, t + sec); }
+  function begin(mode) { S.song = mode; S.step = 0; S.bar = 0; S.next = 0; droneOn((SONGS[mode] || {}).drone); }
   S.timer = setInterval(tick, 40);
 
   return {
-    setMode(mode) { if (mode === S.mode) return; const was = S.mode; S.mode = mode; if (mode === 'off') { ramp(0, .6); return; }
-      if (was === 'off' || !S.song) { S.song = mode; S.step = 0; S.bar = 0; S.next = 0; ramp(level(), 1.2); return; }
-      S.fading = true; ramp(0, .7); setTimeout(() => { S.fading = false; if (S.mode !== mode) return; S.song = mode; S.step = 0; S.bar = 0; S.next = 0; ramp(level(), 1); }, 750); },
-    setVolume(v) { S.vol = Math.max(0, Math.min(1, v)); if (!S.fading) ramp(level(), .25); },
+    setMode(mode) { if (mode === S.mode) return; const was = S.mode; S.mode = mode; if (mode === 'off') { ramp(0, .6); droneOff(); return; }
+      if (was === 'off' || !S.song) { begin(mode); ramp(level(), 1.2); return; }
+      S.fading = true; ramp(0, .7); setTimeout(() => { S.fading = false; if (S.mode !== mode) return; begin(mode); ramp(level(), 1); }, 750); },
+    setVolume(v) { S.vol = Math.max(0, Math.min(1, v)); stingOut.gain.value = S.vol; if (!S.fading) ramp(level(), .25); },
     setIntensity(v) { S.heat = Math.max(0, Math.min(1, v)); },
+    // 짧은 알림 음악. 배경음악을 잠깐 줄였다가 되돌린다
+    sting(name) { const st = RTS.MUSIC_STINGS[name]; if (!st || S.vol <= 0) return; const sp = 60 / st.bpm / 4, t0 = ac.currentTime + .05; let end = 0;
+      for (const [at, m, len] of st.notes) { osc(st.type, hz(m), t0 + at * sp, len * sp, st.vol, .01, 2600, 0, stingOut); osc(st.type, hz(m), t0 + at * sp, len * sp, st.vol * .5, .01, 2600, 8, stingOut); end = Math.max(end, (at + len) * sp); }
+      if (S.mode !== 'off' && !S.fading) { const t = ac.currentTime; out.gain.cancelScheduledValues(t); out.gain.setValueAtTime(out.gain.value, t); out.gain.linearRampToValueAtTime(level() * .3, t + .1); out.gain.linearRampToValueAtTime(level(), t + end + .6); } },
     get mode() { return S.mode; },
-    stop() { clearInterval(S.timer); ramp(0, .2); setTimeout(() => { try { out.disconnect(); } catch (e) {} }, 300); },
+    _tick: tick, // 시험용: 오프라인 렌더링에서 시간을 직접 진행시킬 때
+    stop() { clearInterval(S.timer); droneOff(); ramp(0, .2); setTimeout(() => { try { out.disconnect(); stingOut.disconnect(); } catch (e) {} }, 300); },
   };
 };
+
+// sound.js — 효과음과 캐릭터 음성. 외부 소리 파일 없이 WebAudio로 합성한다. DOM 없음, 게임 계산과 무관(화면 쪽에서만 부른다).
+// const snd = RTS.Sound(audioContext, () => ({ sfx: 0~2, speech: 0~2, low: 저사양 })); snd.sfx(이름, 진영); snd.say(말하는 사람, 대사, 진영); snd.ack(진영, 크기, 종류); snd.stop();
+// 음성: 녹음 파일 대신 대사의 한글 모음(ㅏ ㅓ ㅗ ㅜ ㅡ ㅣ ㅔ ㅐ…)을 읽어 그 모음의 소리 모양(포먼트 F1·F2)을 가진 음절을 차례로 낸다.
+//   알아들을 수 있는 말은 아니지만 말의 길이·리듬·높낮이가 대사를 따라가고, 캐릭터마다 목소리(높이·속도·음색)가 다르다.
+//   기기 음성으로 실제 문장을 읽게 하려면 설정 '대사 읽기(기기 음성)'를 켠다(RTS.speakTTS, 브라우저 speechSynthesis).
+// 목소리 바탕: src(소리 바탕), pitch(Hz), range(문장 안 높낮이 폭), rate(초당 음절), formant(포먼트 배율: 클수록 작은 몸), noise(숨소리·바람), robot(기계음: 높이를 계단으로, 고리 변조), warble(떨림)
+RTS.VOICES = {
+  pioneers: { src: 'sawtooth', pitch: 150, range: 45, rate: 11, formant: 1, noise: .18 },
+  ironclad: { src: 'square', pitch: 100, range: 18, rate: 9.5, formant: .85, noise: .05, robot: 70 },
+  swarm: { src: 'sawtooth', pitch: 380, range: 140, rate: 15, formant: 1.45, noise: .5, warble: 28 },
+  tribe: { src: 'sawtooth', pitch: 115, range: 35, rate: 8.5, formant: .95, noise: .3 },
+  heart: { src: 'sawtooth', pitch: 58, range: 20, rate: 6, formant: .7, noise: .35, warble: 4, echo: true },
+};
+// 캐릭터별 목소리: 바탕(base) 위에 덮어쓴다. 없는 이름은 이름에 든 진영으로 고른다
+RTS.VOICE_CAST = {
+  '대장 한별': { base: 'pioneers', pitch: 118, range: 35 }, '기술병 미르': { base: 'pioneers', pitch: 215, rate: 13, formant: 1.18 },
+  '정찰병 다온': { base: 'pioneers', pitch: 170, rate: 12.5 }, '공병 반장 두리': { base: 'pioneers', pitch: 135, rate: 10, noise: .3 },
+  '족장 바루': { base: 'tribe' }, '지휘관 벨카': { base: 'ironclad', pitch: 82, rate: 8.5 }, '연산핵 오르도': { base: 'ironclad', pitch: 130, range: 0, rate: 11, robot: 110, formant: 1 },
+  '여왕 세라': { base: 'swarm', pitch: 260, range: 90, rate: 10, noise: .6, warble: 12, formant: 1.2 }, '감응체 울림': { base: 'swarm', pitch: 470, rate: 14 },
+  '잿빛 심장': { base: 'heart' }, '???': { base: 'heart', pitch: 70 },
+  '철갑회 통신': { base: 'ironclad', radio: true }, '개척단 통신': { base: 'pioneers', pitch: 140, radio: true },
+};
+RTS.voiceOf = function (who, faction) {
+  const c = RTS.VOICE_CAST[who]; let base = c && c.base;
+  if (!base) base = /철갑/.test(who || '') ? 'ironclad' : /포자/.test(who || '') ? 'swarm' : /개척/.test(who || '') ? 'pioneers' : faction || 'pioneers';
+  const v = Object.assign({}, RTS.VOICES[base] || RTS.VOICES.pioneers, c || {});
+  if (/홀린/.test(who || '')) Object.assign(v, { pitch: v.pitch * .7, echo: true, warble: (v.warble || 0) + 6 }); // 심장에 홀린 자: 낮고 울린다
+  return v;
+};
+// 한글 모음 21개 → 포먼트(F1, F2, Hz, 성인 기준). 겹모음은 앞소리를 짧게 미끄러뜨린다(glide)
+RTS.VOWEL_F = [[800, 1250], [700, 1750], [650, 1900], [650, 1850], [600, 1000], [500, 1900], [520, 1150], [500, 1900], [450, 800], [700, 1300], [650, 1600], [500, 1700], [450, 800], [350, 750], [550, 1050], [480, 1850], [350, 1950], [350, 750], [350, 1400], [350, 1700], [300, 2250]];
+const VOWEL_GLIDE = { 2: 20, 3: 20, 6: 20, 7: 20, 9: 20, 10: 20, 11: 20, 12: 20, 14: 13, 15: 13, 16: 13, 17: 20, 19: 18 }; // ㅑ ㅒ ㅕ ㅖ ㅘ ㅙ ㅚ ㅛ ㅝ ㅞ ㅟ ㅠ ㅢ: 앞이 ㅣ/ㅜ/ㅡ
+// 대사 → 음절 목록 [{ v(모음 번호), on(첫소리 있음), fin(받침 있음), pause }]
+RTS.syllables = function (text, max) { const out = [];
+  for (const ch of String(text || '')) { const c = ch.charCodeAt(0);
+    if (c >= 0xAC00 && c <= 0xD7A3) { const k = c - 0xAC00; out.push({ v: Math.floor((k % 588) / 28), on: Math.floor(k / 588) !== 11, fin: k % 28 > 0, cons: Math.floor(k / 588) });
+    } else if (/[.,!?…~]/.test(ch)) { if (out.length) out[out.length - 1].pause = ch === ',' ? .12 : .22; if (ch === '?' && out.length) out[out.length - 1].ask = true; }
+    else if (/[A-Za-z0-9]/.test(ch)) out.push({ v: [0, 5, 20, 8, 13][c % 5], on: true, fin: false, cons: c % 19 });
+    if (out.length >= (max || 40)) break; }
+  return out; };
+
+RTS.Sound = function (ac, opt) {
+  const o = () => opt() || {}, master = ac.createGain(); master.connect(ac.destination);
+  const noise = ac.createBuffer(1, ac.sampleRate, ac.sampleRate), nd = noise.getChannelData(0); let seed = 11;
+  for (let i = 0; i < nd.length; i++) { seed = (seed * 16807) % 2147483647; nd[i] = seed / 1073741823.5 - 1; }
+  // 메아리(심장 목소리)
+  const echo = ac.createDelay(1), efb = ac.createGain(), ewet = ac.createGain(); echo.delayTime.value = .28; efb.gain.value = .35; ewet.gain.value = .5; echo.connect(efb); efb.connect(echo); echo.connect(ewet); ewet.connect(master);
+  let busy = 0; const cap = () => (o().low ? 8 : 20); // 동시에 나는 효과음 수 제한(느린 기기 보호)
+  const hold = sec => { busy++; setTimeout(() => { busy--; }, sec * 1000 + 50); };
+  function env(g, t, a, peak, d) { g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(Math.max(.0002, peak), t + a); g.gain.exponentialRampToValueAtTime(0.0001, t + a + d); }
+  function tone(type, f, f2, t, dur, peak, cut, dest) { const x = ac.createOscillator(), g = ac.createGain(); x.type = type; x.frequency.setValueAtTime(f, t); if (f2 && f2 !== f) x.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur);
+    let n = x; if (cut) { const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = cut; x.connect(lp); n = lp; } n.connect(g); g.connect(dest || master); env(g, t, .002, peak, dur); x.start(t); x.stop(t + dur + .05); }
+  function hiss(type, f, f2, q, t, dur, peak, dest) { const s = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = noise; fl.type = type; fl.frequency.setValueAtTime(f, t); if (f2) fl.frequency.exponentialRampToValueAtTime(f2, t + dur); fl.Q.value = q;
+    s.connect(fl); fl.connect(g); g.connect(dest || master); env(g, t, .002, peak, dur); s.start(t, Math.random() * .8); s.stop(t + dur + .05); }
+
+  // ── 효과음 ── 이름 → (시각, 크기) 함수. 진영별 무기 소리는 FAC_SFX가 고른다
+  const L = {
+    gun: (t, v) => { hiss('bandpass', 2200, 900, 1.2, t, .06, .16 * v); tone('square', 520, 160, t, .04, .03 * v, 2400); },
+    zap: (t, v) => { tone('sawtooth', 1700, 280, t, .09, .04 * v, 3500); hiss('highpass', 5000, 0, .7, t, .03, .05 * v); },
+    spit: (t, v) => { hiss('bandpass', 700, 1800, 4, t, .1, .2 * v); tone('sine', 300, 700, t, .07, .05 * v); },
+    slash: (t, v) => { hiss('bandpass', 3000, 1200, 2, t, .07, .12 * v); },
+    blade: (t, v) => { tone('square', 1240, 1180, t, .08, .03 * v, 4200); tone('square', 1873, 1800, t, .06, .02 * v, 4200); },
+    claw: (t, v) => { hiss('highpass', 2500, 4000, 1.5, t, .05, .14 * v); hiss('highpass', 2500, 4000, 1.5, t + .045, .04, .1 * v); },
+    thump: (t, v) => { tone('triangle', 190, 55, t, .16, .09 * v); hiss('lowpass', 900, 200, .7, t, .14, .12 * v); },
+    boom: (t, v) => { hiss('lowpass', 1400, 120, .8, t, .32, .3 * v); tone('sine', 110, 35, t, .3, .14 * v); },
+    bigboom: (t, v) => { hiss('lowpass', 1800, 80, .7, t, .8, .4 * v); tone('sine', 80, 24, t, .7, .2 * v); hiss('bandpass', 400, 120, 1, t + .08, .5, .16 * v); },
+    click: (t, v) => tone('sine', 640, 760, t, .05, .04 * v),
+    warn: (t, v) => tone('square', 330, 250, t, .16, .03 * v, 2000),
+    ok: (t, v) => tone('sine', 520, 780, t, .12, .05 * v),
+    alarm: (t, v) => { tone('square', 660, 660, t, .12, .03 * v, 1800); tone('square', 495, 495, t + .14, .14, .03 * v, 1800); },
+    built: (t, v) => { tone('triangle', 523, 0, t, .12, .06 * v); tone('triangle', 784, 0, t + .1, .2, .06 * v); },
+    research: (t, v) => { [523, 659, 784, 1046].forEach((f, i) => tone('sine', f, 0, t + i * .07, .14, .045 * v)); },
+    trainP: (t, v) => { tone('triangle', 880, 0, t, .1, .05 * v); tone('triangle', 1175, 0, t + .08, .14, .04 * v); },
+    trainI: (t, v) => { tone('square', 990, 990, t, .05, .025 * v, 3000); tone('square', 990, 990, t + .09, .05, .025 * v, 3000); },
+    trainS: (t, v) => { tone('sine', 300, 900, t, .12, .06 * v); hiss('bandpass', 900, 400, 5, t, .12, .1 * v); },
+    morph: (t, v) => { tone('sine', 200, 600, t, .3, .06 * v); hiss('bandpass', 500, 1500, 3, t, .3, .1 * v); },
+    merge: (t, v) => { tone('sawtooth', 220, 880, t, .45, .04 * v, 2500); tone('sine', 1320, 0, t + .4, .3, .05 * v); },
+    heal: (t, v) => tone('sine', 1046, 1318, t, .12, .025 * v),
+  };
+  const FAC_SFX = { shot: { pioneers: 'gun', ironclad: 'zap', swarm: 'spit' }, slash: { pioneers: 'slash', ironclad: 'blade', swarm: 'claw' }, trained: { pioneers: 'trainP', ironclad: 'trainI', swarm: 'trainS' } };
+  const DUR = { bigboom: .9, boom: .4, merge: .8, research: .4, morph: .35 };
+
+  function sfx(k, faction) { const v = o().sfx; if (!(v > 0) || busy >= cap()) return; const name = (FAC_SFX[k] && FAC_SFX[k][faction]) || (FAC_SFX[k] && FAC_SFX[k].pioneers) || k, f = L[name]; if (!f) return;
+    hold(DUR[name] || .2); f(ac.currentTime + .005, v); }
+
+  // ── 음성 ──
+  let talk = { until: 0, nodes: [] };
+  function stopTalk() { for (const n of talk.nodes) try { n.stop(); } catch (e) {} talk = { until: 0, nodes: [] }; }
+  // 음절 목록을 목소리 V로 낸다. t0부터 시작, 끝나는 시각을 돌려준다
+  function speak(sy, V, t0, vol, keep) { if (!sy.length || !(vol > 0)) return t0; const dest = ac.createGain(); dest.gain.value = vol; dest.connect(master);
+    let out = dest; if (V.radio) { const hp = ac.createBiquadFilter(), lp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 500; lp.type = 'lowpass'; lp.frequency.value = 2600; hp.connect(lp); lp.connect(dest); out = hp; }
+    if (V.echo) dest.connect(echo);
+    const src = ac.createOscillator(); src.type = V.src; const vib = ac.createOscillator(), vg = ac.createGain(); vib.frequency.value = V.warble ? 7 : 5; vg.gain.value = V.warble || 2.5; vib.connect(vg); vg.connect(src.frequency);
+    let voice = src; if (V.robot) { const ring = ac.createGain(), rm = ac.createOscillator(); rm.type = 'square'; rm.frequency.value = V.robot; ring.gain.value = 0; rm.connect(ring.gain); src.connect(ring); voice = ring; rm.start(t0); rm.stop(t0 + 30); keep.push(rm); }
+    const amp = ac.createGain(); amp.gain.value = 0; const f1 = ac.createBiquadFilter(), f2 = ac.createBiquadFilter(), f3 = ac.createBiquadFilter(); [f1, f2, f3].forEach(f => { f.type = 'bandpass'; f.Q.value = 7; });
+    f3.frequency.value = 2700 * V.formant; const g1 = ac.createGain(), g2 = ac.createGain(), g3 = ac.createGain(); g1.gain.value = 1.4; g2.gain.value = .9; g3.gain.value = .25;
+    voice.connect(f1); voice.connect(f2); voice.connect(f3); f1.connect(g1); f2.connect(g2); f3.connect(g3); [g1, g2, g3].forEach(g => g.connect(amp)); amp.connect(out);
+    // 숨소리: 같은 포먼트를 거친 잡음(포자군락은 많이)
+    const ns = ac.createBufferSource(); ns.buffer = noise; ns.loop = true; const ng = ac.createGain(); ng.gain.value = (V.noise || 0) * .5; ns.connect(ng); ng.connect(f1); ng.connect(f2);
+    const per = 1 / V.rate, n = sy.length; let t = t0;
+    sy.forEach((s, i) => { const F = RTS.VOWEL_F[s.v], d = per * (s.fin ? 1.15 : .95) * (.9 + Math.random() * .2), k = n > 1 ? i / (n - 1) : 0;
+      // 문장 높낮이: 처음에 조금 높고 끝으로 내려간다(물음표면 끝을 올린다)
+      let p = V.pitch * (1 + (V.range / V.pitch) * (.5 - k) * .8 + (Math.random() - .5) * (V.range / V.pitch) * .5); if (s.ask && i === n - 1) p *= 1.3; if (V.robot) p = Math.round(p / 20) * 20;
+      src.frequency.setValueAtTime(p, t); if (!V.robot) src.frequency.linearRampToValueAtTime(p * .96, t + d);
+      const gl = VOWEL_GLIDE[s.v], A = gl !== undefined ? RTS.VOWEL_F[gl] : F;
+      f1.frequency.setValueAtTime(A[0] * V.formant, t); f2.frequency.setValueAtTime(A[1] * V.formant, t); f1.frequency.linearRampToValueAtTime(F[0] * V.formant, t + d * .35); f2.frequency.linearRampToValueAtTime(F[1] * V.formant, t + d * .35);
+      amp.gain.setValueAtTime(0.0001, t); amp.gain.linearRampToValueAtTime(.5, t + d * .18); amp.gain.setValueAtTime(.5, t + d * .65); amp.gain.linearRampToValueAtTime(0.0001, t + d * (s.fin ? .92 : .98));
+      if (s.on && s.cons !== 11) { const hard = [0, 3, 7, 12, 15, 16, 17].includes(s.cons), sib = [9, 10, 12, 13, 14, 18].includes(s.cons); // 첫소리: 터지는 소리·스치는 소리
+        hiss(sib ? 'highpass' : 'bandpass', sib ? 4200 : hard ? 2400 : 1500, 0, 1, t, sib ? .05 : .025, (sib ? .07 : hard ? .1 : .04) * vol, out); }
+      t += d + (s.pause || 0); });
+    [src, vib, ns].forEach(x => { x.start(t0); x.stop(t + .1); keep.push(x); });
+    return t; }
+  // 이야기 대사: 말하는 사람 목소리로. 기기 음성(TTS)을 쓰면 그쪽이 읽는다
+  function say(who, text, faction) { const v = o().speech; if (!(v > 0)) return 0; stopTalk(); const V = RTS.voiceOf(who, faction), keep = [];
+    const end = speak(RTS.syllables(text, 34), V, ac.currentTime + .03, .55 * v, keep); talk = { until: end, nodes: keep }; return end - ac.currentTime; }
+  // 유닛 대답(고를 때·명령할 때): 2~3음절. size가 클수록 낮은 목소리. 이야기 대사 중에는 내지 않는다
+  let ackT = 0; const ACK = { select: [[0, 13], [5, 0], [4, 8, 0], [20, 0]], move: [[8, 4], [0, 8], [13, 0, 4]], attack: [[0, 0, 20], [4, 20, 0], [8, 0]] };
+  function ack(faction, size, kind) { const v = o().speech; if (!(v > 0) || ac.currentTime < talk.until || ac.currentTime < ackT) return; const V = Object.assign({}, RTS.VOICES[faction] || RTS.VOICES.pioneers);
+    const s = Math.max(.6, Math.min(2.2, size || 1)); V.pitch /= Math.sqrt(s); V.formant /= Math.pow(s, .3); V.rate *= 1.25; if (kind === 'attack') { V.pitch *= 1.12; V.range *= 1.4; }
+    const pick = ACK[kind] || ACK.select, vs = pick[Math.floor(Math.random() * pick.length)], keep = [];
+    const end = speak(vs.map((x, i) => ({ v: x, on: i === 0 || Math.random() < .6, cons: [0, 2, 3, 6, 7, 9][Math.floor(Math.random() * 6)], fin: i === vs.length - 1 && Math.random() < .4, pause: 0 })), V, ac.currentTime + .02, .4 * v, keep);
+    ackT = end + .35; }
+  return { sfx, say, ack, stopTalk, talking: () => ac.currentTime < talk.until, stop() { stopTalk(); try { master.disconnect(); } catch (e) {} } };
+};
+// 기기 음성으로 대사 읽기(설정 '대사 읽기'). 한국어 음성이 없으면 false
+RTS.speakTTS = function (who, text, faction, vol) { const S = typeof speechSynthesis !== 'undefined' ? speechSynthesis : null; if (!S) return false;
+  const ko = S.getVoices().filter(v => /^ko/i.test(v.lang)); if (!ko.length) return false; const V = RTS.voiceOf(who, faction), u = new SpeechSynthesisUtterance(String(text).replace(/[()]/g, ' '));
+  u.lang = 'ko-KR'; u.voice = ko[0]; u.pitch = Math.max(0, Math.min(2, V.pitch / 150)); u.rate = Math.max(.6, Math.min(1.6, V.rate / 11)); u.volume = Math.max(0, Math.min(1, vol)); S.cancel(); S.speak(u); return true; };
 
 // app.js — DOM UI, 입력, 사운드, 게임 루프. RTS.mount(el, opts) 하나로 어디에든 붙는다.
 // 월드 연동: const g = RTS.mount(div, {onEnd: r => {...}}); g.start({faction,map,difficulty}); g.destroy();
@@ -4214,24 +4408,34 @@ RTS.mount = function (root, opts = {}) {
   const send = c => { if (!app.G) return; if (app.net && (app.net.L || app.net.match)) { if (app.net.L) app.net.L.local(c); } else RTS.command(app.G, app.team, c); };
 
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
-  let ac = null, music = null, muted = store.get('mute') === '1'; const last = {};
-  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); } };
+  let ac = null, music = null, snd = null, muted = store.get('mute') === '1'; const last = {};
+  const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); }
+    if (ac && !snd && RTS.Sound) snd = RTS.Sound(ac, () => ({ sfx: muted ? 0 : app.settings.volume / 100, speech: muted ? 0 : (app.settings.speech === undefined ? 100 : app.settings.speech) / 100, low: !!app.settings.lowSpec })); };
   // 배경음악: 메뉴·대기실은 잔잔한 곡, 게임 중에는 전투 곡. 음성 채팅으로 상대 목소리가 들어오는 동안은 음악을 줄인다
-  function applyMusic() { if (!music) return; const duck = voice.inCall ? .4 : 1; music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? 'game' : 'menu') : 'off'); }
+  // 상대 음성·캐릭터 대사 중에는 음악을 줄인다
+  function applyMusic() { if (!music) return; const duck = (voice.inCall ? .4 : 1) * (snd && snd.talking() ? .55 : 1); music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? musicTrack(app.G) : 'menu') : 'off'); }
+  // 곡 고르기: 캠페인은 미션의 music, 없으면 지금 단계 목표 종류(지점 이동 → 탐험, 버티기·지키기 → 방어), 그 밖에는 내 진영 곡
+  function musicTrack(G) { const me = G.teams[app.team], fac = me && RTS.MUSIC_SONGS[me.faction] ? me.faction : 'game'; if (!G.camp) return fac; const M = RTS.campDef(G.camp.id); if (!M) return fac; if (M.music) return M.music;
+    const S = M.stages[Math.max(0, G.camp.stage)]; if (!S) return fac; const goals = S.goals.filter(g => { const [c, n] = g.key ? [G.camp.flags[g.key] || 0, g.acc ? g.need : 1] : g.prog(G); return c < n; });
+    if (goals.some(g => g.acc || /버티기|지키기/.test(typeof g.text === 'string' ? g.text : ''))) return 'defense'; if (goals.some(g => g.at && !g.acc)) return 'adventure'; return fac; }
   function tone(f, f2, dur, type, vol) { vol *= app.settings.volume / 100; if (vol <= 0) return; const o = ac.createOscillator(), g = ac.createGain(), t = ac.currentTime; o.type = type; o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(Math.max(20, f2), t + dur); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); o.connect(g); g.connect(ac.destination); o.start(); o.stop(t + dur); }
   app.sfx = function (k, at) { if (muted || !ac || app.demo) return; if (at && !R.onScreen(at.x, at.y)) return; const n = performance.now(); if (n - (last[k] || 0) < 70) return; last[k] = n;
+    if (snd) { const t = at && at.team !== undefined && app.G && app.G.teams[at.team], f = t ? t.faction : app.G && app.G.teams[app.team] ? app.G.teams[app.team].faction : null; snd.sfx(k, f); return; } // 진영별 무기 소리(src/ui/sound.js)
     ({ shot: () => tone(900, 220, .05, 'square', .018), slash: () => tone(500, 180, .06, 'sawtooth', .02), thump: () => tone(190, 60, .14, 'triangle', .07), boom: () => tone(120, 34, .22, 'sawtooth', .05), bigboom: () => tone(90, 24, .55, 'sawtooth', .1), click: () => tone(640, 760, .05, 'sine', .04), warn: () => { tone(330, 250, .16, 'square', .03); }, ok: () => { tone(520, 780, .12, 'sine', .05); } }[k] || (() => {}))(); };
 
   // ── 메뉴 ──────────────────────────────────────────────
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs, rec = loadResume(); $('k-rejoin').hidden = !rec; if (rec) $('k-rejoin').textContent = `대전 다시 접속 (방 ${rec.code})`; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).filter(m => !m.camp).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; app.outShown = false; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
+  function bind(G) { app.G = G; app.outShown = false; app.selVoice = undefined; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     storyReset(); RTS.on(G, 'story', d => storyPush(d)); app.objSig = ''; $('k-obj').hidden = true; $('k-next').hidden = true; $('k-again').textContent = '다시 하기';
-    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
-    RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('ok'); });
-    RTS.on(G, 'merged', ({ e, from }) => { if (e.team !== app.team) return; app.sfx('ok'); if (from.some(i => app.sel.includes(i))) app.sel = [...app.sel.filter(i => !from.includes(i)), e.id]; });
+    RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); app.sfx('alarm'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
+    RTS.on(G, 'built', ({ e }) => { if (e.team === app.team) app.sfx('built'); });
+    RTS.on(G, 'trained', ({ e }) => { if (e.team === app.team) app.sfx('trained', e); }); RTS.on(G, 'researched', ({ team }) => { if (team === app.team) app.sfx('research'); });
+    RTS.on(G, 'morph', d => { const e = d && (d.e || d.b); if (e && e.team === app.team) app.sfx('morph'); }); RTS.on(G, 'heal', d => { const e = d && (d.e || d.t); if (e && e.team === app.team) app.sfx('heal', e); });
+    RTS.on(G, 'campStage', d => { if (d.stage > 0 && music) music.sting('stage'); });
+    RTS.on(G, 'merged', ({ e, from }) => { if (e.team !== app.team) return; app.sfx('merge'); if (from.some(i => app.sel.includes(i))) app.sel = [...app.sel.filter(i => !from.includes(i)), e.id]; });
     RTS.on(G, 'leveled', ({ e }) => { if (e.team === app.team) app.sfx('ok'); }); closePop();
     RTS.on(G, 'gameover', o => { if (!app.demo) finish(o); else setTimeout(demo, 2500); });
   }
@@ -4258,7 +4462,7 @@ RTS.mount = function (root, opts = {}) {
     if (G.camp) { campFinish(G, m, s); return; }
     const win = !out && (G.coop ? o.side === a.side : o.winner === app.team), foes = G.teams.filter(t => !RTS.ally(G, app.team, t.id)), b = foes[0] || G.teams.find(t => t.id !== app.team);
     const cols = [a, ...RTS.allyTeams(G, app.team), ...foes], neu = G.teams.find(t => t.ai && t.boost), neuTxt = neu ? `${neu.name} ${RTS.defs.factions[neu.faction].name} (${RTS.defs.difficulties[neu.ai].name} AI의 ${Math.round(neu.boost * 100)}%)` : '';
-    store.del('save'); $('k-endt').textContent = win ? '승리' : '패배';
+    store.del('save'); if (music && !out) music.sting(win ? 'win' : 'lose'); $('k-endt').textContent = win ? '승리' : '패배';
     $('k-ends').textContent = `${m}분 ${s}초 · ` + (out ? `${G.coop ? '협동' : '서로 대전'} · 내 건물과 유닛이 모두 없어졌습니다. 게임은 계속 진행되며 관전할 수 있습니다` : G.coop ? `협동 · ${neuTxt}` : neu ? `서로 대전(1:1:1) · ${neuTxt}` : b.ai ? `${b.name} AI ${RTS.defs.difficulties[b.ai].name}` : `${b.name} (사람)`);
     if (app.net) { $('k-again').hidden = true; app.net.endShown = true; if (!out) dropResume(); }
     if (out) $('k-tomenu').textContent = '관전 계속'; else $('k-tomenu').textContent = '메뉴로';
@@ -4482,7 +4686,10 @@ RTS.mount = function (root, opts = {}) {
     const inBox = G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).uncontrollable && e.x >= x0 && e.x <= x1 && e.y >= y0 && e.y <= y1); const army = inBox.filter(e => !RTS.defOf(e).gather), chosen = army.length ? army : inBox;
     if (!chosen.length && !add) return; app.sel = add ? [...new Set([...app.sel, ...chosen.map(e => e.id)])] : chosen.map(e => e.id); app.menu = 'main'; app.mode = null; }
   function spread(ids, x, y) { const n = ids.length, cols = Math.ceil(Math.sqrt(n)), out = {}; const s = .95; ids.forEach((id, i) => { const row = (i / cols) | 0, col = i % cols; out[id] = { x: x + (col - (cols - 1) / 2) * s, y: y + (row - (cols - 1) / 2) * s }; }); return out; }
-  function context(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
+  // 우클릭 명령 + 유닛 대답(공격 대상이면 공격 대답)
+  function context(wx, wy, queue) { const ok = contextRaw(wx, wy, queue); if (ok) { const G = app.G, t = pick(wx, wy), u = selected().find(e => e.team === app.team && RTS.defOf(e).kind === 'unit'); if (u) unitVoice(u, t && t.team >= 0 && RTS.foe(G, app.team, t.team) ? 'attack' : 'move'); } return ok; }
+  function unitVoice(u, kind) { if (!snd || muted || app.settings.unitVoice === false) return; const d = RTS.defOf(u); snd.ack(app.G.teams[u.team].faction, (d.r || .5) / .5, kind); }
+  function contextRaw(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
@@ -4875,7 +5082,7 @@ RTS.mount = function (root, opts = {}) {
     showGame(RTS.createGame(RTS.campGameOpts(id, campLv(M, p.level), Date.now() % 100000, app.settings, p.carry, M.players === 2 ? { factions: [p.fac] } : {}))); }
   // 미션이 끝났을 때: 이긴 경우 기록·이어지는 값 저장, 새로 열린 것 알림. 둘이 하기면 두 기기 모두 자기 브라우저에 기록한다
   function campFinish(G, m, s) { const C = G.camp, M = RTS.campDef(C.id), win = !!(C.result && C.result.win), next = RTS.campNext(C.id), net = !!app.net;
-    store.del('save'); let news = [];
+    store.del('save'); let news = []; if (music) music.sting(win ? 'win' : 'lose');
     if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick);
       if (M.carryOut) { const o = M.carryOut(G) || {}; for (const k of Object.keys(o)) if (o[k] !== null && o[k] !== undefined) p.carry[k] = o[k]; }
       campSave(p); const after = RTS.campStatus(p);
@@ -4900,10 +5107,13 @@ RTS.mount = function (root, opts = {}) {
     const M = RTS.campDef(G.camp.id), L = RTS.campGoals(G), h = `<b>${esc(M.title)}</b>` + L.map(g => `<p class="${g.done ? 'ok' : ''}">${g.done ? '✓' : '·'} ${esc(g.text)}${g.need > 1 ? ` <small>${Math.floor(g.cur)}/${g.need}</small>` : ''}</p>`).join('');
     if (h !== app.objSig) { app.objSig = h; el.innerHTML = h; } el.hidden = false; }
   // 대사: 한 줄씩 차례로 띄운다. 누르면 다음 줄
-  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
+  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; if (snd) snd.stopTalk(); try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch (e) {} const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
   function storyPush(d) { app.storyQ.push(d); if (!app.storyT) storyNext(); }
   function storyNext() { const el = $('k-story'); clearTimeout(app.storyT); const d = app.storyQ.shift(); if (!d) { el.hidden = true; app.storyT = 0; return; }
-    el.innerHTML = (d.who ? `<b>${esc(d.who)}</b>` : '') + `<span>${esc(d.text)}</span>`; el.hidden = false; app.storyT = setTimeout(storyNext, Math.max(3500, d.text.length * 110)); }
+    el.innerHTML = (d.who ? `<b>${esc(d.who)}</b>` : '') + `<span>${esc(d.text)}</span>`; el.hidden = false; app.storyT = setTimeout(storyNext, Math.max(3500, d.text.length * 110)); storyVoice(d); }
+  // 대사 음성: 설정 '대사 읽기'가 켜져 있고 기기에 한국어 음성이 있으면 기기 음성, 아니면 캐릭터 합성 음성(src/ui/sound.js)
+  function storyVoice(d) { if (!d.who || muted || !ac) return; const G = app.G, f = G && G.teams[app.team] ? G.teams[app.team].faction : null, v = (app.settings.speech === undefined ? 100 : app.settings.speech) / 100;
+    if (v <= 0) return; if (app.settings.tts && RTS.speakTTS(d.who, d.text, f, Math.min(1, v))) return; if (snd) { const sec = snd.say(d.who, d.text, f); applyMusic(); if (sec > 0) setTimeout(applyMusic, sec * 1000 + 100); } }
   function renderNet() { const N = app.net, el = $('k-netp'); if (!N) return; const d = RTS.defs, st = N.status ? `<p class="k-netst${N.bad ? ' bad' : ''}" role="status">${esc(N.status)}</p>` : '';
     const opt = (id, on, b, sub) => `<button class="k-opt${on ? ' on' : ''}" aria-pressed="${on}" data-v="${id}"><b>${esc(b)}</b>${sub ? `<span>${esc(sub)}</span>` : ''}</button>`;
     const coopNow = N.stage === 'lobby' && (N.role === 'host' ? N.mode === 'coop' : !!(N.lobby && N.lobby.coop)), duelNow = N.stage === 'lobby' && (N.role === 'host' ? N.mode === 'duel' : !!(N.lobby && N.lobby.duel));
@@ -5019,7 +5229,7 @@ RTS.mount = function (root, opts = {}) {
       if (app.settings.edgeScroll && m.inside && !drag.on && matchMedia('(pointer:fine)').matches) { if (m.x < e) dx = -sp; else if (m.x > view.width - e) dx = sp; if (m.y < e) dy = -sp; else if (m.y > view.height - e) dy = sp; }
       if (dx || dy) { cam.x += dx; cam.y += dy; clampCam(); [m.wx, m.wy] = toWorld(m.x, m.y); }
       view.style.cursor = app.mode ? 'crosshair' : 'default';
-      if (app.frame % 12 === 0) { renderHud(); renderObj(); // 셋 이상 게임에서 나만 전멸하면 패배를 알리고 관전으로 남는다(두 기기 계산은 계속 돌아야 한다)
+      if (app.frame % 12 === 0) { renderHud(); renderObj(); { const sg = app.sel.join(); if (sg !== app.selVoice) { const u = app.sel.length && G.byId[app.sel[0]]; if (app.selVoice !== undefined && u && !u.dead && u.team === app.team && RTS.defOf(u).kind === 'unit') unitVoice(u, 'select'); app.selVoice = sg; } } // 고른 유닛 대답 // 셋 이상 게임에서 나만 전멸하면 패배를 알리고 관전으로 남는다(두 기기 계산은 계속 돌아야 한다)
         if (G.teams.length > 2 && !G.over && !app.outShown && G.teams[app.team] && (G.camp ? !G.ents.some(e => e.team === app.team && !e.dead) : G.teams[app.team].alive === 0)) { app.outShown = true; if (G.camp) notice('내 부대가 모두 쓰러졌습니다. 동료가 남아 있으면 미션은 계속됩니다', 'warn'); else finish(null, true); } } }
     if (app.frame % 15 === 0 && !app.demo) renderMini();
     if (music && app.frame % 12 === 0) { if (!app.demo && !G.over) { if (G.ents.some(e => e.team === app.team && e.firedAt > G.tick - 8)) app.heat = Math.max(app.heat || 0, .75); app.heat = (app.heat || 0) * .965; music.setIntensity(Math.max(app.heat, Math.min(.3, G.tick / 20 / 900))); } if (app.frame % 36 === 0) applyMusic(); }
