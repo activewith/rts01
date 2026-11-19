@@ -20,7 +20,12 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-game button:hover{border-color:var(--brass)}
 .k-game button:focus-visible{outline:2px solid var(--brass);outline-offset:1px}
 .k-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;background:var(--panel);border-bottom:2px solid var(--brass);padding-block:6px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px))}
-.k-res{display:flex;gap:14px}
+.k-res{display:flex;gap:14px;flex:none}
+/* 상단 바 줄 수 고정: 숫자·버튼 글자가 바뀌어도 폭이 변하지 않게 칸 폭을 정한다(폭이 변하면 메뉴가 2줄↔1줄로 계속 바뀌었다) */
+.k-chip b{display:inline-block;min-width:5.6ch;white-space:nowrap}.k-chip.sup b{min-width:7.8ch}
+.k-clock{flex:none;min-width:5.8ch}
+.k-tools button{white-space:nowrap}#k-idlen{display:inline-block;min-width:2.4ch;text-align:center}
+#k-speed{min-width:5.2em}#k-mute{min-width:5.2em}#k-voicebtn{min-width:6.6em}#k-pause{min-width:3.6em}
 .k-chip{display:inline-flex;align-items:center;gap:6px;font:700 17px var(--num);font-variant-numeric:tabular-nums}
 .k-chip i{width:13px;height:13px;display:block;transform:rotate(45deg)}
 .k-chip.ore i{background:var(--ore)}.k-chip.gas i{background:var(--gas);border-radius:50%}.k-chip.sup i{background:var(--ok);clip-path:polygon(50% 0,100% 100%,0 100%);transform:none}
@@ -125,6 +130,14 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tip kbd{display:inline-block;min-width:16px;text-align:center;font:700 11px var(--num);border:1px solid var(--line);padding:0 3px;margin-right:5px;color:var(--brass)}
 .c-ore{color:var(--ore)}.c-gas{color:var(--gas)}
 .k-overlay{position:absolute;inset:0;z-index:10;display:flex;overflow:auto}
+/* 학습 미션 */
+.k-learn{z-index:30;background:rgba(6,9,16,.9)}.k-learn .k-panel{max-width:640px;margin:auto;background:var(--ink);border:2px solid var(--brass);padding:18px 22px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.k-learn .l-sub{color:var(--brass);font-weight:600;margin:4px 0 6px}.k-learn .l-passage{background:var(--panel2);border-left:3px solid var(--brass);padding:10px 12px;line-height:1.7;font-size:17px;margin:6px 0}
+.k-learn .l-q{font-size:20px;line-height:1.5;margin:10px 0 8px}.k-learn .l-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.k-learn .l-choices .k-opt b{font-size:18px;line-height:1.35}
+.k-learn .l-choices .k-opt:disabled{opacity:.55}.k-learn .l-ok{border-color:#58e08a!important;background:rgba(88,224,138,.2)!important;opacity:1!important}.k-learn .l-no{border-color:#ee5545!important;background:rgba(238,85,69,.2)!important;opacity:1!important}
+.k-learn .l-res{font-size:16px;line-height:1.6;margin:10px 0}.k-learn .l-res.ok{color:#7dffa8}.k-learn .l-res.no{color:#ffb3a8}
+.c-learn{border:1px solid var(--brass);background:rgba(240,190,90,.08);padding:10px 12px;margin:8px 0}.c-learn b{color:var(--brass)}.c-learn p{margin:4px 0 8px;font-size:14px}.c-pend{color:#ffd36b;font-style:normal;font-weight:600}
+@media (max-width:560px){.k-learn .l-choices{grid-template-columns:1fr}}
 .k-start{background:linear-gradient(90deg,rgba(10,15,24,.9) 0,rgba(10,15,24,.72) 430px,rgba(10,15,24,.04) 620px)}
 .k-end{background:rgba(8,12,22,.74);justify-content:center;align-items:center}
 .k-game.demo{grid-template-rows:minmax(0,1fr)}

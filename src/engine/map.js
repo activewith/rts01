@@ -111,7 +111,7 @@ RTS.query = function (G, x, y, r, fn) {
 RTS.updateFog = function (G, force) {
   if (G.nofog || (!force && G.tick % 8)) return;
   for (const t of G.teams) {
-    if (t.ai) continue;
+    if (t.ai || t.npc) continue;
     if (t.reveal) { if (!t.vis[0] || force) { t.vis.fill(1); t.seen.fill(1); } continue; } // 핸디캡: 이 팀만 맵 전체 공개
     t.vis.fill(0); const tribeEyes = RTS.tribeAlly && RTS.tribeAlly(G, t.id); // 잿빛 부족 동맹이면 부족 시야를 공유한다
     for (const e of G.ents) {
@@ -160,6 +160,36 @@ RTS.defs.mapgens.symmetric = function (spec, G) {
     if (!b.oneVent || b.spawn) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1), 2, 2);
   });
   return { w, h, tiles, bases, nodes, sites, posts, tribe, elev };
+};
+// 캠페인 전용 맵 생성기: 대칭 없이 데이터 그대로 찍는다. bases는 순서대로 G.bases가 되고(미션이 starts로 팀마다 고른다),
+// ore(광맥 수, 기본 8)·vents(분출구 수, 기본 2)·dir(자원 방향, 기본 맵 가운데 반대쪽). sites·posts도 대칭 복제하지 않는다.
+// tribe: [x, y]면 잿빛 부족 회당을 그 자리에 고정한다.
+RTS.defs.mapgens.free = function (spec, G) {
+  const w = spec.w, h = spec.h, tiles = new Array(w * h).fill(0), rng = () => RTS.rand(G);
+  const set = (x, y, v) => { if (x >= 0 && y >= 0 && x < w && y < h) tiles[y * w + x] = v; };
+  const disc = (cx, cy, r, v) => { for (let y = Math.floor(cy - r); y <= cy + r; y++) for (let x = Math.floor(cx - r); x <= cx + r; x++) if ((x - cx) ** 2 + (y - cy) ** 2 <= r * r) set(x, y, v); };
+  const line = (a, b, c, d, t, v) => { const n = Math.ceil(Math.hypot(c - a, d - b)) || 1; for (let i = 0; i <= n; i++) disc(a + (c - a) * i / n, b + (d - b) * i / n, t + (v === 1 ? rng() * .9 : 0), v); };
+  for (const [x, y, r] of spec.sand || []) disc(x, y, r, 2);
+  for (const [x, y, r] of spec.rocks || []) { disc(x, y, r, 1); for (let i = 0; i < 6; i++) { const a = rng() * 6.28; disc(x + Math.cos(a) * r * .8, y + Math.sin(a) * r * .8, r * .45, 1); } }
+  for (const [a, b, c, d, t] of spec.walls || []) line(a, b, c, d, t, 1);
+  for (const b of spec.bases) disc(b.x, b.y, 10, 0);
+  for (const [a, b, c, d, t] of spec.lanes || []) line(a, b, c, d, t, 0);
+  for (const [x, y, r] of spec.clear || []) disc(x, y, r, 0); // 미션 지점 둘레 비우기
+  for (let x = 0; x < w; x++) { set(x, 0, 1); set(x, h - 1, 1); }
+  for (let y = 0; y < h; y++) { set(0, y, 1); set(w - 1, y, 1); }
+  const nodes = [], bases = [], sites = [], posts = [], cx = w / 2, cy = h / 2;
+  for (const [x, y] of spec.posts || []) { disc(x, y, 3.5, 0); posts.push({ x, y }); }
+  for (const [x, y] of spec.sites || []) { disc(x, y, 3.5, 0); sites.push({ x, y }); }
+  let tribe = null; if (spec.tribe) { disc(spec.tribe[0], spec.tribe[1], 6.5, 0); tribe = { x: spec.tribe[0], y: spec.tribe[1] }; }
+  for (const b of spec.bases) {
+    const dir = b.dir !== undefined ? b.dir : Math.atan2(b.y - cy, b.x - cx);
+    bases.push({ x: b.x, y: b.y });
+    const add = (def, tx, ty) => nodes.push({ def, tx, ty }), ore = b.ore === undefined ? 8 : b.ore, vents = b.vents === undefined ? 2 : b.vents;
+    for (let k = 0; k < ore; k++) { const a = dir + (k - (ore - 1) / 2) * .36, d = 6.6 + (k % 2) * .9; add('ore_node', Math.round(b.x + Math.cos(a) * d - 1), Math.round(b.y + Math.sin(a) * d - .5)); }
+    if (vents > 0) add('vent', Math.round(b.x + Math.cos(dir + 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir + 2.05) * 7.5 - 1));
+    if (vents > 1) add('vent', Math.round(b.x + Math.cos(dir - 2.05) * 7.5 - 1), Math.round(b.y + Math.sin(dir - 2.05) * 7.5 - 1));
+  }
+  return { w, h, tiles, bases, nodes, sites, posts, tribe, tribeFixed: !!tribe };
 };
 // 고지대 만들기(대칭). highs: [x, y, 반경, 단계] 원(가장자리를 노이즈로 흔든다, 뒤에 온 것이 덮는다).
 // ramps: [아래쪽 x, y, 위쪽 x, y, 폭] 선분 둘레를 경사로로 만든다. 그 밖에서 단계가 바뀌는 경계의 높은 쪽 한 칸은 절벽(3)이 된다.

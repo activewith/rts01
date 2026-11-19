@@ -19,7 +19,7 @@ const hqOf = (G, t) => G.ents.find(e => e.team === t && D[e.def].dropoff);
   ok(!v.coop && v.players.length === 3 && v.players.every(p => p.side === undefined) && v.players[2].faction === 'swarm', '대전에도 중립세력이 나오고 셋이 서로 적'); }
 
 // 2. 시작 위치, 진영 구성
-for (const map of Object.keys(RTS.defs.maps)) for (const fs of [['pioneers', 'ironclad'], ['swarm', 'pioneers'], ['ironclad', 'swarm']]) {
+for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) for (const fs of [['pioneers', 'ironclad'], ['swarm', 'pioneers'], ['ironclad', 'swarm']]) {
   const G = RTS.createGame(opts({ map, factions: fs })), h = [0, 1, 2].map(t => hqOf(G, t)), fac = fs.join('+');
   const d01 = Math.hypot(h[0].x - h[1].x, h[0].y - h[1].y), d02 = Math.hypot(h[0].x - h[2].x, h[0].y - h[2].y), d12 = Math.hypot(h[1].x - h[2].x, h[1].y - h[2].y);
   const same = new Set(G.teams.map(t => t.faction)).size === 3 && h.every((e, i) => e.def === RTS.defs.factions[G.teams[i].faction].hq);
