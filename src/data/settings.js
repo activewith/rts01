@@ -60,8 +60,9 @@ RTS.SETTINGS = [
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
-    { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
-    { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
+    { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성·기기 음성·녹음 파일)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
+    { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 말풍선과 함께 짧게 대답합니다', type: 'toggle', def: true, client: true },
+    { id: 'unitTTS', label: '개척단 대답 기기 음성', desc: '개척단 유닛 대답을 녹음 파일이 없을 때 이 기기의 한국어 음성으로 읽습니다. 끄거나 한국어 음성이 없으면 합성 말소리를 냅니다', type: 'toggle', def: true, client: true },
     { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },

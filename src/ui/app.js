@@ -71,7 +71,7 @@ RTS.mount = function (root, opts = {}) {
   // ── 소리: WebAudio 합성. 파일 없음 ─────────────────────
   let ac = null, music = null, snd = null, muted = store.get('mute') === '1'; const last = {};
   const unlock = () => { if (!ac) { try { ac = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {} } if (ac && ac.state === 'suspended') ac.resume(); if (ac && !music && RTS.Music) { music = RTS.Music(ac); applyMusic(); }
-    if (ac && !snd && RTS.Sound) snd = RTS.Sound(ac, () => ({ sfx: muted ? 0 : app.settings.volume / 100, speech: muted ? 0 : (app.settings.speech === undefined ? 100 : app.settings.speech) / 100, low: !!app.settings.lowSpec })); };
+    if (ac && !snd && RTS.Sound) snd = RTS.Sound(ac, () => ({ sfx: muted ? 0 : app.settings.volume / 100, speech: muted ? 0 : (app.settings.speech === undefined ? 100 : app.settings.speech) / 100, low: !!app.settings.lowSpec })); if (snd && !app.clipsAsked) { app.clipsAsked = true; snd.preload(Object.values(RTS.VOICE_FILES).map(f => RTS.VOICE_BASE + f)); } };
   // 배경음악: 메뉴·대기실은 잔잔한 곡, 게임 중에는 전투 곡. 음성 채팅으로 상대 목소리가 들어오는 동안은 음악을 줄인다
   // 상대 음성·캐릭터 대사 중에는 음악을 줄인다
   function applyMusic() { if (!music) return; const duck = (voice.inCall ? .4 : 1) * (snd && snd.talking() ? .55 : 1); music.setVolume(muted ? 0 : app.settings.music / 100 * .9 * duck); music.setMode(app.settings.music > 0 ? (app.G && !app.demo && !app.G.over ? musicTrack(app.G) : 'menu') : 'off'); }
@@ -88,7 +88,7 @@ RTS.mount = function (root, opts = {}) {
   function opts3(el, items, key) { el.innerHTML = ''; for (const it of items) { const b = document.createElement('button'); b.id = 'k-opt-' + it.id; b.className = 'k-opt' + (app.cfg[key] === it.id ? ' on' : ''); b.setAttribute('aria-pressed', app.cfg[key] === it.id); b.innerHTML = `<b>${it.name}</b>${it.blurb ? `<span>${it.blurb}</span>` : ''}`; b.onclick = () => { app.cfg[key] = it.id; store.set('cfg', JSON.stringify(app.cfg)); renderMenu(); if (key === 'map') demo(); }; el.appendChild(b); } }
   function renderMenu() { const d = RTS.defs, rec = loadResume(); $('k-rejoin').hidden = !rec; if (rec) $('k-rejoin').textContent = `대전 다시 접속 (방 ${rec.code})`; opts3($('k-fac'), Object.values(d.factions), 'faction'); opts3($('k-map'), Object.values(d.maps).filter(m => !m.camp).map(m => ({ id: m.id, name: m.name, blurb: m.desc })), 'map'); opts3($('k-dif'), Object.values(d.difficulties), 'difficulty'); $('k-resume').hidden = !store.get('save'); }
 
-  function bind(G) { app.G = G; app.outShown = false; app.selVoice = undefined; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
+  function bind(G) { app.G = G; app.outShown = false; app.selVoice = undefined; R.bubbles = []; G.teams.forEach((t, i) => { RTS.TEAM[i] = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction]; }); R.attach(G); app.sel = []; app.mode = null; app.menu = 'main'; app.hudSig = ''; app.msgs = []; R.fogReady = false; $('k-msgs').innerHTML = ''; app.exOpen = false; app.exRows = null; $('k-ex').hidden = true; app.dipOpen = false; app.dipSig = ''; app.stakes = {}; $('k-dip').hidden = true; $('k-tribe').hidden = true; app.tribeSig = ''; app.tribeArm = null;
     RTS.on(G, 'notice', n => { if (n.team === app.team) notice(n.text, n.kind); });
     storyReset(); RTS.on(G, 'story', d => storyPush(d)); app.objSig = ''; $('k-obj').hidden = true; $('k-next').hidden = true; $('k-again').textContent = '다시 하기';
     RTS.on(G, 'attacked', ({ e }) => { if (e.team !== app.team) return; app.heat = 1; const n = G.tick; if (n - (app.alarmT || -999) > 200) { app.alarmT = n; app.alarmAt = { x: e.x, y: e.y }; notice((RTS.defOf(e).kind === 'building' ? '기지가' : '병력이') + ' 공격받고 있습니다', 'warn'); app.sfx('alarm'); R.pings.push({ x: e.x, y: e.y, life: 60, max: 60, c: '#ff5a48' }); } });
@@ -349,7 +349,14 @@ RTS.mount = function (root, opts = {}) {
   function spread(ids, x, y) { const n = ids.length, cols = Math.ceil(Math.sqrt(n)), out = {}; const s = .95; ids.forEach((id, i) => { const row = (i / cols) | 0, col = i % cols; out[id] = { x: x + (col - (cols - 1) / 2) * s, y: y + (row - (cols - 1) / 2) * s }; }); return out; }
   // 우클릭 명령 + 유닛 대답(공격 대상이면 공격 대답)
   function context(wx, wy, queue) { const ok = contextRaw(wx, wy, queue); if (ok) { const G = app.G, t = pick(wx, wy), u = selected().find(e => e.team === app.team && RTS.defOf(e).kind === 'unit'); if (u) unitVoice(u, t && t.team >= 0 && RTS.foe(G, app.team, t.team) ? 'attack' : 'move'); } return ok; }
-  function unitVoice(u, kind) { if (!snd || muted || app.settings.unitVoice === false) return; const d = RTS.defOf(u); snd.ack(app.G.teams[u.team].faction, (d.r || .5) / .5, kind); }
+  // 유닛 대답: 말풍선(모든 진영) + 소리. 개척단은 녹음 파일 → 기기 음성 → 합성 말소리 순서, 다른 진영은 합성 말소리
+  function unitVoice(u, kind) { if (app.settings.unitVoice === false || !snd || !snd.ackFree()) return; const d = RTS.defOf(u), f = app.G.teams[u.team].faction, size = (d.r || .5) / .5;
+    const L = RTS.pickLine(u.def, f, kind, app.lastLine); if (!L) return; app.lastLine = L.id; R.say(u.id, L.text, f);
+    snd.ackHold(Math.max(1.1, L.text.length * .1 + .5)); // 말풍선과 소리가 연달아 쏟아지지 않게
+    const v = muted ? 0 : (app.settings.speech === undefined ? 100 : app.settings.speech) / 100; if (!(v > 0)) return;
+    if (L.person) { const file = RTS.VOICE_FILES[L.id]; if (file && snd.clip(RTS.VOICE_BASE + file, 1)) return;
+      if (app.settings.unitTTS !== false && RTS.speakUnit(L.text, size, Math.min(1, v))) return; }
+    snd.ack(f, size, kind, true); }
   function contextRaw(wx, wy, queue) { const G = app.G, list = selected().filter(e => e.team === app.team); if (!list.length) return false;
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
@@ -835,7 +842,7 @@ RTS.mount = function (root, opts = {}) {
     const M = RTS.campDef(G.camp.id), L = RTS.campGoals(G), h = `<b>${esc(M.title)}</b>` + L.map(g => `<p class="${g.done ? 'ok' : ''}">${g.done ? '✓' : '·'} ${esc(g.text)}${g.need > 1 ? ` <small>${Math.floor(g.cur)}/${g.need}</small>` : ''}</p>`).join('');
     if (h !== app.objSig) { app.objSig = h; el.innerHTML = h; } el.hidden = false; }
   // 대사: 한 줄씩 차례로 띄운다. 누르면 다음 줄
-  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; if (snd) snd.stopTalk(); try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch (e) {} const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
+  function storyReset() { app.storyQ = []; clearTimeout(app.storyT); app.storyT = 0; if (snd) snd.stopTalk(); try { if (typeof speechSynthesis !== 'undefined') speechSynthesis.cancel(); } catch (e) {} RTS.ttsStory = false; const el = $('k-story'); el.hidden = true; el.onclick = () => storyNext(); }
   function storyPush(d) { app.storyQ.push(d); if (!app.storyT) storyNext(); }
   function storyNext() { const el = $('k-story'); clearTimeout(app.storyT); const d = app.storyQ.shift(); if (!d) { el.hidden = true; app.storyT = 0; return; }
     el.innerHTML = (d.who ? `<b>${esc(d.who)}</b>` : '') + `<span>${esc(d.text)}</span>`; el.hidden = false; app.storyT = setTimeout(storyNext, Math.max(3500, d.text.length * 110)); storyVoice(d); }
