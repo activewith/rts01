@@ -143,6 +143,9 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-learn .l-res{font-size:16px;line-height:1.6;margin:10px 0}.k-learn .l-res.ok{color:#7dffa8}.k-learn .l-res.no{color:#ffb3a8}
 .c-learn{border:1px solid var(--brass);background:rgba(240,190,90,.08);padding:10px 12px;margin:8px 0}.c-learn b{color:var(--brass)}.c-learn p{margin:4px 0 8px;font-size:14px}.c-pend{color:#ffd36b;font-style:normal;font-weight:600}
 @media (max-width:560px){.k-learn .l-choices{grid-template-columns:1fr}}
+.s-parent{border:1px solid var(--brass);padding:4px 10px 8px;margin:10px 0}.s-parent h3 small{color:var(--dim);font-weight:400}
+.k-learn .p-pin input{font:700 24px var(--num);letter-spacing:.3em;text-align:center;max-width:200px}
+.p-report{font-size:13px;line-height:1.6;margin:6px 0 10px;color:var(--dim)}.p-report b{color:var(--text)}.p-report table{border-collapse:collapse;width:100%;margin:6px 0}.p-report td{border-top:1px solid var(--line);padding:3px 6px;vertical-align:top}
 .k-start{background:linear-gradient(90deg,rgba(10,15,24,.9) 0,rgba(10,15,24,.72) 430px,rgba(10,15,24,.04) 620px)}
 .k-end{background:rgba(8,12,22,.74);justify-content:center;align-items:center}
 .k-game.demo{grid-template-rows:minmax(0,1fr)}
@@ -218,7 +221,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'e49b7f2';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'eae4429';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -2738,11 +2741,16 @@ RTS.SETTINGS = [
     { id: 'rejectLoss', label: '거절 시 동맹금 손실', min: 0, max: 100, step: 10, def: 100, unit: '%' },
     { id: 'stakeYield', label: '출자금 수익률', desc: '30초당', min: 0, max: 20, step: 1, def: 6, unit: '%' },
   ] },
+  { group: '보호자 · 학습 미션', parent: true, note: '이 묶음은 보호자 PIN으로 잠깁니다. 처음 바꿀 때 PIN 4자리를 정합니다.', items: [
+    { id: 'learn', label: '캠페인 학습 미션', desc: '캠페인 미션마다 수학·국어·통합교과 문제를 풉니다. 출발 전(통과하면 목표가 보이고 출발) 또는 성공 뒤(통과하면 다음 미션이 열림)에 나오고, 전투 중에는 나오지 않습니다', type: 'toggle', def: true, client: true, parent: true },
+    { id: 'learnLevel', label: '학습 미션 수준', desc: '이 기기에서 푸는 문제의 수준. 둘이 하기에서는 기기마다 따로 정합니다', min: 0, max: 3, step: 1, def: 1, labels: ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'], client: true, parent: true },
+    { id: 'learnGuard', label: '찍기 방지', desc: '틀리면 대기: 틀린 뒤 정한 시간 동안 다음 문제를 못 받습니다. 연속 정답: 2문제를 연달아 맞혀야 통과합니다(틀리면 처음부터)', min: 0, max: 3, step: 1, def: 1, labels: ['끔', '틀리면 대기', '2문제 연속 정답', '둘 다'], client: true, parent: true },
+    { id: 'learnWait', label: '틀렸을 때 대기 시간', desc: '찍기 방지가 「틀리면 대기」 또는 「둘 다」일 때', min: 3, max: 30, step: 1, def: 10, unit: '초', client: true, parent: true },
+    { id: 'learnHint', label: '보기 줄이기 힌트', desc: '두 번 연속 틀리면 다음 문제에서 오답 보기 둘을 지워 줍니다', type: 'toggle', def: true, client: true, parent: true },
+  ] },
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
-    { id: 'learn', label: '캠페인 학습 미션', desc: '캠페인 미션마다 수학·국어·통합교과 문제 하나를 풉니다. 출발 전(통과하면 목표가 보이고 출발) 또는 성공 뒤(통과하면 다음 미션이 열림)에 나오고, 전투 중에는 나오지 않습니다', type: 'toggle', def: true, client: true },
-    { id: 'learnLevel', label: '학습 미션 수준', desc: '이 기기에서 푸는 문제의 수준. 둘이 하기에서는 기기마다 따로 정합니다', min: 0, max: 3, step: 1, def: 1, labels: ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'], client: true },
     { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
     { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
     { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
@@ -5015,13 +5023,17 @@ RTS.mount = function (root, opts = {}) {
   function setValue(s, v) { app.settings[s.id] = v; store.set('settings', JSON.stringify(app.settings)); if (s.id === 'music') applyMusic(); if (s.id === 'voiceVol') $('k-voiceout').volume = v / 100; if (liveGame() && !app.net && !s.client && !s.startOnly) RTS.cfg(app.G)[s.id] = v; }
   function renderSettings() { const el = $('k-set'), live = liveGame(), src = id => live && !RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === id).client ? (RTS.cfg(app.G)[id] ?? app.settings[id]) : app.settings[id];
     el.innerHTML = `<div class="s-panel"><div class="s-head"><h2>설정</h2><button id="s-close">닫기</button></div><p class="s-note">${live && app.net ? '둘이 대전 중에는 게임 규칙을 바꿀 수 없습니다. 화면과 소리만 바꿀 수 있고, 게임은 계속 진행됩니다.' : live ? '게임이 멈춰 있습니다. 바꾼 값은 이번 판에 바로 적용되며, 새 게임 전용 항목은 다음 판부터 적용됩니다.' : '여기서 고른 값은 이 브라우저에 저장되고 나와 AI에게 똑같이 적용됩니다.'}</p><div class="s-presets"><span>묶음 설정</span>${Object.keys(RTS.PRESETS).map(k => `<button data-preset="${k}">${k}</button>`).join('')}</div>` +
-      RTS.SETTINGS.map(g => `<section><h3>${g.group}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.items.map(s => { const off = live && (s.startOnly || (app.net && !s.client)), v = src(s.id), id = 's-' + s.id;
-        return `<div class="s-row${off ? ' off' : ''}"><label for="${id}"><b>${s.label}</b>${s.desc ? `<small>${s.desc}</small>` : ''}${off ? '<small>다음 판부터 적용</small>' : ''}</label>` + (s.type === 'toggle' ? `<input type="checkbox" id="${id}" data-s="${s.id}" ${v ? 'checked' : ''} ${off ? 'disabled' : ''}>` : `<input type="range" id="${id}" data-s="${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}" ${off ? 'disabled' : ''}>`) + `<output id="${id}-v">${fmtSet(s, v)}</output></div>`; }).join('')}</section>`).join('') + `<div class="s-foot"><button id="s-reset">기본값으로 되돌리기</button></div></div>`;
+      RTS.SETTINGS.map(g => `<section${g.parent ? ' class="s-parent"' : ''}><h3>${g.group}${g.parent ? (app.parentOK ? ' <small>· 잠금 풀림</small>' : ' <small>· 잠김</small>') : ''}</h3>${g.note ? `<p class="s-note">${g.note}</p>` : ''}${g.parent ? parentBar() : ''}${g.items.map(s => { const locked = s.parent && !app.parentOK, off = locked || (live && (s.startOnly || (app.net && !s.client))), v = src(s.id), id = 's-' + s.id;
+        return `<div class="s-row${off ? ' off' : ''}"><label for="${id}"><b>${s.label}</b>${s.desc ? `<small>${s.desc}</small>` : ''}${off && !locked ? '<small>다음 판부터 적용</small>' : ''}</label>` + (s.type === 'toggle' ? `<input type="checkbox" id="${id}" data-s="${s.id}" ${v ? 'checked' : ''} ${off ? 'disabled' : ''}>` : `<input type="range" id="${id}" data-s="${s.id}" min="${s.min}" max="${s.max}" step="${s.step}" value="${v}" ${off ? 'disabled' : ''}>`) + `<output id="${id}-v">${fmtSet(s, v)}</output></div>`; }).join('')}</section>`).join('') + `<div class="s-foot"><button id="s-reset">기본값으로 되돌리기</button></div></div>`;
     el.querySelectorAll('[data-s]').forEach(i => { const s = RTS.SETTINGS.flatMap(g => g.items).find(x => x.id === i.dataset.s); i.oninput = () => { const v = s.type === 'toggle' ? i.checked : +i.value; setValue(s, v); $('s-' + s.id + '-v').textContent = fmtSet(s, v); }; });
     el.querySelectorAll('[data-preset]').forEach(b => { if (live && app.net) b.disabled = true; b.onclick = () => applySettings(Object.assign(RTS.defaultSettings(), RTS.PRESETS[b.dataset.preset]), true); });
-    if (live && app.net) $('s-reset').disabled = true; $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings; }
-  function applySettings(vals, keepOther) { for (const s of RTS.SETTINGS.flatMap(g => g.items)) { if (keepOther && (s.client || s.startOnly)) continue; setValue(s, vals[s.id]); } renderSettings(); }
-  function toggleSettings() { app.setOpen = !app.setOpen; $('k-set').hidden = !app.setOpen; if (app.setOpen) renderSettings(); else { app.exRows = null; updateSpeed(); } }
+    if (live && app.net) $('s-reset').disabled = true; $('s-reset').onclick = () => applySettings(RTS.defaultSettings(), false); $('s-close').onclick = toggleSettings;
+    const un = el.querySelector('#s-unlock'); if (un) un.onclick = () => parentGate(() => { app.parentOK = true; renderSettings(); });
+    const pc = el.querySelector('#s-pin'); if (pc) pc.onclick = () => parentSetPin(() => { notice('보호자 PIN을 바꿨습니다', 'ok'); renderSettings(); });
+    const lk = el.querySelector('#s-lock'); if (lk) lk.onclick = () => { app.parentOK = false; renderSettings(); };
+    const cw = el.querySelector('#s-clearwrong'); if (cw) cw.onclick = () => { const p = campLoad(); p.learnWrong = []; campSave(p); renderSettings(); }; }
+  function applySettings(vals, keepOther) { for (const s of RTS.SETTINGS.flatMap(g => g.items)) { if (keepOther && (s.client || s.startOnly)) continue; if (s.parent && !app.parentOK) continue; setValue(s, vals[s.id]); } renderSettings(); } // 보호자 잠금 항목은 잠금이 풀렸을 때만 되돌린다
+  function toggleSettings() { app.setOpen = !app.setOpen; $('k-set').hidden = !app.setOpen; if (app.setOpen) renderSettings(); else { app.parentOK = false; app.exRows = null; updateSpeed(); } } // 설정을 닫으면 보호자 잠금이 다시 걸린다
   function togglePause(remote) { if (app.net && remote === undefined) { netSend({ t: 'pause', on: !app.paused }); } else if (remote !== undefined) { if (app.paused === remote) return; notice(remote ? '상대가 일시정지했습니다' : '상대가 게임을 재개했습니다'); } app.paused = !app.paused; $('k-paused').hidden = !app.paused; $('k-pause').textContent = app.paused ? '재개' : '정지'; }
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
   $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
@@ -5231,19 +5243,51 @@ RTS.mount = function (root, opts = {}) {
   // ── 학습 미션(src/data/learn.js) ── 맞히면 통과. 틀리면 설명을 보고 새 문제. 두 번 연속 틀리면 보기 둘을 지워 준다. 기록은 진행 기록의 learnStat
   const learnOn = () => app.settings.learn !== false, learnLv = () => (app.settings.learnLevel === undefined ? 1 : app.settings.learnLevel);
   app.learnPass = {};
-  function learnOpen(o) { const el = $('k-learnp'), L = { miss: 0 }; $('k-learn').hidden = false; unlock();
-    const next = () => { L.Q = RTS.learnQuestion('any', learnLv()); L.done = false; L.cut = L.miss >= 2 ? [0, 1, 2, 3].filter(i => i !== L.Q.ans).sort(() => Math.random() - .5).slice(0, 2) : []; draw(); };
-    const draw = (pick) => { const Q = L.Q; el.innerHTML = `<h1>학습 미션</h1><p class="k-sub">${esc(o.title || '')}</p><p class="l-sub">${esc(Q.name)}${L.cut.length ? ' · 힌트: 보기 둘을 지웠어요' : ''}</p>
+  // 찍기 방지(설정 learnGuard): 0 끔, 1 틀리면 대기(learnWait초), 2 연속 2문제 정답, 3 둘 다. 대기 끝 시각은 저장해서 창을 닫았다 열어도 이어진다
+  const guardMode = () => (app.settings.learnGuard === undefined ? 1 : app.settings.learnGuard), waitSec = () => app.settings.learnWait || 10;
+  function learnOpen(o) { const el = $('k-learnp'), L = { miss: 0, streak: 0 }, need = guardMode() & 2 ? 2 : 1; $('k-learn').hidden = false; unlock(); clearInterval(app.learnTick);
+    const waitLeft = () => Math.max(0, Math.ceil(((+store.get('learnWaitUntil') || 0) - Date.now()) / 1000));
+    const next = () => { if (waitLeft() > 0) return; L.Q = RTS.learnQuestion('any', learnLv()); L.done = false; L.cut = L.miss >= 2 && app.settings.learnHint !== false ? [0, 1, 2, 3].filter(i => i !== L.Q.ans).sort(() => Math.random() - .5).slice(0, 2) : []; draw(); };
+    const draw = (pick) => { const Q = L.Q, ok = pick === Q.ans, wl = waitLeft(), passNow = ok && L.streak >= need;
+      el.innerHTML = `<h1>학습 미션</h1><p class="k-sub">${esc(o.title || '')}</p><p class="l-sub">${esc(Q.name)}${need > 1 ? ` · 연속 정답 ${L.streak}/${need}` : ''}${L.cut.length ? ' · 힌트: 보기 둘을 지웠어요' : ''}</p>
         ${Q.passage ? `<div class="l-passage">${esc(Q.passage)}</div>` : ''}<p class="l-q">${esc(Q.q)}</p>
         <div class="k-opts l-choices">${Q.choices.map((c, i) => `<button class="k-opt${pick !== undefined && i === Q.ans ? ' l-ok' : ''}${pick === i && i !== Q.ans ? ' l-no' : ''}" data-i="${i}" ${L.done || L.cut.includes(i) ? 'disabled' : ''}><b>${esc(c)}</b></button>`).join('')}</div>
-        ${pick === undefined ? '' : pick === Q.ans ? `<p class="l-res ok">정답! ${esc(Q.why)}</p>` : `<p class="l-res no">아쉬워요. 정답은 「${esc(Q.choices[Q.ans])}」. ${esc(Q.why)}</p>`}
-        <div class="k-go">${pick === undefined ? '' : pick === Q.ans ? `<button class="k-primary" id="l-pass">${esc(o.passText || '통과!')}</button>` : '<button class="k-primary" id="l-next">다른 문제</button>'}<button id="l-close">나중에</button></div>`;
-      el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { if (L.done) return; const i = +b.dataset.i, ok = i === Q.ans; L.done = true; L.miss = ok ? 0 : L.miss + 1; app.sfx(ok ? 'research' : 'warn');
-        const p = campLoad(), st = (p.learnStat = p.learnStat || {})[Q.subject] = p.learnStat[Q.subject] || { ok: 0, n: 0 }; st.n++; if (ok) st.ok++; campSave(p); draw(i); }; });
+        ${pick === undefined ? '' : ok ? `<p class="l-res ok">정답! ${esc(Q.why)}${passNow ? '' : ` 한 문제 더 맞히면 통과예요.`}</p>` : `<p class="l-res no">아쉬워요. 정답은 「${esc(Q.choices[Q.ans])}」. ${esc(Q.why)}${need > 1 ? ' 연속 정답이 처음부터 다시 시작돼요.' : ''}</p>`}
+        <div class="k-go">${pick === undefined ? '' : passNow ? `<button class="k-primary" id="l-pass">${esc(o.passText || '통과!')}</button>` : `<button class="k-primary" id="l-next" ${wl ? 'disabled' : ''}>${wl ? `${wl}초 뒤 다른 문제` : ok ? '다음 문제' : '다른 문제'}</button>`}<button id="l-close">나중에</button></div>`;
+      el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { if (L.done) return; const i = +b.dataset.i, good = i === Q.ans; L.done = true; L.miss = good ? 0 : L.miss + 1; L.streak = good ? L.streak + 1 : 0; app.sfx(good ? 'research' : 'warn');
+        const p = campLoad(), st = (p.learnStat = p.learnStat || {})[Q.subject] = p.learnStat[Q.subject] || { ok: 0, n: 0 }; st.n++; if (good) st.ok++;
+        if (!good) { (p.learnWrong = p.learnWrong || []).unshift({ at: Date.now(), sub: Q.subject, q: (Q.passage ? '[지문] ' : '') + Q.q, pick: Q.choices[i], ans: Q.choices[Q.ans] }); p.learnWrong.length = Math.min(p.learnWrong.length, 30);
+          if (guardMode() & 1) store.set('learnWaitUntil', String(Date.now() + waitSec() * 1000)); }
+        campSave(p); draw(i); if (!good && waitLeft()) { clearInterval(app.learnTick); app.learnTick = setInterval(() => { if ($('k-learn').hidden) { clearInterval(app.learnTick); return; } const b2 = el.querySelector('#l-next'), w = waitLeft(); if (!b2) return; if (w) b2.textContent = `${w}초 뒤 다른 문제`; else { b2.disabled = false; b2.textContent = '다른 문제'; clearInterval(app.learnTick); } }, 250); } }; });
       const pass = el.querySelector('#l-pass'); if (pass) pass.onclick = () => { $('k-learn').hidden = true; o.onPass(); };
       const nx = el.querySelector('#l-next'); if (nx) nx.onclick = next;
-      el.querySelector('#l-close').onclick = () => { $('k-learn').hidden = true; if (o.onClose) o.onClose(); }; };
+      el.querySelector('#l-close').onclick = () => { clearInterval(app.learnTick); $('k-learn').hidden = true; if (o.onClose) o.onClose(); }; };
+    const wl0 = waitLeft(); if (wl0) { // 틀린 뒤 기다리는 중에 다시 열면 남은 시간을 보여 준다
+      el.innerHTML = `<h1>학습 미션</h1><p class="k-sub">${esc(o.title || '')}</p><p class="l-q">조금 쉬었다가 다시 풀어요.</p><p class="l-res" id="l-wait">${wl0}초 남았어요</p><div class="k-go"><button id="l-close">나중에</button></div>`;
+      el.querySelector('#l-close').onclick = () => { clearInterval(app.learnTick); $('k-learn').hidden = true; };
+      app.learnTick = setInterval(() => { const w = waitLeft(), t = el.querySelector('#l-wait'); if ($('k-learn').hidden) { clearInterval(app.learnTick); return; } if (w && t) t.textContent = `${w}초 남았어요`; else if (!w) { clearInterval(app.learnTick); next(); } }, 250); return; }
     next(); }
+  // ── 보호자 PIN ── 학습 미션 설정 묶음(parent)을 잠근다. PIN은 해시로 이 브라우저에 저장. 잊었으면 어른용 곱셈 문제로 지우고 새로 정한다
+  const pinHash = v => { let h = 2166136261; for (const c of 'kjh-rts01:' + v) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
+  const pinBox = (title, sub, extra) => { const el = $('k-learnp'); $('k-learn').hidden = false; el.innerHTML = `<h1>${esc(title)}</h1><p class="k-sub">${sub}</p><div class="k-netjoin p-pin"><input class="k-in" id="p-in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="${extra && extra.len || 4}" autocomplete="off" placeholder="${extra && extra.ph || '숫자 4자리'}"><button class="k-primary" id="p-ok">확인</button></div><p class="l-res no" id="p-msg"></p><div class="k-go">${extra && extra.forgot ? '<button id="p-forgot">PIN을 잊었어요</button>' : ''}<button id="p-cancel">취소</button></div>`;
+    const inp = el.querySelector('#p-in'); setTimeout(() => inp.focus(), 50); el.querySelector('#p-cancel').onclick = () => { $('k-learn').hidden = true; }; return { el, inp, msg: t => { el.querySelector('#p-msg').textContent = t; inp.value = ''; inp.focus(); } }; };
+  function parentSetPin(done) { let first = null; const ask = () => { const b = pinBox('보호자 PIN 정하기', first ? '확인을 위해 한 번 더 넣으세요.' : '학습 미션 설정을 잠글 숫자 4자리를 정하세요. 아이에게 알려 주지 마세요.');
+      const go = () => { const v = b.inp.value.trim(); if (!/^\d{4}$/.test(v)) { b.msg('숫자 4자리를 넣으세요'); return; } if (!first) { first = v; ask(); return; } if (v !== first) { first = null; b.msg('두 번 넣은 PIN이 다릅니다. 처음부터 다시 정하세요'); setTimeout(ask, 900); return; }
+        store.set('pin', pinHash(v)); $('k-learn').hidden = true; done(); };
+      b.el.querySelector('#p-ok').onclick = go; b.inp.onkeydown = e => { if (e.key === 'Enter') go(); }; }; ask(); }
+  function parentGate(done) { if (!store.get('pin')) { parentSetPin(done); return; } let miss = 0;
+    const b = pinBox('보호자 확인', '학습 미션 설정을 바꾸려면 보호자 PIN을 넣으세요.', { forgot: true });
+    const go = () => { if (pinHash(b.inp.value.trim()) === store.get('pin')) { $('k-learn').hidden = true; done(); return; } miss++; b.msg(miss >= 3 ? 'PIN이 맞지 않습니다. 잊었다면 아래 「PIN을 잊었어요」를 누르세요' : 'PIN이 맞지 않습니다'); };
+    b.el.querySelector('#p-ok').onclick = go; b.inp.onkeydown = e => { if (e.key === 'Enter') go(); };
+    b.el.querySelector('#p-forgot').onclick = () => { const x = 23 + Math.floor(Math.random() * 67), y = 13 + Math.floor(Math.random() * 76), c = pinBox('보호자 확인 (PIN 다시 정하기)', `어른 확인 문제입니다. <b>${x} × ${y}</b> 의 답을 넣으면 PIN을 지우고 새로 정합니다.`, { len: 5, ph: '답' });
+      const go2 = () => { if (+c.inp.value.trim() === x * y) { store.del('pin'); parentSetPin(done); } else c.msg('답이 맞지 않습니다'); };
+      c.el.querySelector('#p-ok').onclick = go2; c.inp.onkeydown = e => { if (e.key === 'Enter') go2(); }; }; }
+  // 설정 화면의 보호자 묶음 머리: 잠김이면 잠금 풀기, 풀렸으면 기록·PIN 바꾸기
+  function parentBar() { if (!app.parentOK) return `<div class="s-presets"><button class="k-primary" id="s-unlock">${store.get('pin') ? '보호자 PIN으로 잠금 풀기' : '보호자 PIN 정하고 잠금 풀기'}</button></div>`;
+    const p = campLoad(), W = p.learnWrong || [], S = p.learnStat || {}, sub = Object.keys(RTS.LEARN_SUBJECTS).map(k => S[k] && S[k].n ? `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n} (${Math.round(S[k].ok / S[k].n * 100)}%)` : `${RTS.LEARN_SUBJECTS[k]} 기록 없음`).join(' · ');
+    const day = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+    return `<div class="s-presets"><button id="s-lock">다시 잠그기</button><button id="s-pin">PIN 바꾸기</button></div><div class="p-report"><b>학습 기록</b> <span>${esc(sub)}</span>
+      <details${W.length ? '' : ' hidden'}><summary>최근 틀린 문제 ${W.length}개</summary><table>${W.map(w => `<tr><td>${day(w.at)}</td><td>${esc(RTS.LEARN_SUBJECTS[w.sub] || '')}</td><td>${esc(w.q)}</td><td>고른 답 「${esc(w.pick)}」 · 정답 「${esc(w.ans)}」</td></tr>`).join('')}</table><button id="s-clearwrong">틀린 문제 기록 지우기</button></details></div>`; }
   const learnStatText = () => { const p = campLoad(), S = p.learnStat || {}; const t = Object.keys(RTS.LEARN_SUBJECTS).filter(k => S[k] && S[k].n).map(k => `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n}`); return t.length ? '학습 미션 맞힌 수: ' + t.join(' · ') : ''; };
   function campOpen(brief) { $('k-start').hidden = true; $('k-end').hidden = true; $('k-camp').hidden = false; renderCamp(brief || null); }
   function renderCamp(brief) { const el = $('k-campp'), p = campLoad(), st = RTS.campStatus(p), d = RTS.defs;
