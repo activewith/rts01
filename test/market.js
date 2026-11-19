@@ -3,7 +3,7 @@ const fs = require('fs'), path = require('path'), assert = require('assert');
 for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const G = RTS.createGame({ map: 'ridge', seed: 3, players: [{ faction: 'pioneers' }, { faction: 'ironclad' }] });
 const c = G.market.cos.daeryuk, me = G.teams[0], e = G.byId[c.site];
-for (const m of Object.values(RTS.defs.maps)) { const g = RTS.createGame({ map: m.id, seed: 1, players: [{ faction: 'pioneers' }, { faction: 'ironclad' }] }); for (const k of Object.values(g.market.cos)) { const s = g.byId[k.site]; assert(s, m.id + ' 거점 없음'); const p = RTS.findPath(g, g.bases[0].x, g.bases[0].y + 4, { x0: s.x - 3, y0: s.y - 3, x1: s.x + 2, y1: s.y + 2 }); const l = p[p.length - 1]; assert(Math.hypot(l[0] - s.x, l[1] - s.y) < 4, m.id + ' 거점 도달 불가 ' + k.id); } }
+for (const m of Object.values(RTS.defs.maps).filter(m => !m.camp)) { const g = RTS.createGame({ map: m.id, seed: 1, players: [{ faction: 'pioneers' }, { faction: 'ironclad' }] }); for (const k of Object.values(g.market.cos)) { const s = g.byId[k.site]; assert(s, m.id + ' 거점 없음'); const p = RTS.findPath(g, g.bases[0].x, g.bases[0].y + 4, { x0: s.x - 3, y0: s.y - 3, x1: s.x + 2, y1: s.y + 2 }); const l = p[p.length - 1]; assert(Math.hypot(l[0] - s.x, l[1] - s.y) < 4, m.id + ' 거점 도달 불가 ' + k.id); } }
 me.res.ore = 1000; const p0 = c.price;
 RTS.command(G, 0, { type: 'trade', company: 'daeryuk', qty: 20 }); RTS.step(G);
 assert.equal(c.shares[0], 20); assert(c.price > p0); assert(me.res.ore < 1000 - 20 * p0);

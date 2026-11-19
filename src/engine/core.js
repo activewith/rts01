@@ -50,7 +50,7 @@ RTS.createGame = function (opts) {
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
   const m = RTS.defs.mapgens[spec.gen](spec, G);
-  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null; if (m.elev) G.elev = m.elev;
+  G.w = m.w; G.h = m.h; G.tiles = m.tiles; G.bases = m.bases; G.siteSpots = m.sites || []; G.postSpots = m.posts || []; G.tribeSpot = m.tribe || null; G.tribeFixed = !!m.tribeFixed; if (m.elev) G.elev = m.elev;
   RTS.initRuntime(G);
   opts.players.forEach((p, i) => {
     const size = G.w * G.h;
@@ -58,6 +58,8 @@ RTS.createGame = function (opts) {
       res: { ore: G.cfg.startOre, gas: G.cfg.startGas }, sup: 0, cap: 0, have: {}, upgrades: {}, research: {}, inc: 1, mods: {}, aiState: {},
       stats: { kills: 0, lost: 0, ore: 0, gas: 0, made: 0 }, vis: new Array(size).fill(0), seen: new Array(size).fill(0) };
     if (p.side !== undefined) t.side = p.side; // 같은 편끼리는 동맹(RTS.ally)
+    if (p.npc) t.npc = true; // 캠페인 수비대: AI 없이 제자리를 지키는 팀(시야 계산·조작 없음)
+    if (p.noBase) t.noBase = true; // 캠페인: 본진 없이 부대만으로 시작
     if (p.ai) { t.boost = p.boost || 1; t.inc = RTS.defs.difficulties[p.ai].income * t.boost; } // boost: 중립세력 AI 성능 배율
     const hc = p.hc && RTS.HANDICAPS && RTS.HANDICAPS[p.hc]; // 2인 대전 팀별 핸디캡
     if (hc && hc.id !== 'none') { t.hc = hc.id; t.res.ore += hc.ore || 0; t.res.gas += hc.gas || 0; t.inc *= hc.income || 1; if (hc.reveal) t.reveal = true; }
@@ -67,10 +69,12 @@ RTS.createGame = function (opts) {
     const e = RTS.spawn(G, n.def, -1, n.tx + RTS.defs.entities[n.def].size[0] / 2, n.ty + RTS.defs.entities[n.def].size[1] / 2);
     e.amount = RTS.defs.entities[n.def].amount;
   });
-  RTS.pickStarts(G, spec, G.coop ? 2 : G.teams.length);
-  const starts = G.bases.filter(b => b.start !== undefined), spots = G.coop ? RTS.coopBases(G) : G.teams.length > 2 ? RTS.ffaBases(G) : null;
+  if (opts.camp) { if (opts.starts) { for (const b of G.bases) delete b.start; opts.starts.forEach((k, i) => { if (k !== null && k !== undefined && G.bases[k]) G.bases[k].start = i; }); } } // 캠페인: 미션이 팀마다 기지를 정한다
+  else RTS.pickStarts(G, spec, G.coop ? 2 : G.teams.length);
+  const starts = G.bases.filter(b => b.start !== undefined), spots = opts.camp ? null : G.coop ? RTS.coopBases(G) : G.teams.length > 2 ? RTS.ffaBases(G) : null;
   G.teams.forEach((t, i) => {
     const b = spots ? spots[i] : starts.find(s => s.start === i), f = RTS.defs.factions[t.faction];
+    if (!b || t.npc || t.noBase) return;
     b.owner = i;
     const hs = RTS.defs.entities[f.hq].size, hq = RTS.spawn(G, f.hq, i, Math.round(b.x - hs[0] / 2) + hs[0] / 2, Math.round(b.y - hs[1] / 2) + hs[1] / 2); hq.built = hq.buildT; hq.hp = RTS.stat(G, hq, 'hp');
     const ore = RTS.nearestNode(G, b.x, b.y, 'ore', 30);

@@ -2,7 +2,7 @@
 const fs = require('fs'), path = require('path'), assert = require('assert');
 for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const counts = {};
-for (const map of Object.keys(RTS.defs.maps)) for (const fac of Object.keys(RTS.defs.factions)) for (let seed = 1; seed <= 60; seed++) {
+for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) for (const fac of Object.keys(RTS.defs.factions)) for (let seed = 1; seed <= 60; seed++) {
   const foe = fac === 'pioneers' ? 'ironclad' : 'pioneers', def = RTS.defs.factions[fac].defense;
   const G = RTS.createGame({ map, seed, settings: { fog: true }, players: [{ faction: fac }, { faction: foe, ai: 'beginner' }] });
   assert(G.nofog, '안개 꺼짐');

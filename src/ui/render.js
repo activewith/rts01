@@ -504,6 +504,10 @@ RTS.Renderer = function (canvas, app) {
     const TM = G.tribe && me >= 0 && G.tribe.missions[me]; // 잿빛 부족 정찰 미션 지점
     if (TM) for (const q of TM) if (q.id === 'scout' && q.done === null) { const X = q.x * TS, Y = q.y * TS; o.strokeStyle = '#9dffb5'; o.lineWidth = 2.5; o.setLineDash([10, 8]); o.lineDashOffset = -t * .6; o.beginPath(); o.arc(X, Y, 5 * TS, 0, TAU); o.stroke(); o.setLineDash([]); o.lineDashOffset = 0;
       o.font = '700 14px "IBM Plex Sans KR",sans-serif'; o.textAlign = 'center'; o.fillStyle = 'rgba(8,12,22,.8)'; o.fillRect(X - 40, Y - 11, 80, 20); o.fillStyle = '#9dffb5'; o.fillText('정찰 지점', X, Y + 4); o.textAlign = 'start'; }
+    if (G.camp && !app.demo) for (const q of RTS.campMarks(G)) { const X = q.x * TS, Y = q.y * TS, rr = (q.r || 4) * TS, pul = .5 + .5 * Math.sin(t * .12); // 캠페인 목표 지점
+      o.strokeStyle = '#ffd36b'; o.lineWidth = 3; o.setLineDash([12, 9]); o.lineDashOffset = -t * .5; o.beginPath(); o.arc(X, Y, rr, 0, TAU); o.stroke(); o.setLineDash([]); o.lineDashOffset = 0;
+      o.globalAlpha = .25 + pul * .35; o.fillStyle = '#ffd36b'; o.beginPath(); o.arc(X, Y, 6 + pul * 6, 0, TAU); o.fill(); o.globalAlpha = 1;
+      if (q.label) { o.font = '700 14px "IBM Plex Sans KR",sans-serif'; o.textAlign = 'center'; const tw = o.measureText(q.label).width + 14; o.fillStyle = 'rgba(8,12,22,.82)'; o.fillRect(X - tw / 2, Y - rr - 26, tw, 20); o.fillStyle = '#ffd36b'; o.fillText(q.label, X, Y - rr - 11); o.textAlign = 'start'; } }
     R.pings = R.pings.filter(p => { p.life--; const k = p.life / p.max; o.strokeStyle = p.c; o.lineWidth = 2; o.globalAlpha = k; o.beginPath(); o.arc(p.x * TS, p.y * TS, (1 - k) * 22 + 4, 0, TAU); o.stroke(); o.globalAlpha = 1; return p.life > 0; });
     o.setTransform(1, 0, 0, 1, 0, 0);
     if (glOn) gfx.render({ src: world, lights: screenLights(cam, ox, oy), amb: amb().amb, tint: amb().tint, cam, shake: [ox, oy], map: [G.w * TS, G.h * TS], fog: fogOn ? fogGL : null, shocks: shocks(cam, ox, oy), time: now / 1000, clouds: app.settings.clouds === false ? 0 : 1 });
