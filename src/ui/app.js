@@ -51,6 +51,7 @@ const HTML = `
   </section>
   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
   <section class="k-overlay k-start k-camp" id="k-camp" hidden aria-label="캠페인"><div class="k-panel" id="k-campp"></div></section>
+  <section class="k-overlay k-learn" id="k-learn" hidden aria-label="학습 미션"><div class="k-panel" id="k-learnp" role="dialog" aria-modal="true"></div></section>
   <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel"><div class="k-netp" id="k-netp"></div><div class="k-netchat" id="k-netchat" hidden><h2>대화</h2><div class="k-chatlog lobby" id="n-chatlog" aria-live="polite"></div><form class="k-chatrow" id="n-chatform"><input class="k-in" id="n-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력" aria-label="채팅 메시지"><button type="submit">보내기</button></form><div class="k-quick" id="n-quick"></div><div class="k-go"><button id="n-voice">음성 켜기</button></div><p class="k-small">음성 채팅은 두 기기가 같은 방에 있으면 소리가 되울려 삐 소리가 날 수 있습니다. 이어폰을 쓰거나 다른 방에서 하세요.</p></div></div></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-next" hidden>다음 미션</button><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
   <audio id="k-voiceout" autoplay playsinline></audio>
@@ -510,7 +511,9 @@ RTS.mount = function (root, opts = {}) {
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
   $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); applyMusic(); };
-  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } if (app.net && app.G && app.G.camp && app.G.over) { netToLobby(); return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); if (app.G && app.G.camp) campOpen(app.G.camp.id); else app.start(); }; $('k-next').onclick = () => { unlock(); const n = RTS.campNext(app.G.camp.id); if (n) campOpen(n.id); }; $('k-campopen').onclick = () => { unlock(); campOpen(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
+  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } if (app.net && app.G && app.G.camp && app.G.over) { netToLobby(); return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); if (app.G && app.G.camp) campOpen(app.G.camp.id); else app.start(); }; $('k-next').onclick = () => { unlock(); const id = app.G.camp.id, n = RTS.campNext(id); if (!n) return;
+    if (app.learnAfter === id && RTS.campLearnPending(campLoad(), id)) { learnOpen({ title: RTS.campDef(id).title + ' · 다음 미션 열기', passText: '통과! 다음 미션으로', onPass: () => { campSave(RTS.campLearnDone(campLoad(), id)); app.learnAfter = null; campOpen(n.id); } }); return; }
+    campOpen(n.id); }; $('k-campopen').onclick = () => { unlock(); campOpen(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-netopen').onclick = () => { unlock(); netOpen(); };
   $('k-rejoin').onclick = () => { unlock(); const r = loadResume(); if (r) netRejoin(r); else renderMenu(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
@@ -581,6 +584,7 @@ RTS.mount = function (root, opts = {}) {
     if (m.t === 'lobby' && N.role === 'guest') { N.lobby = m.lobby; renderNet(); return; }
     if (m.t === 'start' && N.role === 'guest') { netStart(m.opts, 1); return; }
     if (m.t === 'pause') { togglePause(!!m.on); return; }
+    if (m.t === 'learn') { N.peerLearn = m.ok ? String(m.id) : null; renderNet(); return; }
     if (m.t === 'chat') { chatAdd(false, peerName(), String(m.text || '').slice(0, 80)); return; }
     if (m.t === 'voice') { notice(m.on ? peerName() + ' 님이 마이크를 켰습니다' + (voice.stream ? '' : ' · 음성 켜기로 내 마이크도 켤 수 있습니다') : peerName() + ' 님이 마이크를 껐습니다', 'ok'); return; }
     if (m.t === 'bye') { if (N.match && app.G && !app.G.over) netAway('상대가 대전 화면을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
@@ -709,20 +713,41 @@ RTS.mount = function (root, opts = {}) {
   const campFmt = t => `${Math.floor(t / 1200)}분 ${Math.floor(t / 20) % 60}초`;
   const campLv = (M, lv) => { const L = RTS.campLevels(M); return L.includes(lv) ? lv : L[Math.min(1, L.length - 1)]; };
   const goalBrief = g => g.brief || (typeof g.text === 'function' ? '목표 달성' : g.text);
+  // ── 학습 미션(src/data/learn.js) ── 맞히면 통과. 틀리면 설명을 보고 새 문제. 두 번 연속 틀리면 보기 둘을 지워 준다. 기록은 진행 기록의 learnStat
+  const learnOn = () => app.settings.learn !== false, learnLv = () => (app.settings.learnLevel === undefined ? 1 : app.settings.learnLevel);
+  app.learnPass = {};
+  function learnOpen(o) { const el = $('k-learnp'), L = { miss: 0 }; $('k-learn').hidden = false; unlock();
+    const next = () => { L.Q = RTS.learnQuestion('any', learnLv()); L.done = false; L.cut = L.miss >= 2 ? [0, 1, 2, 3].filter(i => i !== L.Q.ans).sort(() => Math.random() - .5).slice(0, 2) : []; draw(); };
+    const draw = (pick) => { const Q = L.Q; el.innerHTML = `<h1>학습 미션</h1><p class="k-sub">${esc(o.title || '')}</p><p class="l-sub">${esc(Q.name)}${L.cut.length ? ' · 힌트: 보기 둘을 지웠어요' : ''}</p>
+        ${Q.passage ? `<div class="l-passage">${esc(Q.passage)}</div>` : ''}<p class="l-q">${esc(Q.q)}</p>
+        <div class="k-opts l-choices">${Q.choices.map((c, i) => `<button class="k-opt${pick !== undefined && i === Q.ans ? ' l-ok' : ''}${pick === i && i !== Q.ans ? ' l-no' : ''}" data-i="${i}" ${L.done || L.cut.includes(i) ? 'disabled' : ''}><b>${esc(c)}</b></button>`).join('')}</div>
+        ${pick === undefined ? '' : pick === Q.ans ? `<p class="l-res ok">정답! ${esc(Q.why)}</p>` : `<p class="l-res no">아쉬워요. 정답은 「${esc(Q.choices[Q.ans])}」. ${esc(Q.why)}</p>`}
+        <div class="k-go">${pick === undefined ? '' : pick === Q.ans ? `<button class="k-primary" id="l-pass">${esc(o.passText || '통과!')}</button>` : '<button class="k-primary" id="l-next">다른 문제</button>'}<button id="l-close">나중에</button></div>`;
+      el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { if (L.done) return; const i = +b.dataset.i, ok = i === Q.ans; L.done = true; L.miss = ok ? 0 : L.miss + 1; app.sfx(ok ? 'research' : 'warn');
+        const p = campLoad(), st = (p.learnStat = p.learnStat || {})[Q.subject] = p.learnStat[Q.subject] || { ok: 0, n: 0 }; st.n++; if (ok) st.ok++; campSave(p); draw(i); }; });
+      const pass = el.querySelector('#l-pass'); if (pass) pass.onclick = () => { $('k-learn').hidden = true; o.onPass(); };
+      const nx = el.querySelector('#l-next'); if (nx) nx.onclick = next;
+      el.querySelector('#l-close').onclick = () => { $('k-learn').hidden = true; if (o.onClose) o.onClose(); }; };
+    next(); }
+  const learnStatText = () => { const p = campLoad(), S = p.learnStat || {}; const t = Object.keys(RTS.LEARN_SUBJECTS).filter(k => S[k] && S[k].n).map(k => `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n}`); return t.length ? '학습 미션 맞힌 수: ' + t.join(' · ') : ''; };
   function campOpen(brief) { $('k-start').hidden = true; $('k-end').hidden = true; $('k-camp').hidden = false; renderCamp(brief || null); }
   function renderCamp(brief) { const el = $('k-campp'), p = campLoad(), st = RTS.campStatus(p), d = RTS.defs;
     if (brief) { const M = RTS.campDef(brief), g = RTS.campGroup(M.group), lv = campLv(M, p.level), L = RTS.campLevels(M), open = st.open(brief), net = g.kind === 'duo', two = M.players === 2;
+      const gate = learnOn() && !net && open && RTS.learnGate(M) === 'before' && !app.learnPass[brief], pend = RTS.campLearnPending(p, brief) && learnOn(); // 출발 전 학습 관문 / 성공 뒤 남은 관문
       el.innerHTML = `<h1>${esc(M.title)}</h1><p class="k-sub">${esc(g.name)}</p><div class="c-brief">${M.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>
-        <h2>목표</h2><ul class="c-goals">${M.stages.map((s, k) => `<li>${k === 0 ? '' : '그다음 · '}${s.goals.map(x => esc(goalBrief(x))).join(', ')}</li>`).join('')}</ul>
+        ${pend ? `<div class="c-learn"><b>학습 미션이 남았습니다</b><p>이 미션은 성공했어요. 학습 미션을 통과하면 다음 미션이 열립니다.</p><button class="k-primary" id="c-learn2">학습 미션 풀기</button></div>` : ''}
+        <h2>목표</h2>${gate ? `<div class="c-learn"><b>학습 미션을 통과하면 목표가 보이고 출발할 수 있어요</b><p>수학·국어·통합교과 중 한 문제 (${esc(RTS.LEARN_LEVELS[learnLv()])})</p><button class="k-primary" id="c-learn">학습 미션 풀기</button></div>` : `<ul class="c-goals">${M.stages.map((s, k) => `<li>${k === 0 ? '' : '그다음 · '}${s.goals.map(x => esc(goalBrief(x))).join(', ')}</li>`).join('')}</ul>`}${!gate && learnOn() && !net && RTS.learnGate(M) === 'after' && !RTS.campLearnPending(p, brief) && !p.done[brief] ? '<p class="k-sub k-small">이 미션은 성공한 뒤 학습 미션을 풀면 다음 미션이 열립니다.</p>' : ''}
         <h2>난이도</h2>${L.length > 1 ? `<div class="k-opts k-three" id="c-lv">${L.map(k => `<button class="k-opt${lv === k ? ' on' : ''}" data-v="${k}"><b>${RTS.CAMP_LEVELS[k].name}</b><span>적 ${esc(d.difficulties[RTS.CAMP_LEVELS[k].ai].name)} AI</span></button>`).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[L[0]].name} (고정)</p>`}
         ${two && !net ? `<h2>내 진영 (1인으로 할 때 · 동료와 적은 남은 진영)</h2><div class="k-opts k-three" id="c-fac">${Object.values(d.factions).map(f => `<button class="k-opt${p.fac === f.id ? ' on' : ''}" data-v="${f.id}"><b>${esc(f.name)}</b></button>`).join('')}</div>` : ''}
         ${two ? `<p class="k-sub k-small">${net ? '2인 미션입니다. 두 기기에서 <b>둘이 하기</b> → 방을 만들고 → 방식 <b>캠페인</b>에서 이 미션을 골라 시작합니다.' : '2인으로 하려면 <b>둘이 하기</b> → 방식 <b>캠페인</b>에서 고릅니다. 여기서 출발하면 AI 동료와 함께 1인으로 합니다.'}</p>` : ''}
-        <div class="k-go">${open && !net ? `<button class="k-primary" id="c-go">${two ? '1인으로 출발 (AI 동료)' : '출발'}</button>` : ''}<button id="c-back">목록</button></div>`;
+        <div class="k-go">${open && !net && !gate ? `<button class="k-primary" id="c-go">${two ? '1인으로 출발 (AI 동료)' : '출발'}</button>` : ''}<button id="c-back">목록</button></div>`;
       el.querySelectorAll('#c-lv button').forEach(b => { b.onclick = () => { const q = campLoad(); q.level = b.dataset.v; campSave(q); renderCamp(brief); }; });
       el.querySelectorAll('#c-fac button').forEach(b => { b.onclick = () => { const q = campLoad(); q.fac = b.dataset.v; campSave(q); renderCamp(brief); }; });
-      const go = el.querySelector('#c-go'); if (go) go.onclick = () => campStart(brief); el.querySelector('#c-back').onclick = () => renderCamp(null); return; }
-    const item = (M, ok) => { const r = p.done[M.id]; return `<button class="c-m${ok ? '' : ' lock'}" data-id="${M.id}" ${ok ? '' : 'disabled'}><b>${esc(M.title)}</b><span>${r ? `완료 · 최고 ${campFmt(r.best)} (${esc((RTS.CAMP_LEVELS[r.level] || {}).name || '')}${r.hard && r.level !== 'hard' ? ', 어려움도 깸' : ''})` : ok ? esc(M.brief[0]) : '앞 미션을 깨면 열립니다'}</span></button>`; };
-    let h = `<h1>캠페인 · ${esc(RTS.CAMPAIGN.name)}</h1><p class="k-sub">진영마다 5장. 한 진영을 끝까지 깨면 2인 캠페인 「연합 전선」이 열립니다.</p>`;
+      const go = el.querySelector('#c-go'); if (go) go.onclick = () => campStart(brief); el.querySelector('#c-back').onclick = () => renderCamp(null);
+      const lb = el.querySelector('#c-learn'); if (lb) lb.onclick = () => learnOpen({ title: M.title + ' · 출발 전', passText: '통과! 목표 보기', onPass: () => { app.learnPass[brief] = true; renderCamp(brief); } });
+      const lb2 = el.querySelector('#c-learn2'); if (lb2) lb2.onclick = () => learnOpen({ title: M.title + ' · 다음 미션 열기', passText: '통과! 다음 미션 열기', onPass: () => { campSave(RTS.campLearnDone(campLoad(), brief)); const n = RTS.campNext(brief); notice('다음 미션이 열렸습니다', 'ok'); renderCamp(n && RTS.campStatus(campLoad()).open(n.id) && RTS.campGroup(n.group).kind !== 'duo' ? n.id : null); } }); return; }
+    const item = (M, ok) => { const r = p.done[M.id]; return `<button class="c-m${ok ? '' : ' lock'}" data-id="${M.id}" ${ok ? '' : 'disabled'}><b>${esc(M.title)}</b><span>${r && r.learn === false && learnOn() ? '<em class="c-pend">학습 미션 남음 · 눌러서 풀기</em> · ' : ''}${r ? `완료 · 최고 ${campFmt(r.best)} (${esc((RTS.CAMP_LEVELS[r.level] || {}).name || '')}${r.hard && r.level !== 'hard' ? ', 어려움도 깸' : ''})` : ok ? esc(M.brief[0]) : '앞 미션을 깨면 열립니다'}</span></button>`; };
+    let h = `<h1>캠페인 · ${esc(RTS.CAMPAIGN.name)}</h1><p class="k-sub">진영마다 5장. 한 진영을 끝까지 깨면 2인 캠페인 「연합 전선」이 열립니다.${learnOn() ? ` 미션마다 학습 미션 하나(${esc(RTS.LEARN_LEVELS[learnLv()])}, 설정에서 바꿈).` : ''}</p>${learnStatText() ? `<p class="k-sub k-small">${esc(learnStatText())}</p>` : ''}`;
     for (const g of RTS.CAMPAIGN.groups) {
       if (g.kind === 'hidden' && st.hint && !st.hidOpen) { h += `<h2>？？？</h2><p class="k-sub c-hint">2인 캠페인 마지막 장 끝에서 누군가 속삭였다. "…아직 부족하다." — 가장 어려운 길로 끝까지 가 보자.</p>`; continue; }
       if (!st.visible(g)) continue;
@@ -743,25 +768,32 @@ RTS.mount = function (root, opts = {}) {
   // 미션이 끝났을 때: 이긴 경우 기록·이어지는 값 저장, 새로 열린 것 알림. 둘이 하기면 두 기기 모두 자기 브라우저에 기록한다
   function campFinish(G, m, s) { const C = G.camp, M = RTS.campDef(C.id), win = !!(C.result && C.result.win), next = RTS.campNext(C.id), net = !!app.net;
     store.del('save'); let news = []; if (music) music.sting(win ? 'win' : 'lose');
-    if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick);
+    const later = win && learnOn() && !net && RTS.learnGate(M) === 'after';
+    if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick, later);
       if (M.carryOut) { const o = M.carryOut(G) || {}; for (const k of Object.keys(o)) if (o[k] !== null && o[k] !== undefined) p.carry[k] = o[k]; }
       campSave(p); const after = RTS.campStatus(p);
       if (!before.duoOpen && after.duoOpen) news.push('2인 캠페인 「연합 전선」이 열렸습니다 (둘이 하기 → 캠페인)');
       if (!before.hidOpen && after.hidOpen) news.push('히든 미션 「심연의 문」이 열렸습니다!');
       if (!before.hint && after.hint && !after.hidOpen) news.push('힌트: 어려움 난이도로 이 미션을 깨 보세요. 무언가 열릴지도…');
       if (!before.deepOpen && after.deepOpen) news.push('히든 캠페인 「잿빛 심장」이 열렸습니다!'); }
-    const st = RTS.campStatus(campLoad()), canNext = win && next && st.open(next.id) && RTS.campGroup(next.group).kind !== 'duo' && !net;
+    const pendNow = later && RTS.campLearnPending(campLoad(), C.id), st = RTS.campStatus(campLoad()), canNext = win && next && (st.open(next.id) || pendNow) && RTS.campGroup(next.group).kind !== 'duo' && !net;
+    if (pendNow) news.unshift('다음 미션으로 가려면 학습 미션을 통과하세요');
     $('k-endt').textContent = win ? '미션 성공' : '미션 실패';
     $('k-ends').textContent = `${M.title} · ${m}분 ${s}초 · ${(RTS.CAMP_LEVELS[C.level] || {}).name || ''}${C.duo ? ' · 2인' : ''}` + (!win && C.result && C.result.why ? ' · ' + C.result.why : '');
     const rows = news.map(t => `<tr><td><b>${esc(t)}</b></td></tr>`).concat(win && next ? [`<tr><td>다음 이야기: <b>${esc(next.title)}</b>${net ? ' (대기실에서 고르세요)' : ''}</td></tr>`] : win && !next ? ['<tr><td>이 이야기를 모두 깼습니다.</td></tr>'] : []);
     $('k-stats').innerHTML = rows.length ? `<tbody>${rows.join('')}</tbody>` : '';
-    $('k-next').hidden = !canNext; $('k-again').hidden = net; $('k-again').textContent = win ? '다시 하기' : '다시 도전'; $('k-tomenu').textContent = net ? '대기실로' : '메뉴로';
+    $('k-next').hidden = !canNext; $('k-next').textContent = pendNow ? '학습 미션 풀고 다음으로' : '다음 미션'; app.learnAfter = pendNow ? C.id : null; $('k-again').hidden = net; $('k-again').textContent = win ? '다시 하기' : '다시 도전'; $('k-tomenu').textContent = net ? '대기실로' : '메뉴로';
     if (net) app.net.endShown = true;
     const t0 = performance.now(), show = () => { if (app.G !== G) return; if (app.storyT && performance.now() - t0 < 25000) { setTimeout(show, 500); return; } $('k-end').hidden = false; }; setTimeout(show, 1500); } // 마지막 대사를 다 본 뒤 결과 창
   // 둘이 하기 캠페인이 끝난 뒤: 연결을 유지한 채 대기실로 돌아간다(방장이 다음 미션을 고른다)
-  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; dropResume(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
+  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; N.myLearn = N.peerLearn = N.sentLearn = null; /* 다음 미션은 학습 미션을 다시 푼다 */ dropResume(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
     $('k-end').hidden = true; $('k-net').hidden = false; if (N.role === 'host') sendLobby(); renderNet(); demo(); }
   // 대기실 캠페인 방식: 방장 기기에서 열린 2인용 미션(2인 캠페인·히든)
+  // 둘이 하기 캠페인 학습 관문: 두 기기 모두 지금 고른 미션의 학습 문제를 통과해야 방장이 시작할 수 있다. 학습 미션을 끈 기기는 바로 통과
+  const netLearnMe = id => !learnOn() || app.net.myLearn === id, netLearnPeer = id => app.net.peerLearn === id;
+  function netLearnSync(id) { const N = app.net; if (!id || !N) return; if (netLearnMe(id) && N.sentLearn !== id) { N.sentLearn = id; netSend({ t: 'learn', id, ok: true }); } }
+  const netLearnBox = id => { if (!id) return ''; const me = netLearnMe(id), peer = netLearnPeer(id), pn = esc(peerName());
+    return `<h2>학습 미션</h2><p class="k-sub">나 ${me ? '✓ 통과' : '· 아직'} · ${pn} ${peer ? '✓ 통과' : '· 아직'}${!me || !peer ? ' — 두 사람 모두 통과하면 시작할 수 있어요' : ''}</p>${me ? '' : `<div class="k-go"><button class="k-primary" id="n-learn">학습 미션 풀기 (${esc(RTS.LEARN_LEVELS[learnLv()])})</button></div>`}`; };
   const netCampList = () => { const st = RTS.campStatus(campLoad()); return RTS.campAll().filter(M => M.players === 2 && st.open(M.id)); };
   function renderObj() { const G = app.G, el = $('k-obj'); if (!G || !G.camp || app.demo) { if (!el.hidden) el.hidden = true; return; }
     const M = RTS.campDef(G.camp.id), L = RTS.campGoals(G), h = `<b>${esc(M.title)}</b>` + L.map(g => `<p class="${g.done ? 'ok' : ''}">${g.done ? '✓' : '·'} ${esc(g.text)}${g.need > 1 ? ` <small>${Math.floor(g.cur)}/${g.need}</small>` : ''}</p>`).join('');
@@ -789,13 +821,13 @@ RTS.mount = function (root, opts = {}) {
         <h2>참가하기</h2><div class="k-netjoin"><input class="k-in" id="n-code" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="방 번호 4자리" value="${esc(N.code && N.role === 'guest' ? N.code : '')}"><button id="n-join" ${N.stage === 'joining' ? 'disabled' : ''}>참가</button></div>${st}`;
     } else if (N.stage === 'host') {
       h += `<p class="k-sub">상대 기기에서 <b>둘이 하기 → 참가하기</b>를 누르고 아래 번호를 입력하게 하세요.</p><div class="k-code" aria-label="방 번호">${N.code ? esc(N.code) : '----'}</div>${st}`;
-    } else if (N.role === 'host') { const CL = netCampList(); if (N.mode === 'camp' && (!N.campId || !CL.some(M => M.id === N.campId))) N.campId = CL.length ? CL[CL.length - 1].id : null;
+    } else if (N.role === 'host') { const CL = netCampList(); if (N.mode === 'camp' && (!N.campId || !CL.some(M => M.id === N.campId))) { N.campId = CL.length ? CL[CL.length - 1].id : null; setTimeout(sendLobby, 0); } // 기본 미션을 정했으면 참가자에게도 알린다
       const lb = lobbyOf(), other = d.factions[lb.factions[1]].name, pn = esc(N.peerName || '상대'), camp = N.mode === 'camp', coop = lb.coop && !camp, duel = lb.duel, CM = lb.camp && RTS.campDef(lb.camp.id);
       h += `<p class="k-sub">연결됨 · 상대: <b>${pn}</b></p>
         <h2>방식</h2><div class="k-opts" id="n-mode">${opt('duel', duel, '1:1 대전', '중립세력 없이 둘만 맞붙는다')}${opt('vs', !coop && !duel && !camp, '서로 대전', '모든 세력과 맞붙는다 (1:1:1)')}${opt('coop', coop, '둘이 협동', '동맹해서 중립세력을 무찌른다')}${CL.length ? opt('camp', camp, '캠페인', '2인 캠페인 미션을 함께 깬다') : ''}</div>
         ${CL.length ? '' : '<p class="k-sub k-small">캠페인 방식은 이 기기에서 1인 캠페인 한 진영을 5장까지 깨면 열립니다.</p>'}`;
       if (camp) { h += `<h2>미션</h2><div class="k-opts" id="n-camp">${CL.map(M => opt(M.id, lb.camp && lb.camp.id === M.id, M.title, RTS.campGroup(M.group).name + (campLoad().done[M.id] ? ' · 완료' : ''))).join('')}</div>
-        ${CM ? `<h2>난이도</h2>${RTS.campLevels(CM).length > 1 ? `<div class="k-opts k-three" id="n-camplv">${RTS.campLevels(CM).map(k => opt(k, lb.camp.level === k, RTS.CAMP_LEVELS[k].name, k === 'hard' && CM.id === 'd5' ? '히든의 열쇠' : '')).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[lb.camp.level].name} (고정)</p>`}<div class="c-brief">${CM.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>` : ''}
+        ${CM ? `<h2>난이도</h2>${RTS.campLevels(CM).length > 1 ? `<div class="k-opts k-three" id="n-camplv">${RTS.campLevels(CM).map(k => opt(k, lb.camp.level === k, RTS.CAMP_LEVELS[k].name, k === 'hard' && CM.id === 'd5' ? '히든의 열쇠' : '')).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[lb.camp.level].name} (고정)</p>`}<div class="c-brief">${CM.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>${netLearnBox(lb.camp.id)}` : ''}
         <h2>내 진영</h2><div class="k-opts k-three" id="n-fac">${Object.values(d.factions).map(f => opt(f.id, lb.factions[0] === f.id, f.name)).join('')}</div>
         <h2>${pn} 진영</h2><div class="k-opts k-three" id="n-fac1">${Object.values(d.factions).map(f => opt(f.id, lb.factions[1] === f.id, f.name, '')).join('')}</div>
         <p class="k-sub k-small">적: <b>${esc(d.factions[lb.enemy].name)}</b> (남은 진영, 잿빛 심장에 홀린 세력) · 진행 기록은 두 기기 모두에 남습니다.</p>${st}`; }
@@ -809,13 +841,16 @@ RTS.mount = function (root, opts = {}) {
         <h2>${esc(N.peerName || '상대')} 핸디캡</h2><div class="k-opts k-four" id="n-hc1">${Object.values(RTS.HANDICAPS).map(x => opt(x.id, N.hc[1] === x.id, x.name, x.blurb)).join('')}</div>
         <p class="k-sub k-small">게임 규칙은 이 기기의 설정 메뉴 값을 그대로 씁니다.</p>${st}`;
     } else { const lb = N.lobby;
-      h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb && lb.camp && RTS.campDef(lb.camp.id) ? `<dl class="k-netsum"><dt>방식</dt><dd>캠페인</dd><dt>미션</dt><dd>${esc(RTS.campDef(lb.camp.id).title)}</dd><dt>난이도</dt><dd>${esc(RTS.CAMP_LEVELS[lb.camp.level].name)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>적</dt><dd>${esc(d.factions[lb.enemy]?.name)}</dd></dl>` : lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : lb.duel ? '1:1 대전' : '서로 대전 (1:1:1)'}</dd>${lb.duel ? '' : `<dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd>`}<dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
+      h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb && lb.camp && RTS.campDef(lb.camp.id) ? `<dl class="k-netsum"><dt>방식</dt><dd>캠페인</dd><dt>미션</dt><dd>${esc(RTS.campDef(lb.camp.id).title)}</dd><dt>난이도</dt><dd>${esc(RTS.CAMP_LEVELS[lb.camp.level].name)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>적</dt><dd>${esc(d.factions[lb.enemy]?.name)}</dd></dl>${netLearnBox(lb.camp.id)}` : lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : lb.duel ? '1:1 대전' : '서로 대전 (1:1:1)'}</dd>${lb.duel ? '' : `<dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd>`}<dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
     const vb = verState(N); if (N.stage === 'lobby' && vb) h += `<p class="k-netst bad" role="alert">${vb}</p>`;
-    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
+    const campId = N.stage === 'lobby' ? (N.role === 'host' ? (N.mode === 'camp' && lobbyOf().camp ? lobbyOf().camp.id : null) : N.lobby && N.lobby.camp ? N.lobby.camp.id : null) : null; if (campId) netLearnSync(campId);
+    const learnWait = campId && !(netLearnMe(campId) && netLearnPeer(campId));
+    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb || learnWait ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
     el.innerHTML = h;
     const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
     on('n-back', () => { netClose(true); $('k-start').hidden = false; renderMenu(); });
     on('n-retry', () => { if (N.peer && N.peer.open) { N.miss = 0; netStatus('상대 기기를 찾는 중…'); tryRejoin(N); } else netRejoin({ code: N.code, team: N.team, role: N.role, other: N.other, peerName: N.peerName }); }); on('n-rejoin', () => { const r = loadResume(); if (r) netRejoin(r); });
+    on('n-learn', () => { const id = campId; if (!id) return; learnOpen({ title: RTS.campDef(id).title + ' · 출발 전', passText: '통과! 준비 완료', onPass: () => { if (!app.net) return; app.net.myLearn = id; netLearnSync(id); renderNet(); } }); });
     on('n-host', () => { saveName(); netHost(); }); on('n-join', () => { saveName(); netJoin(el.querySelector('#n-code').value.trim()); }); on('n-go', () => { unlock(); netBegin(); });
     const code = el.querySelector('#n-code'); if (code) code.onkeydown = e => { if (e.key === 'Enter') { saveName(); netJoin(code.value.trim()); } };
     const pickers = { 'n-map': v => { app.cfg.map = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-fac': v => { const lb = lobbyOf(); if (v === lb.factions[1]) N.fac1 = lb.factions[0]; app.cfg.faction = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-hc0': v => { N.hc[0] = v; }, 'n-hc1': v => { N.hc[1] = v; },

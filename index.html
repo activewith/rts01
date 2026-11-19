@@ -135,6 +135,14 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tip kbd{display:inline-block;min-width:16px;text-align:center;font:700 11px var(--num);border:1px solid var(--line);padding:0 3px;margin-right:5px;color:var(--brass)}
 .c-ore{color:var(--ore)}.c-gas{color:var(--gas)}
 .k-overlay{position:absolute;inset:0;z-index:10;display:flex;overflow:auto}
+/* 학습 미션 */
+.k-learn{z-index:30;background:rgba(6,9,16,.9)}.k-learn .k-panel{max-width:640px;margin:auto;background:var(--ink);border:2px solid var(--brass);padding:18px 22px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.k-learn .l-sub{color:var(--brass);font-weight:600;margin:4px 0 6px}.k-learn .l-passage{background:var(--panel2);border-left:3px solid var(--brass);padding:10px 12px;line-height:1.7;font-size:17px;margin:6px 0}
+.k-learn .l-q{font-size:20px;line-height:1.5;margin:10px 0 8px}.k-learn .l-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.k-learn .l-choices .k-opt b{font-size:18px;line-height:1.35}
+.k-learn .l-choices .k-opt:disabled{opacity:.55}.k-learn .l-ok{border-color:#58e08a!important;background:rgba(88,224,138,.2)!important;opacity:1!important}.k-learn .l-no{border-color:#ee5545!important;background:rgba(238,85,69,.2)!important;opacity:1!important}
+.k-learn .l-res{font-size:16px;line-height:1.6;margin:10px 0}.k-learn .l-res.ok{color:#7dffa8}.k-learn .l-res.no{color:#ffb3a8}
+.c-learn{border:1px solid var(--brass);background:rgba(240,190,90,.08);padding:10px 12px;margin:8px 0}.c-learn b{color:var(--brass)}.c-learn p{margin:4px 0 8px;font-size:14px}.c-pend{color:#ffd36b;font-style:normal;font-weight:600}
+@media (max-width:560px){.k-learn .l-choices{grid-template-columns:1fr}}
 .k-start{background:linear-gradient(90deg,rgba(10,15,24,.9) 0,rgba(10,15,24,.72) 430px,rgba(10,15,24,.04) 620px)}
 .k-end{background:rgba(8,12,22,.74);justify-content:center;align-items:center}
 .k-game.demo{grid-template-rows:minmax(0,1fr)}
@@ -210,7 +218,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'e3b2210';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'e49b7f2';
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
 // 규칙: engine/ 폴더는 DOM을 쓰지 않는다. Node에서도 그대로 돌아간다.
@@ -2335,21 +2343,26 @@ RTS.CAMP_ARMY = {
 // · 히든 미션: 2인 마지막 미션을 어려움으로 깨면 열린다. 쉬움·보통으로 깨면 힌트만 보인다.
 // · 히든 캠페인: 히든 미션을 깨면 열린다(1단계부터 차례로).
 RTS.CAMP_RULES = { duoNeed: 'any' };
+// · 학습 미션: 성공한 뒤 푸는 관문(learn: false로 기록)이 남아 있으면 그 미션은 아직 다음을 열지 않는다(RTS.campLearnDone으로 풀면 열린다).
 RTS.campStatus = function (p) {
-  const G = RTS.CAMPAIGN.groups, done = id => !!(p.done && p.done[id]), last = g => g.missions[g.missions.length - 1];
+  const G = RTS.CAMPAIGN.groups, done = id => !!(p.done && p.done[id] && p.done[id].learn !== false), last = g => g.missions[g.missions.length - 1];
   const solo = G.filter(g => g.kind === 'solo'), duo = G.find(g => g.kind === 'duo'), hid = G.find(g => g.kind === 'hidden'), deep = G.find(g => g.kind === 'deep');
   const soloDone = solo.filter(g => done(last(g).id)).length;
   const duoOpen = RTS.CAMP_RULES.duoNeed === 'all' ? soloDone === solo.length : soloDone > 0;
-  const duoLast = p.done && p.done[last(duo).id], hidOpen = !!(duoLast && duoLast.hard), hint = !!duoLast && !hidOpen;
+  const duoLast = done(last(duo).id) && p.done[last(duo).id], hidOpen = !!(duoLast && duoLast.hard), hint = !!duoLast && !hidOpen;
   const deepOpen = hidOpen && done(hid.missions[0].id);
   const groupOpen = g => g.kind === 'solo' || (g.kind === 'duo' && duoOpen) || (g.kind === 'hidden' && hidOpen) || (g.kind === 'deep' && deepOpen);
   const open = id => { const M = RTS.campDef(id); if (!M) return false; const g = RTS.campGroup(M.group); if (!groupOpen(g)) return false; const i = g.missions.indexOf(M); return i === 0 || done(g.missions[i - 1].id); };
   return { soloDone, duoOpen, hidOpen, hint, deepOpen, groupOpen, open, visible: g => g.kind === 'solo' || g.kind === 'duo' || (g.kind === 'hidden' && (hidOpen || hint)) || (g.kind === 'deep' && deepOpen) };
 };
 // 미션을 깼을 때 기록에 넣는다(p를 고쳐서 돌려준다)
-RTS.campRecord = function (p, id, level, ticks) { p.done = p.done || {}; const d = p.done[id];
+// learnLater: 성공 뒤 학습 관문이 남았으면 true(이미 푼 적이 있으면 그대로 풀린 상태)
+RTS.campRecord = function (p, id, level, ticks, learnLater) { p.done = p.done || {}; const d = p.done[id];
   p.done[id] = { best: d && d.best && d.best < ticks ? d.best : ticks, level: d && levelRank(d.level) > levelRank(level) ? d.level : level, hard: !!(d && d.hard) || level === 'hard' };
+  if (learnLater && !(d && d.learn !== false)) p.done[id].learn = false;
   return p; };
+RTS.campLearnDone = (p, id) => { if (p.done && p.done[id]) delete p.done[id].learn; return p; };
+RTS.campLearnPending = (p, id) => !!(p.done && p.done[id] && p.done[id].learn === false);
 const levelRank = l => ({ easy: 0, normal: 1, hard: 2 })[l] || 0;
 
 // content.js — 모든 게임 콘텐츠. 새 유닛/건물/업그레이드/맵은 대개 이 파일만 고치면 된다.
@@ -2728,6 +2741,8 @@ RTS.SETTINGS = [
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
+    { id: 'learn', label: '캠페인 학습 미션', desc: '캠페인 미션마다 수학·국어·통합교과 문제 하나를 풉니다. 출발 전(통과하면 목표가 보이고 출발) 또는 성공 뒤(통과하면 다음 미션이 열림)에 나오고, 전투 중에는 나오지 않습니다', type: 'toggle', def: true, client: true },
+    { id: 'learnLevel', label: '학습 미션 수준', desc: '이 기기에서 푸는 문제의 수준. 둘이 하기에서는 기기마다 따로 정합니다', min: 0, max: 3, step: 1, def: 1, labels: ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'], client: true },
     { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
     { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
     { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
@@ -3114,6 +3129,166 @@ RTS.HANDICAPS = {
     { id: 'deep', kind: 'deep', name: '히든 캠페인 · 잿빛 심장', missions: deep },
   ] };
 })();
+
+// learn.js — 캠페인 학습 미션 문제 은행. 수학(자동 생성)·국어·통합교과(문항 목록). DOM 없음, 게임 계산과 무관.
+// RTS.learnQuestion(과목, 수준, rnd) → { subject, name, q, passage?, choices: [4개], ans(정답 번호), why }
+//   과목: 'math' | 'ko' | 'life' | 'any'(셋 중 무작위). 수준: 0 = 7세(취학 전), 1 = 1~2학년, 2 = 3~4학년, 3 = 5~6학년. rnd: 0~1 난수 함수(기본 Math.random)
+// 문항 추가: RTS.LEARN_BANK.ko / .life에 { lv: [최저, 최고], q, a(정답), w: [오답들], why(설명), passage(읽기 지문, 선택) }
+RTS.LEARN_SUBJECTS = { math: '수학', ko: '국어', life: '통합교과' };
+RTS.LEARN_LEVELS = ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'];
+RTS.LEARN_BANK = {
+  ko: [
+    // 받침·맞춤법
+    { lv: [0, 1], q: '바르게 쓴 낱말은?', a: '학교', w: ['학꾜', '하꾜', '항교'], why: '[학꾜]라고 소리 나지만 「학교」라고 써요.' },
+    { lv: [0, 1], q: '바르게 쓴 낱말은?', a: '국어', w: ['구거', '국거', '궁어'], why: '[구거]로 소리 나지만 「국어」라고 써요.' },
+    { lv: [0, 1], q: '바르게 쓴 낱말은?', a: '연필', w: ['연삘', '년필', '연피일'], why: '「연필」이 바른 말이에요.' },
+    { lv: [1, 2], q: '바르게 쓴 낱말은?', a: '읽어요', w: ['일거요', '익어요', '잃어요'], why: '책을 「읽어요」. 소리는 [일거요]예요.' },
+    { lv: [1, 2], q: '바르게 쓴 문장은?', a: '같이 놀자.', w: ['가치 놀자.', '갇이 놀자.', '갓이 놀자.'], why: '「같이」는 [가치]로 소리 나요.' },
+    { lv: [1, 3], q: '바르게 쓴 문장은?', a: '숙제를 다 했어.', w: ['숙제를 다 햇어.', '숙제를 다 했서.', '숙재를 다 했어.'], why: '「했어」, 「숙제」가 바른 말이에요.' },
+    { lv: [2, 3], q: '바르게 쓴 문장은?', a: '감기가 다 나았어요.', w: ['감기가 다 낳았어요.', '감기가 다 낫았어요.', '감기가 다 났았어요.'], why: '병이 좋아지는 것은 「낫다 → 나았다」, 아기를 낳는 것은 「낳다」예요.' },
+    { lv: [2, 3], q: '바르게 쓴 문장은?', a: '내일 학교에 가도 돼요?', w: ['내일 학교에 가도 되요?', '내일 학교에 가도 됬요?', '내일 학교에 가도 되여?'], why: '「되어요」를 줄이면 「돼요」예요.' },
+    { lv: [2, 3], q: '바르게 쓴 문장은?', a: '밥을 안 먹었다.', w: ['밥을 않 먹었다.', '밥을 안먹었다.', '밥을 않먹었다.'], why: '낱말 앞에서 「안」, 「-지 않다」에서 「않」을 써요. 「안 먹었다」는 띄어 써요.' },
+    { lv: [3, 3], q: '바르게 쓴 문장은?', a: '어떻게 된 일이에요?', w: ['어떡해 된 일이에요?', '어떻해 된 일이에요?', '어떻게 된 일이예요?'], why: '「어떻게」는 방법, 「어떡해」는 「어떻게 해」의 준말이에요. 받침 없는 말 뒤가 아니면 「이에요」를 써요.' },
+    { lv: [3, 3], q: '바르게 쓴 문장은?', a: '왠지 기분이 좋다.', w: ['웬지 기분이 좋다.', '왠일인지 기분이 좋다.', '웬지 기분이 조타.'], why: '「왠지」는 「왜인지」의 준말이에요. 「웬일」과 헷갈리지 않게!' },
+    // 반대말·비슷한 말
+    { lv: [0, 1], q: '「크다」와 뜻이 반대인 말은?', a: '작다', w: ['많다', '높다', '길다'], why: '크다 ↔ 작다' },
+    { lv: [0, 1], q: '「덥다」와 뜻이 반대인 말은?', a: '춥다', w: ['밝다', '맑다', '쉽다'], why: '덥다 ↔ 춥다' },
+    { lv: [0, 1], q: '「열다」와 뜻이 반대인 말은?', a: '닫다', w: ['밀다', '놓다', '켜다'], why: '열다 ↔ 닫다' },
+    { lv: [1, 2], q: '「무겁다」와 뜻이 반대인 말은?', a: '가볍다', w: ['느리다', '얇다', '좁다'], why: '무겁다 ↔ 가볍다' },
+    { lv: [1, 2], q: '「기쁘다」와 뜻이 비슷한 말은?', a: '즐겁다', w: ['슬프다', '무섭다', '졸리다'], why: '기쁘다 ≒ 즐겁다' },
+    { lv: [2, 3], q: '「시작」과 뜻이 반대인 말은?', a: '끝', w: ['처음', '중간', '출발'], why: '시작 ↔ 끝' },
+    { lv: [2, 3], q: '「아름답다」와 뜻이 비슷한 말은?', a: '곱다', w: ['거칠다', '흉하다', '딱딱하다'], why: '아름답다 ≒ 곱다' },
+    // 높임말
+    { lv: [1, 2], q: '할머니께 쓰는 높임말로 알맞은 것은? "할머니, ○○ 드세요."', a: '진지', w: ['밥', '먹이', '식사거리'], why: '어른께는 「밥」 대신 「진지」라고 해요.' },
+    { lv: [1, 3], q: '높임말로 바르게 말한 것은?', a: '선생님께서 말씀하셨어요.', w: ['선생님이 말했어.', '선생님께서 말했어.', '선생님이 말씀했어.'], why: '「께서」와 「말씀하시다」로 높여요.' },
+    { lv: [2, 3], q: '「집」의 높임말은?', a: '댁', w: ['곳', '방', '터'], why: '할아버지 「댁」처럼 써요.' },
+    { lv: [2, 3], q: '「나이」의 높임말은?', a: '연세', w: ['나이테', '세월', '생신'], why: '「연세」는 나이의 높임말, 「생신」은 생일의 높임말이에요.' },
+    // 흉내 내는 말·낱말 뜻
+    { lv: [0, 1], q: '「멍멍」 소리를 내는 동물은?', a: '강아지', w: ['고양이', '병아리', '오리'], why: '강아지는 멍멍, 고양이는 야옹, 병아리는 삐약, 오리는 꽥꽥.' },
+    { lv: [0, 1], q: '비가 오는 모양을 흉내 낸 말은?', a: '주룩주룩', w: ['깡충깡충', '데굴데굴', '꼬끼오'], why: '비는 주룩주룩, 토끼는 깡충깡충, 공은 데굴데굴.' },
+    { lv: [1, 2], q: '토끼가 뛰는 모양을 흉내 낸 말은?', a: '깡충깡충', w: ['엉금엉금', '살금살금', '훨훨'], why: '거북은 엉금엉금, 새는 훨훨 날아요.' },
+    { lv: [1, 2], q: '「꾸벅꾸벅」은 언제 쓰는 말일까?', a: '졸 때', w: ['달릴 때', '웃을 때', '노래할 때'], why: '졸려서 고개를 숙였다 들었다 하는 모양이에요.' },
+    { lv: [2, 3], q: '「손꼽아 기다리다」의 뜻은?', a: '몹시 기다리다', w: ['손가락을 다치다', '조금 기다리다', '숫자를 세다'], why: '날짜를 손가락으로 세며 몹시 기다린다는 뜻이에요.' },
+    { lv: [3, 3], q: '「발이 넓다」의 뜻은?', a: '아는 사람이 많다', w: ['발이 크다', '걸음이 빠르다', '여행을 자주 간다'], why: '관용어로 「사귀어 아는 사람이 많다」는 뜻이에요.' },
+    { lv: [3, 3], q: '「가는 말이 고와야 오는 말이 곱다」의 뜻은?', a: '내가 남에게 잘해야 남도 나에게 잘한다', w: ['말을 천천히 해야 한다', '말은 빨리 달려야 한다', '말이 많으면 실수한다'], why: '속담이에요. 내가 고운 말을 써야 상대도 고운 말을 해요.' },
+    { lv: [2, 3], q: '「티끌 모아 태산」과 뜻이 가까운 것은?', a: '작은 것도 모으면 큰 것이 된다', w: ['먼지는 치워야 한다', '산은 오르기 힘들다', '큰 것은 나누어야 한다'], why: '작은 것이라도 꾸준히 모으면 크게 된다는 속담이에요.' },
+    // 문장 부호·낱말 갈래
+    { lv: [1, 2], q: '묻는 문장 끝에 쓰는 부호는?', a: '?', w: ['.', '!', ','], why: '「밥 먹었니?」처럼 물을 때는 물음표(?)를 써요.' },
+    { lv: [1, 2], q: '「사과, 바나나, 포도」를 한 낱말로 묶으면?', a: '과일', w: ['채소', '곡식', '고기'], why: '모두 과일이에요.' },
+    { lv: [0, 1], q: '다음 중 색깔을 나타내는 말은?', a: '빨갛다', w: ['달다', '시끄럽다', '빠르다'], why: '빨갛다·노랗다·파랗다는 색깔을 나타내요.' },
+    { lv: [2, 3], q: '띄어쓰기가 바른 것은?', a: '나는 학교에 간다.', w: ['나는학교에 간다.', '나 는 학교 에 간다.', '나는 학교에간다.'], why: '「는」, 「에」 같은 조사는 앞말에 붙여 써요.' },
+    // 짧은 글 읽기
+    { lv: [0, 1], passage: '토끼가 숲에서 빨간 사과를 주웠어요. 토끼는 사과를 친구 다람쥐와 나누어 먹었어요.', q: '토끼는 사과를 누구와 나누어 먹었나요?', a: '다람쥐', w: ['곰', '여우', '거북'], why: '「친구 다람쥐와 나누어 먹었어요」라고 했어요.' },
+    { lv: [0, 1], passage: '오늘은 비가 와서 지우는 노란 우산을 쓰고 학교에 갔어요.', q: '지우가 쓴 우산은 무슨 색인가요?', a: '노란색', w: ['빨간색', '파란색', '초록색'], why: '「노란 우산을 쓰고」라고 했어요.' },
+    { lv: [1, 2], passage: '민준이는 아침에 일어나 세수를 하고 밥을 먹었어요. 그다음 가방을 메고 집을 나섰어요.', q: '민준이가 세수를 한 다음에 한 일은?', a: '밥을 먹었다', w: ['가방을 멨다', '잠을 잤다', '집을 나섰다'], why: '세수 → 밥 → 가방 → 집을 나섬 차례예요.' },
+    { lv: [1, 2], passage: '개미들은 여름 내내 먹이를 모았어요. 베짱이는 노래만 불렀어요. 겨울이 오자 베짱이는 먹을 것이 없었어요.', q: '이 이야기가 알려 주는 것은?', a: '미리 준비하는 것이 중요하다', w: ['노래를 잘해야 한다', '여름이 가장 좋다', '개미는 노래를 싫어한다'], why: '열심히 준비한 개미는 겨울을 잘 났어요.' },
+    { lv: [2, 3], passage: '꿀벌은 꽃에서 꿀을 모으면서 꽃가루를 다른 꽃으로 옮겨 줍니다. 그래서 꽃은 열매를 맺을 수 있습니다.', q: '꿀벌이 꽃에게 도움을 주는 까닭은?', a: '꽃가루를 옮겨 주어서', w: ['꽃에 물을 주어서', '벌레를 쫓아 주어서', '꽃잎을 먹어서'], why: '꽃가루를 옮겨 주어 열매를 맺게 해요.' },
+    { lv: [2, 3], passage: '세종대왕은 백성들이 글을 몰라 어려움을 겪는 것을 안타깝게 여겼습니다. 그래서 누구나 쉽게 배울 수 있는 훈민정음을 만들었습니다.', q: '세종대왕이 훈민정음을 만든 까닭은?', a: '백성이 쉽게 글을 배우게 하려고', w: ['다른 나라에 보내려고', '노래를 짓기 위해', '그림을 그리기 위해'], why: '백성이 글을 몰라 겪는 어려움을 덜어 주려고 만들었어요.' },
+    { lv: [3, 3], passage: '태양광 발전은 햇빛을 전기로 바꾸는 방법입니다. 연료를 태우지 않아 공기를 더럽히지 않지만, 흐린 날이나 밤에는 전기를 적게 만듭니다.', q: '글에서 말한 태양광 발전의 단점은?', a: '흐린 날과 밤에는 전기를 적게 만든다', w: ['공기를 더럽힌다', '연료를 많이 태운다', '햇빛이 필요 없다'], why: '「흐린 날이나 밤에는 전기를 적게 만듭니다」라고 했어요.' },
+  ],
+  life: [
+    // 봄·여름·가을·겨울
+    { lv: [0, 1], q: '봄에 피는 꽃은?', a: '개나리', w: ['코스모스', '해바라기', '국화'], why: '개나리·진달래·벚꽃은 봄꽃, 해바라기는 여름, 코스모스·국화는 가을꽃이에요.' },
+    { lv: [0, 1], q: '눈사람을 만들 수 있는 계절은?', a: '겨울', w: ['봄', '여름', '가을'], why: '눈은 겨울에 내려요.' },
+    { lv: [0, 1], q: '여름에 하기 좋은 놀이는?', a: '물놀이', w: ['눈썰매', '연날리기', '썰매 타기'], why: '더운 여름에는 물놀이를 해요.' },
+    { lv: [0, 2], q: '나뭇잎이 빨갛고 노랗게 물드는 계절은?', a: '가을', w: ['봄', '여름', '겨울'], why: '가을에 단풍이 들어요.' },
+    { lv: [1, 2], q: '겨울잠을 자는 동물은?', a: '곰', w: ['참새', '강아지', '닭'], why: '곰, 개구리, 다람쥐는 겨울잠을 자요.' },
+    // 안전
+    { lv: [0, 1], q: '횡단보도는 신호등이 무슨 색일 때 건널까요?', a: '초록색', w: ['빨간색', '노란색', '검은색'], why: '초록불에 좌우를 살피고 손을 들고 건너요.' },
+    { lv: [0, 1], q: '불이 났을 때 거는 전화번호는?', a: '119', w: ['112', '114', '100'], why: '불이 나거나 다쳤을 때는 119, 범죄 신고는 112예요.' },
+    { lv: [1, 2], q: '불이 났을 때 바른 행동은?', a: '젖은 수건으로 입을 막고 낮은 자세로 나간다', w: ['엘리베이터를 탄다', '옷장에 숨는다', '창문을 닫고 기다린다'], why: '연기는 위로 올라가요. 계단으로 낮게 피해요.' },
+    { lv: [0, 1], q: '모르는 사람이 맛있는 것을 준다며 따라오라고 하면?', a: '싫다고 말하고 어른께 알린다', w: ['따라간다', '맛있는 것만 받는다', '조용히 기다린다'], why: '모르는 사람은 따라가지 않고 어른께 알려요.' },
+    { lv: [1, 2], q: '자전거를 탈 때 꼭 써야 하는 것은?', a: '안전모(헬멧)', w: ['선글라스', '모자', '목도리'], why: '넘어질 때 머리를 지켜 줘요.' },
+    // 건강·생활
+    { lv: [0, 1], q: '밖에서 놀고 들어오면 가장 먼저 할 일은?', a: '손 씻기', w: ['과자 먹기', '텔레비전 보기', '바로 잠자기'], why: '손을 씻어 세균을 없애요.' },
+    { lv: [0, 1], q: '이를 튼튼하게 하려면?', a: '밥 먹고 이를 닦는다', w: ['사탕을 많이 먹는다', '이를 닦지 않는다', '물을 안 마신다'], why: '먹은 뒤 3분 안에 이를 닦으면 좋아요.' },
+    { lv: [1, 2], q: '기침할 때 바른 방법은?', a: '옷소매로 입을 가린다', w: ['손을 펴서 가린다', '친구 쪽을 보고 한다', '그냥 한다'], why: '옷소매로 가리면 침이 덜 퍼져요.' },
+    // 가족·이웃·학교
+    { lv: [0, 1], q: '아빠의 엄마는 나에게 누구일까요?', a: '할머니', w: ['이모', '고모', '언니'], why: '아빠·엄마의 엄마는 할머니예요.' },
+    { lv: [1, 2], q: '아빠의 누나나 여동생을 부르는 말은?', a: '고모', w: ['이모', '숙모', '외숙모'], why: '아빠의 누나·여동생은 고모, 엄마의 언니·여동생은 이모예요.' },
+    { lv: [1, 2], q: '책을 빌려 읽을 수 있는 곳은?', a: '도서관', w: ['소방서', '우체국', '병원'], why: '도서관에서 책을 빌려요. 편지는 우체국, 아프면 병원.' },
+    { lv: [0, 1], q: '아플 때 가는 곳은?', a: '병원', w: ['문구점', '은행', '경찰서'], why: '아플 때는 병원에 가요.' },
+    { lv: [1, 2], q: '우리 마을을 지키고 길을 잃었을 때 도와주는 곳은?', a: '경찰서(파출소)', w: ['빵집', '세탁소', '미용실'], why: '경찰관은 마을을 지키고 도움이 필요한 사람을 도와요.' },
+    // 우리나라
+    { lv: [0, 2], q: '우리나라의 국기는?', a: '태극기', w: ['성조기', '일장기', '오성홍기'], why: '태극기는 흰 바탕에 태극과 건곤감리 4괘가 있어요.' },
+    { lv: [1, 2], q: '우리나라의 꽃(나라꽃)은?', a: '무궁화', w: ['장미', '벚꽃', '튤립'], why: '무궁화는 우리나라의 꽃이에요.' },
+    { lv: [1, 2], q: '우리나라의 수도는?', a: '서울', w: ['부산', '대전', '제주'], why: '서울이 수도예요.' },
+    { lv: [1, 3], q: '한글을 만든 임금님은?', a: '세종대왕', w: ['이순신', '단군', '광개토대왕'], why: '세종대왕이 훈민정음(한글)을 만들었어요. 이순신은 장군이에요.' },
+    { lv: [1, 2], q: '설날에 먹는 음식은?', a: '떡국', w: ['송편', '팥죽', '삼계탕'], why: '설날 떡국, 추석 송편, 동지 팥죽이에요.' },
+    { lv: [1, 2], q: '추석에 빚어 먹는 떡은?', a: '송편', w: ['떡국떡', '가래떡', '인절미'], why: '추석에는 송편을 빚어요.' },
+    // 자연·동물·식물
+    { lv: [0, 1], q: '알을 낳는 동물은?', a: '닭', w: ['강아지', '고양이', '소'], why: '닭·새·거북은 알을 낳아요.' },
+    { lv: [0, 1], q: '물속에서 아가미로 숨 쉬는 동물은?', a: '물고기', w: ['고래', '강아지', '토끼'], why: '물고기는 아가미로 숨 쉬어요. 고래는 물 위로 올라와 숨 쉬어요.' },
+    { lv: [1, 2], q: '씨앗이 자라는 데 꼭 필요한 것은?', a: '물', w: ['사탕', '모래만', '전기'], why: '씨앗은 물과 알맞은 온도가 있어야 싹이 터요.' },
+    { lv: [1, 2], q: '올챙이가 자라면 무엇이 될까?', a: '개구리', w: ['물고기', '나비', '거북'], why: '올챙이 → 개구리. 애벌레 → 나비예요.' },
+    { lv: [2, 3], q: '물을 얼리면 무엇이 될까?', a: '얼음', w: ['수증기', '구름', '소금'], why: '물이 얼면 얼음(고체), 끓이면 수증기(기체)가 돼요.' },
+    { lv: [2, 3], q: '자석에 붙는 물체는?', a: '철로 된 클립', w: ['나무젓가락', '플라스틱 자', '고무지우개'], why: '자석은 철로 된 물체를 끌어당겨요.' },
+    { lv: [2, 3], q: '지도에서 방위표가 없을 때 보통 위쪽은 어느 방향일까?', a: '북쪽', w: ['남쪽', '동쪽', '서쪽'], why: '지도는 보통 위쪽이 북쪽이에요.' },
+    { lv: [2, 3], q: '해가 뜨는 쪽은?', a: '동쪽', w: ['서쪽', '남쪽', '북쪽'], why: '해는 동쪽에서 떠서 서쪽으로 져요.' },
+    { lv: [3, 3], q: '식물이 햇빛을 받아 양분을 만드는 일은?', a: '광합성', w: ['증발', '호흡만', '소화'], why: '잎에서 햇빛, 물, 이산화 탄소로 양분을 만들어요.' },
+    { lv: [3, 3], q: '달의 모양이 날마다 바뀌어 보이는 까닭은?', a: '달이 지구 둘레를 돌며 햇빛 받는 부분이 다르게 보여서', w: ['달이 스스로 작아져서', '구름이 달을 가려서', '달이 빛을 만들었다 껐다 해서'], why: '달은 스스로 빛나지 않고 햇빛을 반사해요.' },
+    { lv: [3, 3], q: '우리나라에서 가장 높은 산은?', a: '한라산', w: ['설악산', '지리산', '북한산'], why: '남한에서는 제주도 한라산(1,947m)이 가장 높아요. 한반도 전체로는 백두산이에요.' },
+    { lv: [3, 3], q: '물이 끓어 기체가 되는 것을 무엇이라고 할까?', a: '끓음(기화)', w: ['응결', '응고', '용해'], why: '물이 끓어 수증기가 되는 것은 끓음, 수증기가 물이 되는 것은 응결이에요.' },
+    { lv: [3, 3], q: '우리나라 최초의 금속 활자 인쇄본으로 알려진 책은?', a: '직지심체요절', w: ['훈민정음', '동의보감', '난중일기'], why: '「직지」는 현재 남아 있는 가장 오래된 금속 활자 인쇄본이에요.' },
+    { lv: [3, 3], q: '지구가 스스로 한 바퀴 도는 데 걸리는 시간은?', a: '하루', w: ['한 달', '일 년', '일주일'], why: '자전은 하루, 태양 둘레를 도는 공전은 일 년이에요.' },
+    { lv: [3, 3], q: '법을 만드는 일을 하는 곳은?', a: '국회', w: ['법원', '정부', '경찰청'], why: '국회는 법을 만들고, 정부는 나라 살림을 하고, 법원은 재판을 해요.' },
+    { lv: [3, 3], q: '사람의 몸에서 피를 온몸으로 보내는 기관은?', a: '심장', w: ['위', '폐', '간'], why: '심장이 펌프처럼 피를 보내요. 폐는 숨쉬기를 맡아요.' },
+    // 즐거운 생활
+    { lv: [0, 1], q: '세 가지 색을 섞어 만들 때, 노랑과 파랑을 섞으면?', a: '초록', w: ['빨강', '보라', '주황'], why: '노랑+파랑=초록, 빨강+파랑=보라, 빨강+노랑=주황.' },
+    { lv: [1, 2], q: '친구와 다퉜을 때 바른 행동은?', a: '내 마음을 말하고 사과한다', w: ['말을 안 한다', '같이 싸운다', '다른 친구에게 흉본다'], why: '서로 마음을 이야기하고 사과하면 다시 친해질 수 있어요.' },
+  ],
+};
+// 수학: 수준별 자동 생성. [문제, 정답, 설명, 오답 후보 함수]
+RTS.LEARN_MATH = {
+  0: [
+    r => { const a = r(1, 5), b = r(1, 4); return [`${a} + ${b} = ?`, a + b, `${a}에 ${b}를 더하면 ${a + b}`]; },
+    r => { const a = r(4, 9), b = r(1, a - 1); return [`${a} − ${b} = ?`, a - b, `${a}에서 ${b}를 빼면 ${a - b}`]; },
+    r => { const n = r(3, 9); return [`별은 모두 몇 개일까요? ${'★'.repeat(n)}`, n, `하나씩 세면 ${n}개`]; },
+    r => { const a = r(1, 18); return [`${a} 다음 수는?`, a + 1, `${a} 바로 다음은 ${a + 1}`]; },
+    r => { const a = r(2, 9), b = r(1, 10 - a); return [`사과 ${a}개와 귤 ${b}개, 모두 몇 개?`, a + b, `${a} + ${b} = ${a + b}`]; },
+    r => { const t = r(2, 10); return [`10을 ${t}와 몇으로 가를 수 있을까요?`, 10 - t, `${t} + ${10 - t} = 10`]; },
+  ],
+  1: [
+    r => { const a = r(12, 59), b = r(11, 39); return [`${a} + ${b} = ?`, a + b, `일의 자리부터 더해요: ${a} + ${b} = ${a + b}`]; },
+    r => { const a = r(30, 99), b = r(11, a - 10); return [`${a} − ${b} = ?`, a - b, `${a} − ${b} = ${a - b}`]; },
+    r => { const a = r(2, 5), b = r(2, 9); return [`${a} × ${b} = ?`, a * b, `${a}단: ${a} × ${b} = ${a * b}`]; },
+    r => { const a = r(2, 9), b = r(0, 9); return [`10이 ${a}개, 1이 ${b}개인 수는?`, a * 10 + b, `10이 ${a}개면 ${a * 10}, 1이 ${b}개 더해서 ${a * 10 + b}`]; },
+    r => { const n = r(3, 6), k = r(2, 5); return [`한 봉지에 사탕이 ${k}개씩, ${n}봉지면 모두 몇 개?`, n * k, `${k} × ${n} = ${n * k}`]; },
+    r => { const h = r(1, 12); return [`짧은바늘이 ${h}, 긴바늘이 12를 가리키면 몇 시?`, h, `긴바늘이 12면 정각, 짧은바늘이 가리키는 ${h}시`, { fmt: v => v + '시', ok: v => v >= 1 && v <= 12 }]; },
+  ],
+  2: [
+    r => { const a = r(120, 499), b = r(105, 399); return [`${a} + ${b} = ?`, a + b, `${a} + ${b} = ${a + b}`]; },
+    r => { const a = r(300, 900), b = r(110, a - 50); return [`${a} − ${b} = ?`, a - b, `${a} − ${b} = ${a - b}`]; },
+    r => { const a = r(6, 9), b = r(3, 9); return [`${a} × ${b} = ?`, a * b, `${a}단: ${a} × ${b} = ${a * b}`]; },
+    r => { const n = r(2, 9), q = r(2, 9); return [`${n * q} ÷ ${n} = ?`, q, `${n} × ${q} = ${n * q}이니까 ${q}`]; },
+    r => { const m = r(1, 5), c = r(1, 9) * 10; return [`${m}m ${c}cm는 몇 cm?`, m * 100 + c, `1m = 100cm, ${m * 100} + ${c} = ${m * 100 + c}`]; },
+    r => { const a = r(12, 30), b = r(3, 6); return [`${a} × ${b} = ?`, a * b, `${a} × ${b} = ${a * b}`]; },
+  ],
+  3: [
+    r => { const a = r(10, 40), b = r(3, 9), c = r(2, 9); return [`${a} + ${b} × ${c} = ?`, a + b * c, `곱셈 먼저: ${b} × ${c} = ${b * c}, ${a} + ${b * c} = ${a + b * c}`]; },
+    r => { const n = [2, 3, 4, 5, 6, 8, 10][r(0, 6)], k = r(1, n - 1), m = r(2, 12); return [`${n * m}의 ${k}/${n}은?`, k * m, `${n * m} ÷ ${n} × ${k} = ${k * m}`]; },
+    r => { const a = r(11, 99), b = r(11, 99), f = v => (v / 10).toFixed(1); return [`${f(a)} + ${f(b)} = ?`, a + b, `소수점을 맞춰 더해요: ${f(a)} + ${f(b)} = ${f(a + b)}`, { fmt: f }]; },
+    r => { const a = [12, 18, 24, 30, 36][r(0, 4)], b = [8, 12, 16, 20][r(0, 3)], g = (x, y) => (y ? g(y, x % y) : x); return [`${a}와 ${b}의 최대공약수는?`, g(a, b), `둘 다 나누는 가장 큰 수는 ${g(a, b)}`]; },
+    r => { const s = r(3, 12); return [`한 변이 ${s}cm인 정사각형의 넓이는 몇 cm²?`, s * s, `${s} × ${s} = ${s * s}`]; },
+    r => { const d = r(2, 6), t = r(2, 5), v = d * 10; return [`한 시간에 ${v}km 가는 차가 ${t}시간 가면 몇 km?`, v * t, `${v} × ${t} = ${v * t}`]; },
+  ],
+};
+RTS.learnQuestion = function (subject, level, rnd) {
+  const R = rnd || Math.random, ri = (a, b) => a + Math.floor(R() * (b - a + 1)), lv = Math.max(0, Math.min(3, level | 0));
+  const sub = subject === 'any' || !RTS.LEARN_SUBJECTS[subject] ? ['math', 'ko', 'life'][ri(0, 2)] : subject;
+  const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+  if (sub === 'math') { const gens = RTS.LEARN_MATH[lv], [q, ans, why, o] = gens[ri(0, gens.length - 1)](ri), fmt = (o && o.fmt) || String, ok = (o && o.ok) || (v => v >= 0);
+    const wrong = new Set(); const near = [1, 2, 10, -1, -2, -10, 3, 5, -3, 20, -4, 4]; for (const d of shuffle(near.slice())) { const v = ans + d; if (ok(v) && v !== ans) wrong.add(v); if (wrong.size >= 3) break; }
+    const choices = shuffle([ans, ...wrong].map(fmt)); const a0 = fmt(ans);
+    return { subject: sub, name: RTS.LEARN_SUBJECTS[sub], q, choices, ans: choices.indexOf(a0), why }; }
+  // 국어·통합교과: 수준에 맞는 문항. 없으면 가까운 수준
+  const bank = RTS.LEARN_BANK[sub]; let pool = bank.filter(x => lv >= x.lv[0] && lv <= x.lv[1]); if (!pool.length) pool = bank;
+  const it = pool[ri(0, pool.length - 1)], choices = shuffle([it.a, ...shuffle(it.w.slice()).slice(0, 3)]);
+  return { subject: sub, name: RTS.LEARN_SUBJECTS[sub], q: it.q, passage: it.passage, choices, ans: choices.indexOf(it.a), why: it.why };
+};
+// 미션별 학습 관문 위치: 'before'(출발 전, 통과해야 목표가 보이고 출발할 수 있다) 또는 'after'(성공한 뒤, 통과해야 다음 미션이 열린다).
+// 미션 데이터의 learn이 있으면 그 값, 없으면 묶음 안 순서로 번갈아(1장 전, 2장 후, 3장 전…). 둘이 하기에서는 늘 'before'(대기실에서 두 사람 모두)
+RTS.learnGate = M => M.learn || (RTS.campIndex(M.id) % 2 === 0 ? 'before' : 'after');
 
 // terrain.js — 지형 굽기(화면 전용). 게임 시작 때 한 번 계산해 큰 그림 한 장으로 만든다.
 // 높이맵 → 햇빛(왼쪽 위) 명암 → 절벽 그림자 → 절벽 기슭 어두움 → 질감·자잘한 돌·풀.
@@ -4391,6 +4566,7 @@ const HTML = `
   </section>
   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
   <section class="k-overlay k-start k-camp" id="k-camp" hidden aria-label="캠페인"><div class="k-panel" id="k-campp"></div></section>
+  <section class="k-overlay k-learn" id="k-learn" hidden aria-label="학습 미션"><div class="k-panel" id="k-learnp" role="dialog" aria-modal="true"></div></section>
   <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel"><div class="k-netp" id="k-netp"></div><div class="k-netchat" id="k-netchat" hidden><h2>대화</h2><div class="k-chatlog lobby" id="n-chatlog" aria-live="polite"></div><form class="k-chatrow" id="n-chatform"><input class="k-in" id="n-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력" aria-label="채팅 메시지"><button type="submit">보내기</button></form><div class="k-quick" id="n-quick"></div><div class="k-go"><button id="n-voice">음성 켜기</button></div><p class="k-small">음성 채팅은 두 기기가 같은 방에 있으면 소리가 되울려 삐 소리가 날 수 있습니다. 이어폰을 쓰거나 다른 방에서 하세요.</p></div></div></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-next" hidden>다음 미션</button><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
   <audio id="k-voiceout" autoplay playsinline></audio>
@@ -4850,7 +5026,9 @@ RTS.mount = function (root, opts = {}) {
   function updateSpeed() { $('k-speed').textContent = app.speed === 1 ? '1배속' : app.speed + '배속'; $('k-mute').textContent = muted ? '소리 켬' : '소리 끔'; $('k-paused').hidden = !app.paused; }
   $('k-setbtn').onclick = toggleSettings; $('k-setopen').onclick = toggleSettings; $('k-exbtn').onclick = toggleExchange; $('k-dipbtn').onclick = toggleDip; $('k-pause').onclick = () => togglePause(); $('k-speed').onclick = () => { if (app.net) { notice('둘이 대전은 1배속으로만 진행합니다'); return; } app.speed = app.speed === 1 ? 1.5 : app.speed === 1.5 ? 2 : 1; updateSpeed(); };
   $('k-mute').onclick = () => { unlock(); muted = !muted; store.set('mute', muted ? '1' : '0'); updateSpeed(); applyMusic(); };
-  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } if (app.net && app.G && app.G.camp && app.G.over) { netToLobby(); return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); if (app.G && app.G.camp) campOpen(app.G.camp.id); else app.start(); }; $('k-next').onclick = () => { unlock(); const n = RTS.campNext(app.G.camp.id); if (n) campOpen(n.id); }; $('k-campopen').onclick = () => { unlock(); campOpen(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
+  $('k-menu').onclick = () => app.toMenu(); $('k-tomenu').onclick = () => { if (app.outShown && app.G && !app.G.over) { $('k-end').hidden = true; return; } if (app.net && app.G && app.G.camp && app.G.over) { netToLobby(); return; } app.toMenu(); }; /* 전멸 후 관전 계속 */ $('k-again').onclick = () => { unlock(); if (app.G && app.G.camp) campOpen(app.G.camp.id); else app.start(); }; $('k-next').onclick = () => { unlock(); const id = app.G.camp.id, n = RTS.campNext(id); if (!n) return;
+    if (app.learnAfter === id && RTS.campLearnPending(campLoad(), id)) { learnOpen({ title: RTS.campDef(id).title + ' · 다음 미션 열기', passText: '통과! 다음 미션으로', onPass: () => { campSave(RTS.campLearnDone(campLoad(), id)); app.learnAfter = null; campOpen(n.id); } }); return; }
+    campOpen(n.id); }; $('k-campopen').onclick = () => { unlock(); campOpen(); }; $('k-play').onclick = () => { unlock(); store.del('save'); app.start(); };
   $('k-netopen').onclick = () => { unlock(); netOpen(); };
   $('k-rejoin').onclick = () => { unlock(); const r = loadResume(); if (r) netRejoin(r); else renderMenu(); };
   $('k-resume').onclick = () => { unlock(); const s = store.get('save'); if (s) app.loadState(s); };
@@ -4921,6 +5099,7 @@ RTS.mount = function (root, opts = {}) {
     if (m.t === 'lobby' && N.role === 'guest') { N.lobby = m.lobby; renderNet(); return; }
     if (m.t === 'start' && N.role === 'guest') { netStart(m.opts, 1); return; }
     if (m.t === 'pause') { togglePause(!!m.on); return; }
+    if (m.t === 'learn') { N.peerLearn = m.ok ? String(m.id) : null; renderNet(); return; }
     if (m.t === 'chat') { chatAdd(false, peerName(), String(m.text || '').slice(0, 80)); return; }
     if (m.t === 'voice') { notice(m.on ? peerName() + ' 님이 마이크를 켰습니다' + (voice.stream ? '' : ' · 음성 켜기로 내 마이크도 켤 수 있습니다') : peerName() + ' 님이 마이크를 껐습니다', 'ok'); return; }
     if (m.t === 'bye') { if (N.match && app.G && !app.G.over) netAway('상대가 대전 화면을 나갔습니다'); else { N.conn = null; N.stage = N.role === 'host' ? 'host' : 'choose'; netStatus('상대가 나갔습니다.', true); } } }
@@ -5049,20 +5228,41 @@ RTS.mount = function (root, opts = {}) {
   const campFmt = t => `${Math.floor(t / 1200)}분 ${Math.floor(t / 20) % 60}초`;
   const campLv = (M, lv) => { const L = RTS.campLevels(M); return L.includes(lv) ? lv : L[Math.min(1, L.length - 1)]; };
   const goalBrief = g => g.brief || (typeof g.text === 'function' ? '목표 달성' : g.text);
+  // ── 학습 미션(src/data/learn.js) ── 맞히면 통과. 틀리면 설명을 보고 새 문제. 두 번 연속 틀리면 보기 둘을 지워 준다. 기록은 진행 기록의 learnStat
+  const learnOn = () => app.settings.learn !== false, learnLv = () => (app.settings.learnLevel === undefined ? 1 : app.settings.learnLevel);
+  app.learnPass = {};
+  function learnOpen(o) { const el = $('k-learnp'), L = { miss: 0 }; $('k-learn').hidden = false; unlock();
+    const next = () => { L.Q = RTS.learnQuestion('any', learnLv()); L.done = false; L.cut = L.miss >= 2 ? [0, 1, 2, 3].filter(i => i !== L.Q.ans).sort(() => Math.random() - .5).slice(0, 2) : []; draw(); };
+    const draw = (pick) => { const Q = L.Q; el.innerHTML = `<h1>학습 미션</h1><p class="k-sub">${esc(o.title || '')}</p><p class="l-sub">${esc(Q.name)}${L.cut.length ? ' · 힌트: 보기 둘을 지웠어요' : ''}</p>
+        ${Q.passage ? `<div class="l-passage">${esc(Q.passage)}</div>` : ''}<p class="l-q">${esc(Q.q)}</p>
+        <div class="k-opts l-choices">${Q.choices.map((c, i) => `<button class="k-opt${pick !== undefined && i === Q.ans ? ' l-ok' : ''}${pick === i && i !== Q.ans ? ' l-no' : ''}" data-i="${i}" ${L.done || L.cut.includes(i) ? 'disabled' : ''}><b>${esc(c)}</b></button>`).join('')}</div>
+        ${pick === undefined ? '' : pick === Q.ans ? `<p class="l-res ok">정답! ${esc(Q.why)}</p>` : `<p class="l-res no">아쉬워요. 정답은 「${esc(Q.choices[Q.ans])}」. ${esc(Q.why)}</p>`}
+        <div class="k-go">${pick === undefined ? '' : pick === Q.ans ? `<button class="k-primary" id="l-pass">${esc(o.passText || '통과!')}</button>` : '<button class="k-primary" id="l-next">다른 문제</button>'}<button id="l-close">나중에</button></div>`;
+      el.querySelectorAll('[data-i]').forEach(b => { b.onclick = () => { if (L.done) return; const i = +b.dataset.i, ok = i === Q.ans; L.done = true; L.miss = ok ? 0 : L.miss + 1; app.sfx(ok ? 'research' : 'warn');
+        const p = campLoad(), st = (p.learnStat = p.learnStat || {})[Q.subject] = p.learnStat[Q.subject] || { ok: 0, n: 0 }; st.n++; if (ok) st.ok++; campSave(p); draw(i); }; });
+      const pass = el.querySelector('#l-pass'); if (pass) pass.onclick = () => { $('k-learn').hidden = true; o.onPass(); };
+      const nx = el.querySelector('#l-next'); if (nx) nx.onclick = next;
+      el.querySelector('#l-close').onclick = () => { $('k-learn').hidden = true; if (o.onClose) o.onClose(); }; };
+    next(); }
+  const learnStatText = () => { const p = campLoad(), S = p.learnStat || {}; const t = Object.keys(RTS.LEARN_SUBJECTS).filter(k => S[k] && S[k].n).map(k => `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n}`); return t.length ? '학습 미션 맞힌 수: ' + t.join(' · ') : ''; };
   function campOpen(brief) { $('k-start').hidden = true; $('k-end').hidden = true; $('k-camp').hidden = false; renderCamp(brief || null); }
   function renderCamp(brief) { const el = $('k-campp'), p = campLoad(), st = RTS.campStatus(p), d = RTS.defs;
     if (brief) { const M = RTS.campDef(brief), g = RTS.campGroup(M.group), lv = campLv(M, p.level), L = RTS.campLevels(M), open = st.open(brief), net = g.kind === 'duo', two = M.players === 2;
+      const gate = learnOn() && !net && open && RTS.learnGate(M) === 'before' && !app.learnPass[brief], pend = RTS.campLearnPending(p, brief) && learnOn(); // 출발 전 학습 관문 / 성공 뒤 남은 관문
       el.innerHTML = `<h1>${esc(M.title)}</h1><p class="k-sub">${esc(g.name)}</p><div class="c-brief">${M.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>
-        <h2>목표</h2><ul class="c-goals">${M.stages.map((s, k) => `<li>${k === 0 ? '' : '그다음 · '}${s.goals.map(x => esc(goalBrief(x))).join(', ')}</li>`).join('')}</ul>
+        ${pend ? `<div class="c-learn"><b>학습 미션이 남았습니다</b><p>이 미션은 성공했어요. 학습 미션을 통과하면 다음 미션이 열립니다.</p><button class="k-primary" id="c-learn2">학습 미션 풀기</button></div>` : ''}
+        <h2>목표</h2>${gate ? `<div class="c-learn"><b>학습 미션을 통과하면 목표가 보이고 출발할 수 있어요</b><p>수학·국어·통합교과 중 한 문제 (${esc(RTS.LEARN_LEVELS[learnLv()])})</p><button class="k-primary" id="c-learn">학습 미션 풀기</button></div>` : `<ul class="c-goals">${M.stages.map((s, k) => `<li>${k === 0 ? '' : '그다음 · '}${s.goals.map(x => esc(goalBrief(x))).join(', ')}</li>`).join('')}</ul>`}${!gate && learnOn() && !net && RTS.learnGate(M) === 'after' && !RTS.campLearnPending(p, brief) && !p.done[brief] ? '<p class="k-sub k-small">이 미션은 성공한 뒤 학습 미션을 풀면 다음 미션이 열립니다.</p>' : ''}
         <h2>난이도</h2>${L.length > 1 ? `<div class="k-opts k-three" id="c-lv">${L.map(k => `<button class="k-opt${lv === k ? ' on' : ''}" data-v="${k}"><b>${RTS.CAMP_LEVELS[k].name}</b><span>적 ${esc(d.difficulties[RTS.CAMP_LEVELS[k].ai].name)} AI</span></button>`).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[L[0]].name} (고정)</p>`}
         ${two && !net ? `<h2>내 진영 (1인으로 할 때 · 동료와 적은 남은 진영)</h2><div class="k-opts k-three" id="c-fac">${Object.values(d.factions).map(f => `<button class="k-opt${p.fac === f.id ? ' on' : ''}" data-v="${f.id}"><b>${esc(f.name)}</b></button>`).join('')}</div>` : ''}
         ${two ? `<p class="k-sub k-small">${net ? '2인 미션입니다. 두 기기에서 <b>둘이 하기</b> → 방을 만들고 → 방식 <b>캠페인</b>에서 이 미션을 골라 시작합니다.' : '2인으로 하려면 <b>둘이 하기</b> → 방식 <b>캠페인</b>에서 고릅니다. 여기서 출발하면 AI 동료와 함께 1인으로 합니다.'}</p>` : ''}
-        <div class="k-go">${open && !net ? `<button class="k-primary" id="c-go">${two ? '1인으로 출발 (AI 동료)' : '출발'}</button>` : ''}<button id="c-back">목록</button></div>`;
+        <div class="k-go">${open && !net && !gate ? `<button class="k-primary" id="c-go">${two ? '1인으로 출발 (AI 동료)' : '출발'}</button>` : ''}<button id="c-back">목록</button></div>`;
       el.querySelectorAll('#c-lv button').forEach(b => { b.onclick = () => { const q = campLoad(); q.level = b.dataset.v; campSave(q); renderCamp(brief); }; });
       el.querySelectorAll('#c-fac button').forEach(b => { b.onclick = () => { const q = campLoad(); q.fac = b.dataset.v; campSave(q); renderCamp(brief); }; });
-      const go = el.querySelector('#c-go'); if (go) go.onclick = () => campStart(brief); el.querySelector('#c-back').onclick = () => renderCamp(null); return; }
-    const item = (M, ok) => { const r = p.done[M.id]; return `<button class="c-m${ok ? '' : ' lock'}" data-id="${M.id}" ${ok ? '' : 'disabled'}><b>${esc(M.title)}</b><span>${r ? `완료 · 최고 ${campFmt(r.best)} (${esc((RTS.CAMP_LEVELS[r.level] || {}).name || '')}${r.hard && r.level !== 'hard' ? ', 어려움도 깸' : ''})` : ok ? esc(M.brief[0]) : '앞 미션을 깨면 열립니다'}</span></button>`; };
-    let h = `<h1>캠페인 · ${esc(RTS.CAMPAIGN.name)}</h1><p class="k-sub">진영마다 5장. 한 진영을 끝까지 깨면 2인 캠페인 「연합 전선」이 열립니다.</p>`;
+      const go = el.querySelector('#c-go'); if (go) go.onclick = () => campStart(brief); el.querySelector('#c-back').onclick = () => renderCamp(null);
+      const lb = el.querySelector('#c-learn'); if (lb) lb.onclick = () => learnOpen({ title: M.title + ' · 출발 전', passText: '통과! 목표 보기', onPass: () => { app.learnPass[brief] = true; renderCamp(brief); } });
+      const lb2 = el.querySelector('#c-learn2'); if (lb2) lb2.onclick = () => learnOpen({ title: M.title + ' · 다음 미션 열기', passText: '통과! 다음 미션 열기', onPass: () => { campSave(RTS.campLearnDone(campLoad(), brief)); const n = RTS.campNext(brief); notice('다음 미션이 열렸습니다', 'ok'); renderCamp(n && RTS.campStatus(campLoad()).open(n.id) && RTS.campGroup(n.group).kind !== 'duo' ? n.id : null); } }); return; }
+    const item = (M, ok) => { const r = p.done[M.id]; return `<button class="c-m${ok ? '' : ' lock'}" data-id="${M.id}" ${ok ? '' : 'disabled'}><b>${esc(M.title)}</b><span>${r && r.learn === false && learnOn() ? '<em class="c-pend">학습 미션 남음 · 눌러서 풀기</em> · ' : ''}${r ? `완료 · 최고 ${campFmt(r.best)} (${esc((RTS.CAMP_LEVELS[r.level] || {}).name || '')}${r.hard && r.level !== 'hard' ? ', 어려움도 깸' : ''})` : ok ? esc(M.brief[0]) : '앞 미션을 깨면 열립니다'}</span></button>`; };
+    let h = `<h1>캠페인 · ${esc(RTS.CAMPAIGN.name)}</h1><p class="k-sub">진영마다 5장. 한 진영을 끝까지 깨면 2인 캠페인 「연합 전선」이 열립니다.${learnOn() ? ` 미션마다 학습 미션 하나(${esc(RTS.LEARN_LEVELS[learnLv()])}, 설정에서 바꿈).` : ''}</p>${learnStatText() ? `<p class="k-sub k-small">${esc(learnStatText())}</p>` : ''}`;
     for (const g of RTS.CAMPAIGN.groups) {
       if (g.kind === 'hidden' && st.hint && !st.hidOpen) { h += `<h2>？？？</h2><p class="k-sub c-hint">2인 캠페인 마지막 장 끝에서 누군가 속삭였다. "…아직 부족하다." — 가장 어려운 길로 끝까지 가 보자.</p>`; continue; }
       if (!st.visible(g)) continue;
@@ -5083,25 +5283,32 @@ RTS.mount = function (root, opts = {}) {
   // 미션이 끝났을 때: 이긴 경우 기록·이어지는 값 저장, 새로 열린 것 알림. 둘이 하기면 두 기기 모두 자기 브라우저에 기록한다
   function campFinish(G, m, s) { const C = G.camp, M = RTS.campDef(C.id), win = !!(C.result && C.result.win), next = RTS.campNext(C.id), net = !!app.net;
     store.del('save'); let news = []; if (music) music.sting(win ? 'win' : 'lose');
-    if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick);
+    const later = win && learnOn() && !net && RTS.learnGate(M) === 'after';
+    if (win) { const p = campLoad(), before = RTS.campStatus(p); RTS.campRecord(p, C.id, C.level, G.tick, later);
       if (M.carryOut) { const o = M.carryOut(G) || {}; for (const k of Object.keys(o)) if (o[k] !== null && o[k] !== undefined) p.carry[k] = o[k]; }
       campSave(p); const after = RTS.campStatus(p);
       if (!before.duoOpen && after.duoOpen) news.push('2인 캠페인 「연합 전선」이 열렸습니다 (둘이 하기 → 캠페인)');
       if (!before.hidOpen && after.hidOpen) news.push('히든 미션 「심연의 문」이 열렸습니다!');
       if (!before.hint && after.hint && !after.hidOpen) news.push('힌트: 어려움 난이도로 이 미션을 깨 보세요. 무언가 열릴지도…');
       if (!before.deepOpen && after.deepOpen) news.push('히든 캠페인 「잿빛 심장」이 열렸습니다!'); }
-    const st = RTS.campStatus(campLoad()), canNext = win && next && st.open(next.id) && RTS.campGroup(next.group).kind !== 'duo' && !net;
+    const pendNow = later && RTS.campLearnPending(campLoad(), C.id), st = RTS.campStatus(campLoad()), canNext = win && next && (st.open(next.id) || pendNow) && RTS.campGroup(next.group).kind !== 'duo' && !net;
+    if (pendNow) news.unshift('다음 미션으로 가려면 학습 미션을 통과하세요');
     $('k-endt').textContent = win ? '미션 성공' : '미션 실패';
     $('k-ends').textContent = `${M.title} · ${m}분 ${s}초 · ${(RTS.CAMP_LEVELS[C.level] || {}).name || ''}${C.duo ? ' · 2인' : ''}` + (!win && C.result && C.result.why ? ' · ' + C.result.why : '');
     const rows = news.map(t => `<tr><td><b>${esc(t)}</b></td></tr>`).concat(win && next ? [`<tr><td>다음 이야기: <b>${esc(next.title)}</b>${net ? ' (대기실에서 고르세요)' : ''}</td></tr>`] : win && !next ? ['<tr><td>이 이야기를 모두 깼습니다.</td></tr>'] : []);
     $('k-stats').innerHTML = rows.length ? `<tbody>${rows.join('')}</tbody>` : '';
-    $('k-next').hidden = !canNext; $('k-again').hidden = net; $('k-again').textContent = win ? '다시 하기' : '다시 도전'; $('k-tomenu').textContent = net ? '대기실로' : '메뉴로';
+    $('k-next').hidden = !canNext; $('k-next').textContent = pendNow ? '학습 미션 풀고 다음으로' : '다음 미션'; app.learnAfter = pendNow ? C.id : null; $('k-again').hidden = net; $('k-again').textContent = win ? '다시 하기' : '다시 도전'; $('k-tomenu').textContent = net ? '대기실로' : '메뉴로';
     if (net) app.net.endShown = true;
     const t0 = performance.now(), show = () => { if (app.G !== G) return; if (app.storyT && performance.now() - t0 < 25000) { setTimeout(show, 500); return; } $('k-end').hidden = false; }; setTimeout(show, 1500); } // 마지막 대사를 다 본 뒤 결과 창
   // 둘이 하기 캠페인이 끝난 뒤: 연결을 유지한 채 대기실로 돌아간다(방장이 다음 미션을 고른다)
-  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; dropResume(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
+  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; N.myLearn = N.peerLearn = N.sentLearn = null; /* 다음 미션은 학습 미션을 다시 푼다 */ dropResume(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
     $('k-end').hidden = true; $('k-net').hidden = false; if (N.role === 'host') sendLobby(); renderNet(); demo(); }
   // 대기실 캠페인 방식: 방장 기기에서 열린 2인용 미션(2인 캠페인·히든)
+  // 둘이 하기 캠페인 학습 관문: 두 기기 모두 지금 고른 미션의 학습 문제를 통과해야 방장이 시작할 수 있다. 학습 미션을 끈 기기는 바로 통과
+  const netLearnMe = id => !learnOn() || app.net.myLearn === id, netLearnPeer = id => app.net.peerLearn === id;
+  function netLearnSync(id) { const N = app.net; if (!id || !N) return; if (netLearnMe(id) && N.sentLearn !== id) { N.sentLearn = id; netSend({ t: 'learn', id, ok: true }); } }
+  const netLearnBox = id => { if (!id) return ''; const me = netLearnMe(id), peer = netLearnPeer(id), pn = esc(peerName());
+    return `<h2>학습 미션</h2><p class="k-sub">나 ${me ? '✓ 통과' : '· 아직'} · ${pn} ${peer ? '✓ 통과' : '· 아직'}${!me || !peer ? ' — 두 사람 모두 통과하면 시작할 수 있어요' : ''}</p>${me ? '' : `<div class="k-go"><button class="k-primary" id="n-learn">학습 미션 풀기 (${esc(RTS.LEARN_LEVELS[learnLv()])})</button></div>`}`; };
   const netCampList = () => { const st = RTS.campStatus(campLoad()); return RTS.campAll().filter(M => M.players === 2 && st.open(M.id)); };
   function renderObj() { const G = app.G, el = $('k-obj'); if (!G || !G.camp || app.demo) { if (!el.hidden) el.hidden = true; return; }
     const M = RTS.campDef(G.camp.id), L = RTS.campGoals(G), h = `<b>${esc(M.title)}</b>` + L.map(g => `<p class="${g.done ? 'ok' : ''}">${g.done ? '✓' : '·'} ${esc(g.text)}${g.need > 1 ? ` <small>${Math.floor(g.cur)}/${g.need}</small>` : ''}</p>`).join('');
@@ -5129,13 +5336,13 @@ RTS.mount = function (root, opts = {}) {
         <h2>참가하기</h2><div class="k-netjoin"><input class="k-in" id="n-code" inputmode="numeric" pattern="[0-9]*" maxlength="4" placeholder="방 번호 4자리" value="${esc(N.code && N.role === 'guest' ? N.code : '')}"><button id="n-join" ${N.stage === 'joining' ? 'disabled' : ''}>참가</button></div>${st}`;
     } else if (N.stage === 'host') {
       h += `<p class="k-sub">상대 기기에서 <b>둘이 하기 → 참가하기</b>를 누르고 아래 번호를 입력하게 하세요.</p><div class="k-code" aria-label="방 번호">${N.code ? esc(N.code) : '----'}</div>${st}`;
-    } else if (N.role === 'host') { const CL = netCampList(); if (N.mode === 'camp' && (!N.campId || !CL.some(M => M.id === N.campId))) N.campId = CL.length ? CL[CL.length - 1].id : null;
+    } else if (N.role === 'host') { const CL = netCampList(); if (N.mode === 'camp' && (!N.campId || !CL.some(M => M.id === N.campId))) { N.campId = CL.length ? CL[CL.length - 1].id : null; setTimeout(sendLobby, 0); } // 기본 미션을 정했으면 참가자에게도 알린다
       const lb = lobbyOf(), other = d.factions[lb.factions[1]].name, pn = esc(N.peerName || '상대'), camp = N.mode === 'camp', coop = lb.coop && !camp, duel = lb.duel, CM = lb.camp && RTS.campDef(lb.camp.id);
       h += `<p class="k-sub">연결됨 · 상대: <b>${pn}</b></p>
         <h2>방식</h2><div class="k-opts" id="n-mode">${opt('duel', duel, '1:1 대전', '중립세력 없이 둘만 맞붙는다')}${opt('vs', !coop && !duel && !camp, '서로 대전', '모든 세력과 맞붙는다 (1:1:1)')}${opt('coop', coop, '둘이 협동', '동맹해서 중립세력을 무찌른다')}${CL.length ? opt('camp', camp, '캠페인', '2인 캠페인 미션을 함께 깬다') : ''}</div>
         ${CL.length ? '' : '<p class="k-sub k-small">캠페인 방식은 이 기기에서 1인 캠페인 한 진영을 5장까지 깨면 열립니다.</p>'}`;
       if (camp) { h += `<h2>미션</h2><div class="k-opts" id="n-camp">${CL.map(M => opt(M.id, lb.camp && lb.camp.id === M.id, M.title, RTS.campGroup(M.group).name + (campLoad().done[M.id] ? ' · 완료' : ''))).join('')}</div>
-        ${CM ? `<h2>난이도</h2>${RTS.campLevels(CM).length > 1 ? `<div class="k-opts k-three" id="n-camplv">${RTS.campLevels(CM).map(k => opt(k, lb.camp.level === k, RTS.CAMP_LEVELS[k].name, k === 'hard' && CM.id === 'd5' ? '히든의 열쇠' : '')).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[lb.camp.level].name} (고정)</p>`}<div class="c-brief">${CM.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>` : ''}
+        ${CM ? `<h2>난이도</h2>${RTS.campLevels(CM).length > 1 ? `<div class="k-opts k-three" id="n-camplv">${RTS.campLevels(CM).map(k => opt(k, lb.camp.level === k, RTS.CAMP_LEVELS[k].name, k === 'hard' && CM.id === 'd5' ? '히든의 열쇠' : '')).join('')}</div>` : `<p class="k-sub">${RTS.CAMP_LEVELS[lb.camp.level].name} (고정)</p>`}<div class="c-brief">${CM.brief.map(x => `<p>${esc(x)}</p>`).join('')}</div>${netLearnBox(lb.camp.id)}` : ''}
         <h2>내 진영</h2><div class="k-opts k-three" id="n-fac">${Object.values(d.factions).map(f => opt(f.id, lb.factions[0] === f.id, f.name)).join('')}</div>
         <h2>${pn} 진영</h2><div class="k-opts k-three" id="n-fac1">${Object.values(d.factions).map(f => opt(f.id, lb.factions[1] === f.id, f.name, '')).join('')}</div>
         <p class="k-sub k-small">적: <b>${esc(d.factions[lb.enemy].name)}</b> (남은 진영, 잿빛 심장에 홀린 세력) · 진행 기록은 두 기기 모두에 남습니다.</p>${st}`; }
@@ -5149,13 +5356,16 @@ RTS.mount = function (root, opts = {}) {
         <h2>${esc(N.peerName || '상대')} 핸디캡</h2><div class="k-opts k-four" id="n-hc1">${Object.values(RTS.HANDICAPS).map(x => opt(x.id, N.hc[1] === x.id, x.name, x.blurb)).join('')}</div>
         <p class="k-sub k-small">게임 규칙은 이 기기의 설정 메뉴 값을 그대로 씁니다.</p>${st}`;
     } else { const lb = N.lobby;
-      h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb && lb.camp && RTS.campDef(lb.camp.id) ? `<dl class="k-netsum"><dt>방식</dt><dd>캠페인</dd><dt>미션</dt><dd>${esc(RTS.campDef(lb.camp.id).title)}</dd><dt>난이도</dt><dd>${esc(RTS.CAMP_LEVELS[lb.camp.level].name)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>적</dt><dd>${esc(d.factions[lb.enemy]?.name)}</dd></dl>` : lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : lb.duel ? '1:1 대전' : '서로 대전 (1:1:1)'}</dd>${lb.duel ? '' : `<dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd>`}<dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
+      h += `<p class="k-sub">연결됨 · 방 ${esc(N.code)}. 방장이 시작하면 바로 시작합니다.</p>` + (lb && lb.camp && RTS.campDef(lb.camp.id) ? `<dl class="k-netsum"><dt>방식</dt><dd>캠페인</dd><dt>미션</dt><dd>${esc(RTS.campDef(lb.camp.id).title)}</dd><dt>난이도</dt><dd>${esc(RTS.CAMP_LEVELS[lb.camp.level].name)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>적</dt><dd>${esc(d.factions[lb.enemy]?.name)}</dd></dl>${netLearnBox(lb.camp.id)}` : lb ? `<dl class="k-netsum"><dt>방식</dt><dd>${lb.coop ? '둘이 협동' : lb.duel ? '1:1 대전' : '서로 대전 (1:1:1)'}</dd>${lb.duel ? '' : `<dt>중립세력</dt><dd>${esc(d.factions[lb.enemy]?.name)} · 보통 AI의 ${Math.round((lb.boost || 1) * 100)}%</dd>`}<dt>전장</dt><dd>${esc(d.maps[lb.map]?.name || lb.map)}</dd><dt>내 진영</dt><dd>${esc(d.factions[lb.factions[1]]?.name)}</dd><dt>${esc(lb.names[0])} 진영</dt><dd>${esc(d.factions[lb.factions[0]]?.name)}</dd><dt>내 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[1]]?.name)} · ${esc(RTS.HANDICAPS[lb.hc[1]]?.blurb)}</dd><dt>${esc(lb.names[0])} 핸디캡</dt><dd>${esc(RTS.HANDICAPS[lb.hc[0]]?.name)}</dd></dl>` : '<p class="k-sub">방장 설정을 받는 중…</p>') + st; }
     const vb = verState(N); if (N.stage === 'lobby' && vb) h += `<p class="k-netst bad" role="alert">${vb}</p>`;
-    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
+    const campId = N.stage === 'lobby' ? (N.role === 'host' ? (N.mode === 'camp' && lobbyOf().camp ? lobbyOf().camp.id : null) : N.lobby && N.lobby.camp ? N.lobby.camp.id : null) : null; if (campId) netLearnSync(campId);
+    const learnWait = campId && !(netLearnMe(campId) && netLearnPeer(campId));
+    h += `<div class="k-go">${N.role === 'host' && N.stage === 'lobby' ? `<button class="k-primary" id="n-go" ${vb || learnWait ? 'disabled' : ''}>시작</button>` : ''}${N.stage === 'rejoin' && !N.conn && !N.tryConn ? '<button class="k-primary" id="n-retry">다시 시도</button>' : ''}<button id="n-back">나가기</button></div>`;
     el.innerHTML = h;
     const on = (id, f) => { const x = el.querySelector('#' + id); if (x) x.onclick = f; };
     on('n-back', () => { netClose(true); $('k-start').hidden = false; renderMenu(); });
     on('n-retry', () => { if (N.peer && N.peer.open) { N.miss = 0; netStatus('상대 기기를 찾는 중…'); tryRejoin(N); } else netRejoin({ code: N.code, team: N.team, role: N.role, other: N.other, peerName: N.peerName }); }); on('n-rejoin', () => { const r = loadResume(); if (r) netRejoin(r); });
+    on('n-learn', () => { const id = campId; if (!id) return; learnOpen({ title: RTS.campDef(id).title + ' · 출발 전', passText: '통과! 준비 완료', onPass: () => { if (!app.net) return; app.net.myLearn = id; netLearnSync(id); renderNet(); } }); });
     on('n-host', () => { saveName(); netHost(); }); on('n-join', () => { saveName(); netJoin(el.querySelector('#n-code').value.trim()); }); on('n-go', () => { unlock(); netBegin(); });
     const code = el.querySelector('#n-code'); if (code) code.onkeydown = e => { if (e.key === 'Enter') { saveName(); netJoin(code.value.trim()); } };
     const pickers = { 'n-map': v => { app.cfg.map = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-fac': v => { const lb = lobbyOf(); if (v === lb.factions[1]) N.fac1 = lb.factions[0]; app.cfg.faction = v; store.set('cfg', JSON.stringify(app.cfg)); }, 'n-hc0': v => { N.hc[0] = v; }, 'n-hc1': v => { N.hc[1] = v; },

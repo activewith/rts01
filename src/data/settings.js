@@ -53,6 +53,8 @@ RTS.SETTINGS = [
   { group: '화면과 소리', items: [
     { id: 'volume', label: '효과음 크기', min: 0, max: 200, step: 10, def: 100, unit: '%', client: true },
     { id: 'music', label: '배경음악 크기', min: 0, max: 100, step: 10, def: 50, unit: '%', zero: '끔', client: true },
+    { id: 'learn', label: '캠페인 학습 미션', desc: '캠페인 미션마다 수학·국어·통합교과 문제 하나를 풉니다. 출발 전(통과하면 목표가 보이고 출발) 또는 성공 뒤(통과하면 다음 미션이 열림)에 나오고, 전투 중에는 나오지 않습니다', type: 'toggle', def: true, client: true },
+    { id: 'learnLevel', label: '학습 미션 수준', desc: '이 기기에서 푸는 문제의 수준. 둘이 하기에서는 기기마다 따로 정합니다', min: 0, max: 3, step: 1, def: 1, labels: ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'], client: true },
     { id: 'speech', label: '캐릭터 음성 크기', desc: '이야기 대사와 유닛 대답(합성 음성)', min: 0, max: 200, step: 10, def: 100, unit: '%', zero: '끔', client: true },
     { id: 'unitVoice', label: '유닛 대답', desc: '유닛을 고르거나 명령하면 짧게 대답합니다', type: 'toggle', def: true, client: true },
     { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },

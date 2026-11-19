@@ -151,19 +151,24 @@ RTS.CAMP_ARMY = {
 // · 히든 미션: 2인 마지막 미션을 어려움으로 깨면 열린다. 쉬움·보통으로 깨면 힌트만 보인다.
 // · 히든 캠페인: 히든 미션을 깨면 열린다(1단계부터 차례로).
 RTS.CAMP_RULES = { duoNeed: 'any' };
+// · 학습 미션: 성공한 뒤 푸는 관문(learn: false로 기록)이 남아 있으면 그 미션은 아직 다음을 열지 않는다(RTS.campLearnDone으로 풀면 열린다).
 RTS.campStatus = function (p) {
-  const G = RTS.CAMPAIGN.groups, done = id => !!(p.done && p.done[id]), last = g => g.missions[g.missions.length - 1];
+  const G = RTS.CAMPAIGN.groups, done = id => !!(p.done && p.done[id] && p.done[id].learn !== false), last = g => g.missions[g.missions.length - 1];
   const solo = G.filter(g => g.kind === 'solo'), duo = G.find(g => g.kind === 'duo'), hid = G.find(g => g.kind === 'hidden'), deep = G.find(g => g.kind === 'deep');
   const soloDone = solo.filter(g => done(last(g).id)).length;
   const duoOpen = RTS.CAMP_RULES.duoNeed === 'all' ? soloDone === solo.length : soloDone > 0;
-  const duoLast = p.done && p.done[last(duo).id], hidOpen = !!(duoLast && duoLast.hard), hint = !!duoLast && !hidOpen;
+  const duoLast = done(last(duo).id) && p.done[last(duo).id], hidOpen = !!(duoLast && duoLast.hard), hint = !!duoLast && !hidOpen;
   const deepOpen = hidOpen && done(hid.missions[0].id);
   const groupOpen = g => g.kind === 'solo' || (g.kind === 'duo' && duoOpen) || (g.kind === 'hidden' && hidOpen) || (g.kind === 'deep' && deepOpen);
   const open = id => { const M = RTS.campDef(id); if (!M) return false; const g = RTS.campGroup(M.group); if (!groupOpen(g)) return false; const i = g.missions.indexOf(M); return i === 0 || done(g.missions[i - 1].id); };
   return { soloDone, duoOpen, hidOpen, hint, deepOpen, groupOpen, open, visible: g => g.kind === 'solo' || g.kind === 'duo' || (g.kind === 'hidden' && (hidOpen || hint)) || (g.kind === 'deep' && deepOpen) };
 };
 // 미션을 깼을 때 기록에 넣는다(p를 고쳐서 돌려준다)
-RTS.campRecord = function (p, id, level, ticks) { p.done = p.done || {}; const d = p.done[id];
+// learnLater: 성공 뒤 학습 관문이 남았으면 true(이미 푼 적이 있으면 그대로 풀린 상태)
+RTS.campRecord = function (p, id, level, ticks, learnLater) { p.done = p.done || {}; const d = p.done[id];
   p.done[id] = { best: d && d.best && d.best < ticks ? d.best : ticks, level: d && levelRank(d.level) > levelRank(level) ? d.level : level, hard: !!(d && d.hard) || level === 'hard' };
+  if (learnLater && !(d && d.learn !== false)) p.done[id].learn = false;
   return p; };
+RTS.campLearnDone = (p, id) => { if (p.done && p.done[id]) delete p.done[id].learn; return p; };
+RTS.campLearnPending = (p, id) => !!(p.done && p.done[id] && p.done[id].learn === false);
 const levelRank = l => ({ easy: 0, normal: 1, hard: 2 })[l] || 0;

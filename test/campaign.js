@@ -77,6 +77,10 @@ for (const M of RTS.campAll()) { const G = mk(M.id, RTS.campLevels(M)[0], {}, M.
   s = S(Object.assign(rec(['s1', 's2', 's3', 's4', 's5', 'd1', 'd2', 'd3', 'd4']), rec(['d5'], 'hard'))); assert(s.hidOpen && s.open('x1') && !s.deepOpen, '어려움으로 깨면 히든 미션');
   s = S(Object.assign(rec(['s1', 's2', 's3', 's4', 's5', 'd1', 'd2', 'd3', 'd4', 'x1']), rec(['d5'], 'hard'))); assert(s.deepOpen && s.open('h1') && !s.open('h2'), '히든 미션 → 히든 캠페인 1장');
   RTS.CAMP_RULES.duoNeed = 'all'; assert(!S(rec(['p1', 'p2', 'p3', 'p4', 'p5'])).duoOpen, "'all'이면 세 진영 모두"); RTS.CAMP_RULES.duoNeed = 'any';
+  // 학습 관문(성공 뒤): 풀기 전에는 다음 미션이 닫혀 있고, 풀면 열린다. 한 번 푼 미션은 다시 깨도 열린 채
+  { const q = { done: {} }; RTS.campRecord(q, 'p1', 'normal', 100, true); assert(RTS.campLearnPending(q, 'p1') && !RTS.campStatus(q).open('p2'), '학습 남음 → 다음 닫힘');
+    RTS.campLearnDone(q, 'p1'); assert(!RTS.campLearnPending(q, 'p1') && RTS.campStatus(q).open('p2'), '학습 통과 → 다음 열림'); RTS.campRecord(q, 'p1', 'hard', 90, true); assert(RTS.campStatus(q).open('p2'), '이미 푼 관문은 유지');
+    const r = Object.assign(rec(['p1', 'p2', 'p3', 'p4']), { p5: { best: 1, level: 'normal', learn: false } }); assert(!RTS.campStatus({ done: r }).duoOpen, '5장 학습 남으면 2인 닫힘'); }
   // 기록: 최고 기록·가장 높은 난이도·어려움 여부를 지킨다
   const p = { done: {} }; RTS.campRecord(p, 'd5', 'hard', 9000); RTS.campRecord(p, 'd5', 'easy', 5000); assert.deepEqual(p.done.d5, { best: 5000, level: 'hard', hard: true }); }
 

@@ -130,6 +130,14 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tip kbd{display:inline-block;min-width:16px;text-align:center;font:700 11px var(--num);border:1px solid var(--line);padding:0 3px;margin-right:5px;color:var(--brass)}
 .c-ore{color:var(--ore)}.c-gas{color:var(--gas)}
 .k-overlay{position:absolute;inset:0;z-index:10;display:flex;overflow:auto}
+/* 학습 미션 */
+.k-learn{z-index:30;background:rgba(6,9,16,.9)}.k-learn .k-panel{max-width:640px;margin:auto;background:var(--ink);border:2px solid var(--brass);padding:18px 22px;box-shadow:0 10px 40px rgba(0,0,0,.6)}
+.k-learn .l-sub{color:var(--brass);font-weight:600;margin:4px 0 6px}.k-learn .l-passage{background:var(--panel2);border-left:3px solid var(--brass);padding:10px 12px;line-height:1.7;font-size:17px;margin:6px 0}
+.k-learn .l-q{font-size:20px;line-height:1.5;margin:10px 0 8px}.k-learn .l-choices{display:grid;grid-template-columns:1fr 1fr;gap:8px}.k-learn .l-choices .k-opt b{font-size:18px;line-height:1.35}
+.k-learn .l-choices .k-opt:disabled{opacity:.55}.k-learn .l-ok{border-color:#58e08a!important;background:rgba(88,224,138,.2)!important;opacity:1!important}.k-learn .l-no{border-color:#ee5545!important;background:rgba(238,85,69,.2)!important;opacity:1!important}
+.k-learn .l-res{font-size:16px;line-height:1.6;margin:10px 0}.k-learn .l-res.ok{color:#7dffa8}.k-learn .l-res.no{color:#ffb3a8}
+.c-learn{border:1px solid var(--brass);background:rgba(240,190,90,.08);padding:10px 12px;margin:8px 0}.c-learn b{color:var(--brass)}.c-learn p{margin:4px 0 8px;font-size:14px}.c-pend{color:#ffd36b;font-style:normal;font-weight:600}
+@media (max-width:560px){.k-learn .l-choices{grid-template-columns:1fr}}
 .k-start{background:linear-gradient(90deg,rgba(10,15,24,.9) 0,rgba(10,15,24,.72) 430px,rgba(10,15,24,.04) 620px)}
 .k-end{background:rgba(8,12,22,.74);justify-content:center;align-items:center}
 .k-game.demo{grid-template-rows:minmax(0,1fr)}
