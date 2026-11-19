@@ -45,7 +45,7 @@ RTS.createGame = function (opts) {
   // opts: {map, seed, players:[{faction, ai:null|'easy'|'normal'|'hard', name}]}
   const G = { tick: 0, rng: (opts.seed || 1) | 0, nextId: 1, ents: [], byId: {}, teams: [], cmds: [], projectiles: [],
     over: null, mapId: opts.map, seed: opts.seed || 1, cfg: Object.assign(RTS.defaultSettings(), opts.settings), _ls: {} };
-  const easy = opts.players.map(p => p.ai && RTS.defs.difficulties[p.ai]).find(d => d && d.reveal);
+  const easy = opts.camp ? null : opts.players.map(p => p.ai && RTS.defs.difficulties[p.ai]).find(d => d && d.reveal); // 캠페인은 왕초보의 맵 공개·방어탑을 쓰지 않는다
   G.coop = !!opts.coop; // 둘이 협동: 사람 둘(편 0)이 동맹해 중립세력 AI(편 1)와 싸운다
   G.nofog = !!opts.nofog || !G.cfg.fog || !!easy;
   const spec = RTS.defs.maps[opts.map];
@@ -82,7 +82,10 @@ RTS.createGame = function (opts) {
   });
   if (easy && easy.towers) G.teams.forEach(t => { if (!t.ai) RTS.giveTowers(G, t, easy.towers); });
   G.teams.forEach(t => { const hc = t.hc && RTS.HANDICAPS[t.hc]; if (hc && hc.towers) RTS.giveTowers(G, t, hc.towers); });
-  RTS.initMarket(G); RTS.initDip(G); if (RTS.initTribe) RTS.initTribe(G); RTS.initWar(G); RTS.census(G); RTS.updateFog(G, true);
+  const campM = opts.camp && RTS.campDef && RTS.campDef(opts.camp.id);
+  RTS.initMarket(G); RTS.initDip(G); if (RTS.initTribe && !(campM && campM.tribe === false)) RTS.initTribe(G); RTS.initWar(G); RTS.census(G);
+  if (campM) RTS.initCampaign(G, opts.camp);
+  RTS.census(G); RTS.updateFog(G, true);
   return G;
 };
 

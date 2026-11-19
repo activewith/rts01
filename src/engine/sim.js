@@ -178,7 +178,7 @@ RTS.damage = function (G, t, dmg, src) {
   const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
-  if (t.team >= 0) { RTS.emit(G, 'attacked', { e: t, src }); RTS.warDamage(G, t, hpBefore - Math.max(0, t.hp), src); if (RTS.tribeAllyHit) RTS.tribeAllyHit(G, t, src); }
+  if (t.team >= 0) { RTS.emit(G, 'attacked', { e: t, src }); RTS.warDamage(G, t, hpBefore - Math.max(0, t.hp), src); if (RTS.tribeAllyHit) RTS.tribeAllyHit(G, t, src); if (RTS.tribeAllyStrike && src && src.team >= 0) RTS.tribeAllyStrike(G, t, src); }
   else if (t.team === RTS.TRIBE && RTS.tribeHit) RTS.tribeHit(G, t, src);
   if (src && !src.dead && defOf(t).kind === 'unit' && !t.order && RTS.weapon(t) && !defOf(t).passive) t.order = { type: 'amove', x: t.x, y: t.y };
   if (t.hp <= 0) RTS.kill(G, t, src);
@@ -477,7 +477,7 @@ RTS.systems.push(
   } },
   { id: 'fog', run: G => RTS.updateFog(G) },
   { id: 'victory', run(G) {
-    if (G.tick % 10) return;
+    if (G.tick % 10 || G.camp) return; // 캠페인은 campaign 시스템이 승패를 정한다
     RTS.census(G);
     const live = G.teams.filter(t => t.alive > 0);
     if (G.coop) { // 협동: 편 단위로 판정. 사람 둘 중 하나만 남아도 계속한다
