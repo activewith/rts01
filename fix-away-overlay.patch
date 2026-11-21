@@ -1,0 +1,82 @@
+diff --git a/src/ui/app.js b/src/ui/app.js
+index 007aa8b..d4efda0 100644
+--- a/src/ui/app.js
++++ b/src/ui/app.js
+@@ -46,7 +46,7 @@ const HTML = `
+         <dt>길게 누르기</dt><dd>내 유닛·건물을 0.5초 누르면 강화·합체 메뉴가 뜹니다. 명령 카드의 U(강화)·J(합체)와 같습니다</dd>
+         <dt>강화·합체</dt><dd>건물은 강화 2단계까지. 유닛 ★는 만든 건물의 단계까지. 건물 2단계에서 재료 유닛을 합체해 새 유닛을 만듭니다</dd>
+       </dl></details>
+-      <p class="k-ver" id="k-ver"></p>
++      <p class="k-ver" id="k-diag" hidden style="color:var(--warn);white-space:normal"></p><p class="k-ver" id="k-ver"></p>
+     </div>
+   </section>
+   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
+@@ -558,7 +558,7 @@ RTS.mount = function (root, opts = {}) {
+   function peerScript() { if (window.Peer) return Promise.resolve(window.Peer); return new Promise((ok, no) => { const sc = document.createElement('script'); sc.src = PEER_SRC; sc.onload = () => (window.Peer ? ok(window.Peer) : no(new Error('load'))); sc.onerror = () => no(new Error('load')); document.head.appendChild(sc); }); }
+   const myName = () => (store.get('name') || '').trim().slice(0, 12) || '플레이어';
+   function netOpen() { if (app.net) netClose(true); app.net = { stage: 'choose', hc: ['none', 'none'], mode: ['coop', 'duel', 'camp'].includes(store.get('netMode')) ? store.get('netMode') : 'vs', campId: store.get('netCamp') || null, campLv: store.get('netCampLv') || 'normal', fac1: null, boost: RTS.COOP.boost }; $('k-start').hidden = true; $('k-net').hidden = false; renderNet(); }
+-  function netClose(bye) { const N = app.net; if (!N) return; voiceReset(); app.net = null; chat.list = []; $('k-chatbox').hidden = true; renderChat(); $('k-netchat').hidden = true; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; $('k-net').hidden = true; }
++  function netClose(bye) { const N = app.net; if (!N) return; voiceReset(); app.net = null; chat.list = []; $('k-chatbox').hidden = true; renderChat(); $('k-netchat').hidden = true; try { if (bye && N.conn && N.conn.open) N.conn.send({ t: 'bye' }); } catch (e) {} setTimeout(() => { try { N.conn && N.conn.close(); } catch (e) {} try { N.peer && N.peer.destroy(); } catch (e) {} }, 150); $('k-wait').hidden = true; awayHide(); $('k-net').hidden = true; }
+   function netSend(m) { const N = app.net; if (N && N.conn && N.conn.open) N.conn.send(m); }
+   function netStatus(text, bad) { if (!app.net) return; app.net.status = text; app.net.bad = !!bad; renderNet(); }
+   function netFail(err) { const N = app.net; if (!N) return; const ty = err && err.type;
+@@ -604,7 +604,7 @@ RTS.mount = function (root, opts = {}) {
+     netSend({ t: 'start', opts }); netStart(opts, 0); }
+   function netStart(opts, team) { const N = app.net, o = JSON.parse(JSON.stringify(opts)); // 두 기기가 똑같은 값으로 만들도록 방장도 같은 직렬화를 거친다
+     app.demo = false; app.team = team; app.speed = 1; app.paused = false; N.waitMs = 0;
+-    N.L = RTS.Lockstep({ team, send: netSend, onDesync }); N.match = true; N.team = team; N.lastRx = performance.now(); N.other = N.conn && N.conn.peer; saveResume();
++    awayHide(); N.away = null; N.L = RTS.Lockstep({ team, send: netSend, onDesync }); N.match = true; N.team = team; N.lastRx = performance.now(); N.other = N.conn && N.conn.peer; saveResume();
+     for (const m of N.early || []) N.L.receive(m); N.early = null;
+     $('k-net').hidden = true; $('k-again').hidden = true; showGame(RTS.createGame(o)); notice(o.camp ? `캠페인 시작: ${RTS.campDef(o.camp.id).title}. 동료 ${o.players[1 - team].name}와 함께` : o.coop ? `협동 시작. 동료 ${o.players[1 - team].name}와 함께 ${o.players[2].name}을 무찌르세요` : team === 0 ? '대전 시작. 상대: ' + o.players[1].name : '대전 시작. 상대: ' + o.players[0].name, 'ok'); }
+   // ── 둘이 대전 재접속 ─────────────────────────────────
+@@ -658,6 +658,8 @@ RTS.mount = function (root, opts = {}) {
+     const old = N.conn; N.conn = null; if (old) try { old.close(); } catch (e) {}
+     voiceReset(); N.resync = false; N.syncTo = null; N.syncBuf = null; if (!N.away) N.away = { at: performance.now() }; N.away.why = why || N.away.why; $('k-wait').hidden = true;
+     ensurePeer(N); renderAway(); }
++  // 연결 끊김 창 닫기. 둘이 하기를 끝내면(netClose) 반드시 부른다. renderAway는 대전 중 루프(netTick)에서만 불려서, 여기서 닫지 않으면 메뉴·둘이 하기 화면에 창이 남는다
++  function awayHide() { const el = $('k-away'); el.hidden = true; el.dataset.sig = ''; el.innerHTML = ''; }
+   function renderAway() { const N = app.net, el = $('k-away'); if (!N || !N.match || !N.away || (app.G && app.G.over)) { el.hidden = true; return; }
+     const sec = Math.floor((performance.now() - N.away.at) / 1000), t = `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+     const sig = (N.away.why || '') + '|' + !!N.resync + '|' + (N.peer ? 1 : 0); if (el.hidden || el.dataset.sig !== sig) { el.dataset.sig = sig;
+@@ -829,7 +831,7 @@ RTS.mount = function (root, opts = {}) {
+     if (net) app.net.endShown = true;
+     const t0 = performance.now(), show = () => { if (app.G !== G) return; if (app.storyT && performance.now() - t0 < 25000) { setTimeout(show, 500); return; } $('k-end').hidden = false; }; setTimeout(show, 1500); } // 마지막 대사를 다 본 뒤 결과 창
+   // 둘이 하기 캠페인이 끝난 뒤: 연결을 유지한 채 대기실로 돌아간다(방장이 다음 미션을 고른다)
+-  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; N.myLearn = N.peerLearn = N.sentLearn = null; /* 다음 미션은 학습 미션을 다시 푼다 */ dropResume(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
++  function netToLobby() { const N = app.net; if (!N) { app.toMenu(); return; } N.L = null; N.match = false; N.away = null; N.myLearn = N.peerLearn = N.sentLearn = null; /* 다음 미션은 학습 미션을 다시 푼다 */ dropResume(); awayHide(); N.stage = N.conn && N.conn.open ? 'lobby' : (N.role === 'host' ? 'host' : 'choose');
+     $('k-end').hidden = true; $('k-net').hidden = false; if (N.role === 'host') sendLobby(); renderNet(); demo(); }
+   // 대기실 캠페인 방식: 방장 기기에서 열린 2인용 미션(2인 캠페인·히든)
+   // 둘이 하기 캠페인 학습 관문: 두 기기 모두 지금 고른 미션의 학습 문제를 통과해야 방장이 시작할 수 있다. 학습 미션을 끈 기기는 바로 통과
+@@ -955,7 +957,7 @@ RTS.mount = function (root, opts = {}) {
+   function layout() { const r = $('k-stage').getBoundingClientRect(), W = Math.max(1, Math.round(r.width)), H = Math.max(1, Math.round(r.height)); if (view.width !== W || view.height !== H) { view.width = W; view.height = H; clampCam(); } }
+   const ro = new ResizeObserver(layout); ro.observe($('k-stage'));
+   let lastT = performance.now(), acc = 0, raf = 0, alive = true; const reduce = window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches;
+-  function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; const G = app.G; if (!G) return;
++  function loop(now) { if (!alive) return; raf = requestAnimationFrame(loop); const dt = Math.min(250, now - lastT); lastT = now; app.frame++; diagBeat(); const G = app.G; if (!G) return;
+     if (app.net && (app.net.L || app.net.match) && !app.demo) { // 둘이 대전: 양쪽 입력이 모인 턴만 진행. 늦은 쪽이 따라잡도록 한 프레임에 최대 6틱
+       const N = app.net; if (N.match) netTick(N, G);
+       if (N.L && !app.paused && !G.over && app.G === G) { acc += dt; const per = 1000 / RTS.HZ; let n = 0, stuck = false; while (acc >= per && n < 6) { if (N.syncTo && RTS.syncPoint(G)) { doSync(); break; } if (!N.L.advance(G)) { stuck = true; acc = Math.min(acc, per * 3); break; } acc -= per; n++; }
+@@ -972,8 +974,22 @@ RTS.mount = function (root, opts = {}) {
+     if (app.frame % 15 === 0 && !app.demo) renderMini();
+     if (music && app.frame % 12 === 0) { if (!app.demo && !G.over) { if (G.ents.some(e => e.team === app.team && e.firedAt > G.tick - 8)) app.heat = Math.max(app.heat || 0, .75); app.heat = (app.heat || 0) * .965; music.setIntensity(Math.max(app.heat, Math.min(.3, G.tick / 20 / 900))); } if (app.frame % 36 === 0) applyMusic(); }
+     R.draw(Math.min(1, acc / (1000 / RTS.HZ))); }
++  // ── 진단 ── 태블릿처럼 개발자 도구가 없는 기기에서도 원인을 알 수 있게 기록한다.
++  // ① 코드 오류: 화면 알림 + 저장(lastErr) ② 게임 중 탭이 강제로 다시 열림(메모리 부족 등): 게임 중이면 5초마다 표식(alive)을 남기고, 정상으로 끝나거나 직접 닫으면 지운다. 다음에 열 때 표식이 남아 있으면 시작 화면에 알린다
++  const errRec = (msg, src, stack) => { const r = { at: Date.now(), msg: String(msg || '알 수 없는 오류').slice(0, 160), src: src || '', stack: String(stack || '').split('\n').slice(0, 4).join(' | ').slice(0, 400), game: app.G && !app.demo ? diagWhat() : '' }; store.set('lastErr', JSON.stringify(r)); try { notice('오류: ' + r.msg + (r.src ? ' (' + r.src + ')' : ''), 'warn'); } catch (e) {} };
++  const onErr = e => errRec(e.message || (e.error && e.error.message), (e.filename || '').split('/').pop() + ':' + (e.lineno || 0) + ':' + (e.colno || 0), e.error && e.error.stack);
++  const onRej = e => { const r = e.reason; errRec('처리 안 된 오류: ' + (r && r.message || r), '', r && r.stack); };
++  window.addEventListener('error', onErr); window.addEventListener('unhandledrejection', onRej);
++  function diagWhat() { const G = app.G, N = app.net; return (G.camp ? (RTS.campDef(G.camp.id) || {}).title || G.camp.id : N ? '둘이 하기' : '혼자 하기') + (N ? (N.role === 'host' ? ' · 방장' : ' · 참가') : '') + ' · ' + Math.floor(G.tick / 1200) + '분 ' + Math.floor(G.tick / 20) % 60 + '초 진행' + (app.settings.lowSpec ? ' · 저사양 모드' : ' · 저사양 모드 꺼짐'); }
++  function diagBeat() { const G = app.G, on = G && !app.demo && !G.over; if (on) { if (app.frame % 150 === 0 || !app.aliveOn) { store.set('alive', JSON.stringify({ at: Date.now(), what: diagWhat() })); app.aliveOn = true; } } else if (app.aliveOn) { store.del('alive'); app.aliveOn = false; } }
++  const onHide = () => { store.del('alive'); app.aliveOn = false; }; window.addEventListener('pagehide', onHide); // 새로고침·닫기는 강제 종료가 아니다
++  { let a = null, er = null; try { a = JSON.parse(store.get('alive') || 'null'); er = JSON.parse(store.get('lastErr') || 'null'); } catch (e) {} store.del('alive');
++    const fresh = x => x && Date.now() - x.at < 30 * 60 * 1000, ago = x => Math.max(0, Math.round((Date.now() - x.at) / 60000)) + '분 전';
++    const L = []; if (fresh(a)) L.push(`지난 게임이 정상으로 끝나지 않고 화면이 다시 열렸습니다(${a.what}, ${ago(a)}). 브라우저가 메모리 부족 등으로 탭을 다시 연 것일 수 있습니다.`);
++    if (fresh(er)) L.push(`최근 오류(${ago(er)}): ${er.msg}${er.src ? ' · ' + er.src : ''}${er.game ? ' · ' + er.game : ''}`);
++    if (L.length) { const el = $('k-diag'); el.textContent = L.join(' / '); el.hidden = false; el.title = er && er.stack || ''; } }
+   renderMenu(); layout(); demo(); raf = requestAnimationFrame(loop);
+   if (opts.autostart) app.start(opts.autostart);
+-  app.destroy = () => { if (app.net) netClose(true); if (music) music.stop(); window.removeEventListener('keydown', anyTap, true); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
++  app.destroy = () => { if (app.net) netClose(true); if (music) music.stop(); window.removeEventListener('keydown', anyTap, true); window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onRej); window.removeEventListener('pagehide', onHide); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
+   return app;
+ };
