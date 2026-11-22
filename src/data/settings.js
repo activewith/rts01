@@ -65,6 +65,8 @@ RTS.SETTINGS = [
     { id: 'unitTTS', label: '개척단 대답 기기 음성', desc: '개척단 유닛 대답을 녹음 파일이 없을 때 이 기기의 한국어 음성으로 읽습니다. 끄거나 한국어 음성이 없으면 합성 말소리를 냅니다', type: 'toggle', def: true, client: true },
     { id: 'tts', label: '대사 읽기(기기 음성)', desc: '이야기 대사를 이 기기의 한국어 음성으로 읽습니다. 기기에 한국어 음성이 없으면 합성 음성을 씁니다', type: 'toggle', def: false, client: true },
     { id: 'voiceVol', label: '상대 음성 크기', desc: '둘이 대전 음성 채팅', min: 0, max: 100, step: 10, def: 100, unit: '%', client: true },
+    { id: 'fullscreen', label: '게임 중 전체화면', desc: '게임 중 화면을 누르면 전체화면으로 바꿉니다(브라우저는 탭 없이 전체화면을 허락하지 않습니다). 주소창·탭이 가려져 잘못 눌러 나가는 일이 줄어듭니다. 홈 화면 앱으로 설치해 열면 처음부터 전체화면입니다', type: 'toggle', def: true, client: true },
+    { id: 'exitGuard', label: '나가기 확인', desc: '게임 중 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)나 탭 닫기를 하면 먼저 확인합니다. PC 전체화면에서는 Esc를 길게 눌러야 풀립니다', type: 'toggle', def: true, client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
     { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },
     { id: 'fps', label: '프레임 수 표시', desc: '화면 왼쪽 아래에 초당 프레임 수를 보입니다', type: 'toggle', def: false, client: true },
