@@ -52,6 +52,8 @@ const HTML = `
   </section>
   <section class="k-overlay k-set" id="k-set" hidden aria-label="설정"></section>
   <section class="k-overlay k-start k-camp" id="k-camp" hidden aria-label="캠페인"><div class="k-panel" id="k-campp"></div></section>
+  <section class="k-overlay k-rest" id="k-rest" hidden aria-label="쉬는 시간"><div class="k-panel" id="k-restp" role="dialog" aria-modal="true"></div></section>
+  <div class="k-playbar" id="k-playbar" hidden aria-live="polite"></div>
   <section class="k-overlay k-learn" id="k-learn" hidden aria-label="학습 미션"><div class="k-panel" id="k-learnp" role="dialog" aria-modal="true"></div></section>
   <section class="k-overlay k-start k-net" id="k-net" hidden aria-label="둘이 대전"><div class="k-panel"><div class="k-netp" id="k-netp"></div><div class="k-netchat" id="k-netchat" hidden><h2>대화</h2><div class="k-chatlog lobby" id="n-chatlog" aria-live="polite"></div><form class="k-chatrow" id="n-chatform"><input class="k-in" id="n-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력" aria-label="채팅 메시지"><button type="submit">보내기</button></form><div class="k-quick" id="n-quick"></div><div class="k-go"><button id="n-voice">음성 켜기</button></div><p class="k-small">음성 채팅은 두 기기가 같은 방에 있으면 소리가 되울려 삐 소리가 날 수 있습니다. 이어폰을 쓰거나 다른 방에서 하세요.</p></div></div></section>
   <section class="k-overlay k-end" id="k-end" hidden><div class="k-panel"><h1 id="k-endt"></h1><p class="k-sub" id="k-ends"></p><table id="k-stats"></table><div class="k-go"><button class="k-primary" id="k-next" hidden>다음 미션</button><button class="k-primary" id="k-again">다시 하기</button><button id="k-tomenu">메뉴로</button></div></div></section>
@@ -784,12 +786,12 @@ RTS.mount = function (root, opts = {}) {
   const pinHash = v => { let h = 2166136261; for (const c of 'kjh-rts01:' + v) { h ^= c.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; } return h.toString(36); };
   const pinBox = (title, sub, extra) => { const el = $('k-learnp'); $('k-learn').hidden = false; el.innerHTML = `<h1>${esc(title)}</h1><p class="k-sub">${sub}</p><div class="k-netjoin p-pin"><input class="k-in" id="p-in" type="password" inputmode="numeric" pattern="[0-9]*" maxlength="${extra && extra.len || 4}" autocomplete="off" placeholder="${extra && extra.ph || '숫자 4자리'}"><button class="k-primary" id="p-ok">확인</button></div><p class="l-res no" id="p-msg"></p><div class="k-go">${extra && extra.forgot ? '<button id="p-forgot">PIN을 잊었어요</button>' : ''}<button id="p-cancel">취소</button></div>`;
     const inp = el.querySelector('#p-in'); setTimeout(() => inp.focus(), 50); el.querySelector('#p-cancel').onclick = () => { $('k-learn').hidden = true; }; return { el, inp, msg: t => { el.querySelector('#p-msg').textContent = t; inp.value = ''; inp.focus(); } }; };
-  function parentSetPin(done) { let first = null; const ask = () => { const b = pinBox('보호자 PIN 정하기', first ? '확인을 위해 한 번 더 넣으세요.' : '학습 미션 설정을 잠글 숫자 4자리를 정하세요. 아이에게 알려 주지 마세요.');
+  function parentSetPin(done) { let first = null; const ask = () => { const b = pinBox('보호자 PIN 정하기', first ? '확인을 위해 한 번 더 넣으세요.' : '보호자 설정(학습 미션·놀이 시간)을 잠글 숫자 4자리를 정하세요. 아이에게 알려 주지 마세요.');
       const go = () => { const v = b.inp.value.trim(); if (!/^\d{4}$/.test(v)) { b.msg('숫자 4자리를 넣으세요'); return; } if (!first) { first = v; ask(); return; } if (v !== first) { first = null; b.msg('두 번 넣은 PIN이 다릅니다. 처음부터 다시 정하세요'); setTimeout(ask, 900); return; }
         store.set('pin', pinHash(v)); $('k-learn').hidden = true; done(); };
       b.el.querySelector('#p-ok').onclick = go; b.inp.onkeydown = e => { if (e.key === 'Enter') go(); }; }; ask(); }
-  function parentGate(done) { if (!store.get('pin')) { parentSetPin(done); return; } let miss = 0;
-    const b = pinBox('보호자 확인', '학습 미션 설정을 바꾸려면 보호자 PIN을 넣으세요.', { forgot: true });
+  function parentGate(done, sub) { if (!store.get('pin')) { parentSetPin(done); return; } let miss = 0;
+    const b = pinBox('보호자 확인', sub || '보호자 설정(학습 미션·놀이 시간)을 바꾸려면 보호자 PIN을 넣으세요.', { forgot: true });
     const go = () => { if (pinHash(b.inp.value.trim()) === store.get('pin')) { $('k-learn').hidden = true; done(); return; } miss++; b.msg(miss >= 3 ? 'PIN이 맞지 않습니다. 잊었다면 아래 「PIN을 잊었어요」를 누르세요' : 'PIN이 맞지 않습니다'); };
     b.el.querySelector('#p-ok').onclick = go; b.inp.onkeydown = e => { if (e.key === 'Enter') go(); };
     b.el.querySelector('#p-forgot').onclick = () => { const x = 23 + Math.floor(Math.random() * 67), y = 13 + Math.floor(Math.random() * 76), c = pinBox('보호자 확인 (PIN 다시 정하기)', `어른 확인 문제입니다. <b>${x} × ${y}</b> 의 답을 넣으면 PIN을 지우고 새로 정합니다.`, { len: 5, ph: '답' });
@@ -799,7 +801,7 @@ RTS.mount = function (root, opts = {}) {
   function parentBar() { if (!app.parentOK) return `<div class="s-presets"><button class="k-primary" id="s-unlock">${store.get('pin') ? '보호자 PIN으로 잠금 풀기' : '보호자 PIN 정하고 잠금 풀기'}</button></div>`;
     const p = campLoad(), W = p.learnWrong || [], S = p.learnStat || {}, sub = Object.keys(RTS.LEARN_SUBJECTS).map(k => S[k] && S[k].n ? `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n} (${Math.round(S[k].ok / S[k].n * 100)}%)` : `${RTS.LEARN_SUBJECTS[k]} 기록 없음`).join(' · ');
     const day = t => { const d = new Date(t); return `${d.getMonth() + 1}/${d.getDate()} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
-    return `<div class="s-presets"><button id="s-lock">다시 잠그기</button><button id="s-pin">PIN 바꾸기</button></div><div class="p-report"><b>학습 기록</b> <span>${esc(sub)}</span>
+    return `<div class="s-presets"><button id="s-lock">다시 잠그기</button><button id="s-pin">PIN 바꾸기</button></div><div class="p-report"><b>놀이 기록</b> <span>${esc(playReport())}</span><br><b>학습 기록</b> <span>${esc(sub)}</span>
       <details${W.length ? '' : ' hidden'}><summary>최근 틀린 문제 ${W.length}개</summary><table>${W.map(w => `<tr><td>${day(w.at)}</td><td>${esc(RTS.LEARN_SUBJECTS[w.sub] || '')}</td><td>${esc(w.q)}</td><td>고른 답 「${esc(w.pick)}」 · 정답 「${esc(w.ans)}」</td></tr>`).join('')}</table><button id="s-clearwrong">틀린 문제 기록 지우기</button></details></div>`; }
   const learnStatText = () => { const p = campLoad(), S = p.learnStat || {}; const t = Object.keys(RTS.LEARN_SUBJECTS).filter(k => S[k] && S[k].n).map(k => `${RTS.LEARN_SUBJECTS[k]} ${S[k].ok}/${S[k].n}`); return t.length ? '학습 미션 맞힌 수: ' + t.join(' · ') : ''; };
   function campOpen(brief) { $('k-start').hidden = true; $('k-end').hidden = true; $('k-camp').hidden = false; renderCamp(brief || null); }
@@ -975,6 +977,50 @@ RTS.mount = function (root, opts = {}) {
     call.on('error', () => {}); call.answer(); renderVoice(); }
   $('k-voicebtn').onclick = voiceToggle; $('n-voice').onclick = voiceToggle;
   // 아무 곳이나 처음 누르면 소리를 연다(브라우저 자동 재생 제한). 막혔던 상대 음성도 이때 다시 튼다
+  // ── 놀이 시간 규칙 ── 보호자 설정. 화면이 보이는 동안(메뉴 포함, 쉬는 화면 제외) 시간을 센다. 기록은 이 브라우저(kjh-rts:play)
+  // 놀이 시간이 끝나면: '시간이 되면'은 마무리 시간 뒤, '판·미션이 끝나면'은 그 판이 끝날 때(최대 15분 넘김) 저장하고 쉬는 화면. 쉬는 동안은 게임을 할 수 없다
+  // 앱을 닫아 둔 시간이 휴식 시간 이상이면 쉰 것으로 본다. 하루 최대 시간을 넘으면 다음 날 0시까지 쉰다. 보호자 PIN으로 10분 연장·휴식 끝내기
+  const PLAY_OVER_MAX = 15 * 60, PLAY_END_VIEW = 20; // 판 끝나면 방식의 최대 넘김(초), 판이 끝난 뒤 결과를 볼 시간(초)
+  const playLoad = () => { let p = {}; try { p = JSON.parse(store.get('play') || '{}') || {}; } catch (e) {} return Object.assign({ used: 0, restUntil: 0, why: '', active: 0, log: {}, dayExt: {}, warned: 0 }, p); };
+  let play = playLoad(), playLast = 0, playEndAt = 0;
+  const playSave = () => { const ks = Object.keys(play.log).sort(); while (ks.length > 14) delete play.log[ks.shift()]; for (const k of Object.keys(play.dayExt)) if (!(k in play.log)) delete play.dayExt[k]; store.set('play', JSON.stringify(play)); };
+  const dayKey = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+  const mmss = s => { s = Math.max(0, Math.ceil(s)); return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`; };
+  const playBar = t => { const b = $('k-playbar'); if (!t) { b.hidden = true; return; } b.textContent = t; b.hidden = false; };
+  function playReport() { const days = Object.keys(play.log).sort().slice(-7), S = app.settings;
+    const st = !S.playLimit ? '놀이 시간 제한 꺼짐' : play.restUntil > Date.now() ? `지금 쉬는 중(${mmss((play.restUntil - Date.now()) / 1000)} 남음)` : `이번 회 ${Math.floor(play.used / 60)}분 사용`;
+    return `${st} · 최근 ${days.length ? days.map(k => `${+k.slice(5, 7)}/${+k.slice(8)} ${Math.round(play.log[k] / 60)}분`).join(', ') : '기록 없음'}`; }
+  function startRest(why) { const S = app.settings, now = Date.now();
+    if (app.G && !app.demo) app.toMenu(); // 혼자 하기는 저장, 둘이 하기는 다시 접속할 수 있게 나간다
+    if (app.setOpen) toggleSettings();
+    if (why === 'day') { const d = new Date(now); d.setHours(24, 0, 0, 0); play.restUntil = d.getTime(); } else play.restUntil = now + S.restMin * 60e3;
+    play.why = why; play.used = 0; play.warned = 0; playEndAt = 0; playSave(); playBar(''); $('k-restp').innerHTML = '';
+    const ex = document.exitFullscreen; if (document.fullscreenElement && ex) document.exitFullscreen().catch(() => {}); showRest(now); }
+  function endRest(extra) { play.restUntil = 0; play.why = ''; play.warned = 0; play.used = extra ? Math.max(0, app.settings.playMin * 60 - extra) : 0; play.active = Date.now(); playSave(); $('k-rest').hidden = true; $('k-restp').innerHTML = ''; }
+  function showRest(now) { const el = $('k-restp'), S = app.settings, left = (play.restUntil - now) / 1000; $('k-rest').hidden = false;
+    if (!el.innerHTML) { const day = play.why === 'day';
+      el.innerHTML = `<h1>쉬는 시간</h1><p class="k-sub">${day ? `오늘 놀 수 있는 시간(${S.dayMax}분)을 다 썼어요. 내일 다시 만나요.` : `${S.playMin}분 놀았으니 ${S.restMin}분 쉬어요. 눈을 쉬게 하고 몸을 움직여 보세요.`}</p>
+        <div class="r-left" id="r-left"></div><p class="k-sub k-small">${day ? '내일 0시에 다시 열립니다.' : '쉬는 시간이 끝나면 다시 놀 수 있어요.'} 하던 게임은 저장되어 있어요(혼자 하기는 <b>이어하기</b>, 둘이 하기는 <b>대전 다시 접속</b>).</p>
+        <div class="k-go"><button id="r-more">보호자: 10분 더 하기</button><button id="r-end">보호자: 쉬는 시간 끝내기</button></div>`;
+      el.querySelector('#r-more').onclick = () => parentGate(() => { if (play.why === 'day') { const k = dayKey(Date.now()); play.dayExt[k] = (play.dayExt[k] || 0) + 600; } endRest(600); notice('보호자가 10분 연장했습니다', 'ok'); }, '10분 더 하려면 보호자 PIN을 넣으세요.');
+      el.querySelector('#r-end').onclick = () => parentGate(() => { if (play.why === 'day') { const k = dayKey(Date.now()); play.dayExt[k] = (play.dayExt[k] || 0) + Math.max(0, (play.log[k] || 0) + 1800 - (S.dayMax * 60 + (play.dayExt[k] || 0))); } endRest(0); notice('보호자가 쉬는 시간을 끝냈습니다', 'ok'); }, '쉬는 시간을 끝내려면 보호자 PIN을 넣으세요.'); }
+    const t = el.querySelector('#r-left'); if (t) t.textContent = left > 3600 ? `${Math.floor(left / 3600)}시간 ${Math.floor(left % 3600 / 60)}분` : mmss(left); }
+  function playTick() { const S = app.settings, now = Date.now(), dt = playLast ? Math.min(5, (now - playLast) / 1000) : 0; playLast = now;
+    if (!S.playLimit) { if (!$('k-rest').hidden) $('k-rest').hidden = true; playBar(''); return; }
+    if (play.restUntil) { if (now < play.restUntil) { showRest(now); return; } endRest(0); notice('쉬는 시간이 끝났어요. 다시 놀 수 있어요', 'ok'); return; }
+    if (document.visibilityState !== 'visible') return;
+    if (play.active && now - play.active >= S.restMin * 60e3) { play.used = 0; play.warned = 0; playSave(); } // 앱을 닫아 두었거나 화면을 꺼 둔 시간이 휴식 시간 이상이면 쉰 것으로 본다
+    play.active = now; const k = dayKey(now); play.used += dt; play.log[k] = (play.log[k] || 0) + dt;
+    const lim = S.playMin * 60, dayLim = S.dayMax ? S.dayMax * 60 + (play.dayExt[k] || 0) : Infinity, left = Math.min(lim - play.used, dayLim - play.log[k]), dayOut = play.log[k] >= dayLim;
+    if (left <= 300 && !(play.warned & 1) && left > 60) { play.warned |= 1; notice(`놀이 시간이 5분 남았어요`, 'warn'); }
+    if (left <= 60 && !(play.warned & 2) && left > 0) { play.warned |= 2; notice(`놀이 시간이 1분 남았어요. 마무리하세요`, 'warn'); }
+    if (left > 0) { playBar(left <= 300 ? `놀이 시간 ${mmss(left)} 남음` : ''); if (now % 10000 < 1100) playSave(); return; }
+    const why = dayOut ? 'day' : 'time', over = -left, g = live();
+    if (!g) { if (app.G && !app.demo && app.G.over) { if (!playEndAt) playEndAt = now; if (now - playEndAt < PLAY_END_VIEW * 1000) { playBar(`결과를 보고 나면 쉬어요 · ${mmss(PLAY_END_VIEW - (now - playEndAt) / 1000)}`); playSave(); return; } } startRest(why); return; } // 메뉴에 있으면 바로 쉰다(판이 막 끝났으면 결과 볼 시간을 준다)
+    if (S.playWhen === 1) { if (over >= PLAY_OVER_MAX) startRest(why); else playBar(`놀이 시간이 끝났어요. 이 판(미션)이 끝나면 쉬어요 · 최대 ${mmss(PLAY_OVER_MAX - over)}`); }
+    else { const gr = S.playGrace * 60; if (over >= gr) startRest(why); else playBar(`마무리 시간 ${mmss(gr - over)} · 끝나면 저장하고 쉬어요`); }
+    playSave(); }
+  const playTimer = setInterval(playTick, 1000); setTimeout(playTick, 50);
   // ── 실수로 나가기 방지 ──────────────────────────────
   // ① 전체화면: 브라우저는 탭(사용자 동작) 없이는 전체화면을 허락하지 않는다. 그래서 게임 중 화면을 누르거나 시작 버튼을 누를 때 들어간다(설정 '게임 중 전체화면')
   // ② 뒤로가기: 게임 중 첫 탭에 기록 한 칸을 넣어 두고, 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)가 오면 '나가기 확인' 창을 띄운다(설정 '나가기 확인')
@@ -1051,6 +1097,6 @@ RTS.mount = function (root, opts = {}) {
   // 둘이 하기 중에 탭이 닫혔다 다시 열렸으면(새로고침·메모리 부족 등) 시작 화면을 거치지 않고 바로 다시 접속한다
   if (!opts.autostart) { const r = loadResume(); if (r) setTimeout(() => { if (alive && !app.net && (app.demo || !app.G)) netRejoin(r); }, 300); }
   if (opts.autostart) app.start(opts.autostart);
-  app.destroy = () => { if (app.net) netClose(true); if (music) music.stop(); window.removeEventListener('keydown', anyTap, true); window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onRej); window.removeEventListener('pagehide', onHide); root.removeEventListener('pointerup', guardTap, true); window.removeEventListener('keyup', guardTap, true); window.removeEventListener('popstate', onPop); window.removeEventListener('beforeunload', onBefore); window.removeEventListener('pagehide', autoSave); document.removeEventListener('visibilitychange', onVis); document.removeEventListener('fullscreenchange', onFs); window.removeEventListener('beforeinstallprompt', onInst); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
+  app.destroy = () => { clearInterval(playTimer); if (app.net) netClose(true); if (music) music.stop(); window.removeEventListener('keydown', anyTap, true); window.removeEventListener('error', onErr); window.removeEventListener('unhandledrejection', onRej); window.removeEventListener('pagehide', onHide); root.removeEventListener('pointerup', guardTap, true); window.removeEventListener('keyup', guardTap, true); window.removeEventListener('popstate', onPop); window.removeEventListener('beforeunload', onBefore); window.removeEventListener('pagehide', autoSave); document.removeEventListener('visibilitychange', onVis); document.removeEventListener('fullscreenchange', onFs); window.removeEventListener('beforeinstallprompt', onInst); alive = false; cancelAnimationFrame(raf); ro.disconnect(); window.removeEventListener('keydown', onKey); window.removeEventListener('keyup', offKey); root.innerHTML = ''; };
   return app;
 };
