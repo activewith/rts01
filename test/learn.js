@@ -11,7 +11,7 @@ for (const sub of ['ko', 'life']) for (const it of RTS.LEARN_BANK[sub]) { assert
 const subs = new Set(); for (let i = 0; i < 60; i++) subs.add(RTS.learnQuestion('any', 1, rnd).subject); assert.equal(subs.size, 3, '무작위 과목');
 assert.equal(RTS.learnGate(RTS.campDef('p1')), 'before'); assert.equal(RTS.learnGate(RTS.campDef('p2')), 'after');
 // 보호자 잠금 설정: 학습 설정은 모두 parent·client 항목이고 기본값은 학습 켬·찍기 방지(틀리면 대기)·대기 10초
-{ const G = RTS.SETTINGS.find(g => g.parent), ids = G.items.map(x => x.id); assert.deepEqual(ids, ['learn', 'learnLevel', 'learnGuard', 'learnWait', 'learnHint']); assert(G.items.every(x => x.parent && x.client));
+{ const G = RTS.SETTINGS.find(g => g.parent), ids = G.items.map(x => x.id); assert.deepEqual(ids, ['playLimit', 'playMin', 'restMin', 'playWhen', 'playGrace', 'dayMax', 'learn', 'learnLevel', 'learnGuard', 'learnWait', 'learnHint']); assert(G.items.every(x => x.parent && x.client));
   const d = RTS.defaultSettings(); assert(d.learn === true && d.learnGuard === 1 && d.learnWait === 10 && d.learnLevel === 1 && d.learnHint === true);
   assert(!RTS.SETTINGS.filter(g => !g.parent).some(g => g.items.some(x => x.parent)), '보호자 항목은 보호자 묶음에만'); }
 console.log('학습 문제 검사 통과', Object.entries(seen).map(([k, v]) => k + ':' + v.size).join(' '));

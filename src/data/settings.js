@@ -50,7 +50,14 @@ RTS.SETTINGS = [
     { id: 'rejectLoss', label: '거절 시 동맹금 손실', min: 0, max: 100, step: 10, def: 100, unit: '%' },
     { id: 'stakeYield', label: '출자금 수익률', desc: '30초당', min: 0, max: 20, step: 1, def: 6, unit: '%' },
   ] },
-  { group: '보호자 · 학습 미션', parent: true, note: '이 묶음은 보호자 PIN으로 잠깁니다. 처음 바꿀 때 PIN 4자리를 정합니다.', items: [
+  { group: '보호자 · 놀이 시간 · 학습 미션', parent: true, note: '이 묶음은 보호자 PIN으로 잠깁니다. 처음 바꿀 때 PIN 4자리를 정합니다. 놀이 시간은 이 기기의 화면이 보이는 동안(메뉴 포함) 셉니다.', items: [
+    { id: 'playLimit', label: '놀이 시간 제한', desc: '정한 시간만큼 놀면 게임을 저장하고 쉬는 화면으로 바꿉니다. 쉬는 동안은 게임을 할 수 없고, 보호자 PIN으로만 연장·해제합니다. 5분·1분 전에 알립니다', type: 'toggle', def: true, client: true, parent: true },
+    { id: 'playMin', label: '한 번에 놀 수 있는 시간', min: 10, max: 120, step: 5, def: 30, unit: '분', client: true, parent: true },
+    { id: 'restMin', label: '쉬는 시간', desc: '앱을 닫아 두거나 화면을 꺼 둔 시간이 이보다 길면 쉰 것으로 봅니다', min: 5, max: 120, step: 5, def: 30, unit: '분', client: true, parent: true },
+    { id: 'playWhen', label: '쉬기 시작하는 때', desc: '시간이 되면: 마무리 시간이 지나면 바로 쉽니다. 판·미션이 끝나면: 놀이 시간이 지난 뒤 지금 판이 끝날 때 쉽니다(최대 15분까지 넘길 수 있음). 메뉴에 있을 때는 둘 다 바로 쉽니다', min: 0, max: 1, step: 1, def: 0, labels: ['시간이 되면', '판·미션이 끝나면'], client: true, parent: true },
+    { id: 'playGrace', label: '마무리 시간', desc: '「시간이 되면」일 때 놀이 시간이 끝난 뒤 정리할 시간', min: 0, max: 10, step: 1, def: 3, unit: '분', zero: '없음', client: true, parent: true },
+    { id: 'dayMax', label: '하루 최대 놀이 시간', desc: '넘으면 다음 날 0시까지 쉽니다', min: 0, max: 300, step: 15, def: 0, unit: '분', zero: '제한 없음', client: true, parent: true },
+
     { id: 'learn', label: '캠페인 학습 미션', desc: '캠페인 미션마다 수학·국어·통합교과 문제를 풉니다. 출발 전(통과하면 목표가 보이고 출발) 또는 성공 뒤(통과하면 다음 미션이 열림)에 나오고, 전투 중에는 나오지 않습니다', type: 'toggle', def: true, client: true, parent: true },
     { id: 'learnLevel', label: '학습 미션 수준', desc: '이 기기에서 푸는 문제의 수준. 둘이 하기에서는 기기마다 따로 정합니다', min: 0, max: 3, step: 1, def: 1, labels: ['7세(취학 전)', '1~2학년', '3~4학년', '5~6학년'], client: true, parent: true },
     { id: 'learnGuard', label: '찍기 방지', desc: '틀리면 대기: 틀린 뒤 정한 시간 동안 다음 문제를 못 받습니다. 연속 정답: 2문제를 연달아 맞혀야 통과합니다(틀리면 처음부터)', min: 0, max: 3, step: 1, def: 1, labels: ['끔', '틀리면 대기', '2문제 연속 정답', '둘 다'], client: true, parent: true },
