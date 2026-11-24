@@ -352,6 +352,25 @@ RTS.Renderer = function (canvas, app) {
     return { roof: S.roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
   }
   let unitLight = null;
+  // 유닛 그림 저장소: (그림, 팀 색, 진영, 종류, 방향 16칸, 움직임 단계, 상태, 크기, 배율)마다 한 번 그려 두고 매 프레임 복사한다.
+  // 방향 칸 사이는 복사할 때 남은 각도만큼 돌린다(빛 방향 오차 ±11°). 메모리는 픽셀 수 한도(UCACHE.budget)를 넘으면 오래 안 쓴 그림부터 버린다.
+  const UCACHE = { map: new Map(), px: 0, budget: 7e6, dirs: 16, phases: 6, hits: 0, miss: 0 };
+  R.ucache = UCACHE;
+  function unitSpriteCached(name, fn, P, st, facing, size) {
+    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = UCACHE.dirs, fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
+    const ph = Math.floor(st.t / 3) % UCACHE.phases; st.t = ph * 3 + (st.moving ? 0 : 0);
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
+    let e = UCACHE.map.get(key);
+    if (e) { UCACHE.hits++; UCACHE.map.delete(key); UCACHE.map.set(key, e); }
+    else { UCACHE.miss++; const L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), cv = document.createElement('canvas'); cv.width = cv.height = px; const u = cv.getContext('2d');
+      u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); u.rotate(fq); fn(u, P, st);
+      u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); const sc = Math.max(.8, size / 13); u.scale(sc, sc); u.globalCompositeOperation = 'source-atop';
+      if (!unitLight) { unitLight = u.createRadialGradient(-5, -6, 1, -5, -6, 19); unitLight.addColorStop(0, 'rgba(255,255,255,.34)'); unitLight.addColorStop(.42, 'rgba(255,255,255,0)'); unitLight.addColorStop(.68, 'rgba(0,0,0,0)'); unitLight.addColorStop(1, 'rgba(0,0,0,.42)'); }
+      u.fillStyle = unitLight; u.fillRect(-L, -L, L * 2, L * 2);
+      e = { cv, L, px }; UCACHE.map.set(key, e); UCACHE.px += px * px;
+      for (const [kk, v] of UCACHE.map) { if (UCACHE.px <= UCACHE.budget) break; UCACHE.map.delete(kk); UCACHE.px -= v.px * v.px; } }
+    return { cv: e.cv, L: e.L, rot: facing - fq };
+  }
   function unitSprite(fn, P, st, facing, size, hit) { // 유닛: 몸체를 그린 뒤 고정된 방향의 빛을 입혀 둥글게 보이게 한다
     const k = Math.min(2, R.cam.z), L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), u = fit(S.unit, px, px); // 큰 합체 유닛은 그림 판을 키운다
     u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); u.rotate(facing); fn(u, P, st);
@@ -467,11 +486,9 @@ RTS.Renderer = function (canvas, app) {
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
         if ((t + e.id) % 18 === 0) fx({ k: 'dust', x: e.x - Math.cos(e.facing) * d.r * .9, y: e.y - Math.sin(e.facing) * d.r * .9, s: d.r * TS * .8, life: 28 }); }
       if (LON) { light(x, y - lift, d.r * TS * 3, col3((RTS.TEAM[e.team] || NEUTRAL).main), d.air ? .3 : .2); if (d.air) light(x - Math.cos(e.facing) * 12, y - lift - Math.sin(e.facing) * 12, 30, [1, .7, .35], .45); }
-      if (e.form) { const k = .55 + Math.sin(t * .15 + e.id) * .25, rr = d.r * TS * 1.25; c.strokeStyle = `rgba(255,214,107,${k})`; c.lineWidth = 2.2; c.beginPath(); c.ellipse(x, y - lift, rr + 3, (rr + 3) * .8, 0, 0, TAU); c.stroke();
-        if (e.sieged) { c.strokeStyle = '#9aa6b8'; c.lineWidth = 3; for (let i = 0; i < 4; i++) { const a2 = i * TAU / 4 + .785; c.beginPath(); c.moveTo(x + Math.cos(a2) * rr * .7, y + Math.sin(a2) * rr * .55); c.lineTo(x + Math.cos(a2) * (rr + 6), y + Math.sin(a2) * (rr * .8 + 5)); c.stroke(); } }
-        if (LON) light(x, y - lift, d.r * TS * 4, [1, .82, .4], .35); }
-      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS * (e.form ? 1.15 : 1), hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
-      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (e.form) c.scale(1.15, 1.15); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
+      if (d.air) { c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(x + 6, y + 4, d.r * TS * .9, d.r * TS * .55, 0, 0, TAU); c.fill(); } // 나는 유닛 그림자
+      if (hit) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
+      else { const sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS); c.save(); c.translate(x, y - lift); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별

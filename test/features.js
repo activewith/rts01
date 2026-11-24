@@ -1,4 +1,4 @@
-// node test/features.js — 호위, 개척단 공병 건물 수리, 합체 유닛 ★2 변신
+// node test/features.js — 호위, 개척단 공병 건물 수리, 합체 유닛 ★2 변신(다른 유닛으로: 비행·고정·능력치·그림)
 const fs = require('fs'), path = require('path');
 for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
@@ -36,19 +36,29 @@ const cmd = (G, team, c) => RTS.command(G, team, c);
   const eh = hq(G, 1); eh.hp -= 100; ok(!!RTS.repairBlock(G, w, eh), '상대 건물 수리 불가');
   const G2 = mk('ironclad', 'pioneers'), h2 = hq(G2, 0), w2 = G2.ents.find(e => e.team === 0 && D[e.def].gather); h2.hp -= 200; ok(!!RTS.repairBlock(G2, w2, h2), '철갑회 일꾼은 수리 없음'); }
 
-// 3. 변신: ★2 합체 유닛만, 형태 수치, 체력 비율 유지, 고정 형태는 이동 불가, 다시 누르면 원래대로
+// 3. 변신: ★2 합체 유닛이 다른 유닛(형태 정의)으로 바뀐다 — 이동 방식·능력치·그림. 체력 비율 유지, 다시 누르면 원래대로
 for (const id of ['p_commando', 'p_titan', 'i_duelist', 'i_juggernaut', 's_venom', 's_behemoth']) {
-  const fac = id[0] === 'p' ? 'pioneers' : id[0] === 'i' ? 'ironclad' : 'swarm', G = mk(fac, fac === 'ironclad' ? 'pioneers' : 'ironclad'), h = hq(G, 0), u = RTS.spawn(G, id, 0, h.x + 6, h.y), F = D[id].form;
-  cmd(G, 0, { type: 'ability', ids: [u.id], ability: 'morph' }); run(G, 1); const no = !u.form;
-  u.rank = RTS.RANK.max; u.hp = RTS.stat(G, u, 'hp') * .5; const hp0 = RTS.stat(G, u, 'hp'), sp0 = RTS.stat(G, u, 'speed'), w = RTS.weapon(u), dm0 = RTS.wStat(G, u, w, 'damage'), rg0 = RTS.wStat(G, u, w, 'range');
-  cmd(G, 0, { type: 'ability', ids: [u.id], ability: 'morph' }); run(G, 1);
-  const m = F.mods, near = (a, b) => Math.abs(a - b) < 1e-6, rOk = Math.abs(u.hp / RTS.stat(G, u, 'hp') - .5) < .01;
-  const sOk = near(RTS.stat(G, u, 'hp'), hp0 * (m.hp || 1)) && near(RTS.wStat(G, u, RTS.weapon(u), 'damage'), dm0 * (m.damage || 1)) && near(RTS.wStat(G, u, RTS.weapon(u), 'range'), rg0 * (m.range || 1)) && (F.root || near(RTS.stat(G, u, 'speed'), sp0 * (m.speed || 1)));
-  let rootOk = true; if (F.root) { const x0 = u.x; cmd(G, 0, { type: 'order', ids: [u.id], order: { type: 'move', x: u.x + 10, y: u.y } }); run(G, 40); rootOk = u.sieged && Math.abs(u.x - x0) < .01; }
+  const fac = id[0] === 'p' ? 'pioneers' : id[0] === 'i' ? 'ironclad' : 'swarm', G = mk(fac, fac === 'ironclad' ? 'pioneers' : 'ironclad'), h = hq(G, 0), u = RTS.spawn(G, id, 0, h.x + 6, h.y + 6), F = D[id + '_f'];
+  cmd(G, 0, { type: 'ability', ids: [u.id], ability: 'morph' }); run(G, 1); const no = u.def === id;
+  u.rank = RTS.RANK.max; u.hp = RTS.stat(G, u, 'hp') * .5; cmd(G, 0, { type: 'ability', ids: [u.id], ability: 'morph' }); run(G, 1);
+  const changed = u.def === id + '_f' && u.rank === RTS.RANK.max && Math.abs(u.hp / RTS.stat(G, u, 'hp') - .5) < .02 && D[u.def].art !== D[id].art;
+  let moveOk = true; const x0 = u.x; cmd(G, 0, { type: 'order', ids: [u.id], order: { type: 'move', x: h.x + 2, y: h.y + 9 } }); run(G, 40); // 기지 앞 땅으로(바위 위에서는 내려앉지 못함)
+  if (F.immobile) moveOk = Math.abs(u.x - x0) < .01; else moveOk = Math.abs(u.x - x0) > .5 || Math.abs(u.y - (h.y + 6)) > .5;
   run(G, 20 * 5); cmd(G, 0, { type: 'ability', ids: [u.id], ability: 'morph' }); run(G, 1);
-  ok(no && u.form === 0 && sOk && rOk && rootOk && !u.sieged && near(RTS.stat(G, u, 'hp'), hp0), `${D[id].name} → ${F.name}: ★2 전 불가, 수치·체력 비율${F.root ? '·제자리 고정' : ''}, 되돌리기`); }
-// 3-2. AI도 변신을 쓴다
+  ok(no && changed && moveOk && u.def === id, `${D[id].name} → ${F.name}: ★2 전 불가, 바뀜(체력 비율·★ 유지, 그림 다름)${F.immobile ? ', 제자리 고정' : F.air ? ', 비행' : ''}, 되돌리기`); }
+// 3-2. 비행 형태: 대공 무기가 없는 지상 유닛은 못 때리고, 지형을 넘어간다. 바위 위에서는 내려앉지 못한다
+{ const G = mk('pioneers', 'ironclad'), h = hq(G, 0), u = RTS.spawn(G, 'p_titan', 0, h.x + 6, h.y + 6); u.rank = 2; RTS.morph(G, u);
+  const grounder = Object.keys(D).find(k => D[k].kind === 'unit' && D[k].weapon && D[k].weapon.air === false && !D[k].air);
+  ok(D[u.def].air && !RTS.canHit(D[grounder].weapon, u), `비행 전함은 공중(대공 없는 ${D[grounder].name}에게 맞지 않음)`); u.cds = {};
+  // 바위 한가운데(4칸 안에 땅 없음)에서는 못 내려앉고, 가장자리면 가까운 땅에 내려앉는다
+  let deep = null, edge = null; for (let y = 5; y < G.h - 5; y++) for (let x = 5; x < G.w - 5; x++) { if (RTS.walkable(G, x, y)) continue; const n = RTS.nearestFree(G, x + .5, y + .5, 4), far = !n || Math.hypot(n.x - x - .5, n.y - y - .5) > 4.5 || !RTS.walkable(G, Math.floor(n.x), Math.floor(n.y));
+    if (far && !deep) deep = { x: x + .5, y: y + .5 }; if (!far && !edge) edge = { x: x + .5, y: y + .5 }; }
+  if (deep) { u.x = deep.x; u.y = deep.y; ok(!!RTS.morphBlock(G, u) && !RTS.morph(G, u) && D[u.def].air, '바위 한가운데서는 내려앉지 못함'); }
+  u.x = edge.x; u.y = edge.y; ok(RTS.morph(G, u) && !D[u.def].air && RTS.walkable(G, Math.floor(u.x), Math.floor(u.y)), `바위 가장자리에서는 가까운 땅에 내려앉음 (${Math.hypot(u.x - edge.x, u.y - edge.y).toFixed(1)}칸 이동)`); u.rank = 2;
+  const t0 = D.p_titan, t1 = D.p_titan_f; ok(t1.speed > t0.speed && t1.armor < t0.armor && t1.weapon.damage < t0.weapon.damage && t1.hp < t0.hp, `비행 전함: 속도 ${t0.speed}→${t1.speed}, 방어 ${t0.armor}→${t1.armor}, 공격 ${t0.weapon.damage}→${t1.weapon.damage}, 체력 ${t0.hp}→${t1.hp}`); }
+// 3-3. AI도 변신: 이동용(travel) 형태는 적이 없을 때, 전투용(combat)은 적이 가까울 때
 { const G = mk('pioneers', 'ironclad'), h = hq(G, 1), u = RTS.spawn(G, 'i_duelist', 1, h.x, h.y + 5); u.rank = 2; RTS.spawn(G, 'p_rifle', 0, u.x + 5, u.y); run(G, 1); // 공간 해시는 틱마다 다시 만든다
-  RTS.defs.abilities.morph.ai(G, u); run(G, 1); ok(u.form === 1, 'AI: 적이 가까우면 변신'); }
+  RTS.defs.abilities.morph.ai(G, u); run(G, 1); ok(u.def === 'i_duelist_f', 'AI: 적이 가까우면 포격 요새');
+  const v = RTS.spawn(G, 'i_juggernaut', 1, h.x + 4, h.y - 6); v.rank = 2; run(G, 1); RTS.defs.abilities.morph.ai(G, v); run(G, 1); ok(v.def === 'i_juggernaut_f', 'AI: 적이 없으면 비행선으로 이동'); }
 
 console.log(bad ? `실패 ${bad}` : '호위·건물 수리·변신 검사 통과'); process.exit(bad ? 1 : 0);

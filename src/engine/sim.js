@@ -34,7 +34,6 @@ RTS.stat = function (G, e, name) {
   if (e.lv) { if (name === 'hp') v *= 1 + RTS.LEVEL.hp * e.lv; else if (name === 'armor') v += RTS.LEVEL.armor * e.lv; } // 건물 강화(upgrade.js)
   if (e.rank && name === 'hp') v *= 1 + RTS.RANK.hp * e.rank; // 유닛 강화 ★
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
-  if (e.form) { const F = d.form; if (F && F.mods[name]) v *= F.mods[name]; } // 변신(upgrade.js RTS.morph)
   return v;
 };
 RTS.weapon = e => { const d = defOf(e); return (e.sieged && d.siegeWeapon) || d.weapon || null; };
@@ -43,7 +42,6 @@ RTS.wStat = function (G, e, w, name) {
   if (e.lv) { if (name === 'damage') v *= 1 + RTS.LEVEL.dmg * e.lv; else if (name === 'range') v += RTS.LEVEL.range * e.lv; }
   if (e.rank && name === 'damage') v *= 1 + RTS.RANK.dmg * e.rank;
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
-  if (e.form) { const F = defOf(e).form; if (F && F.mods[name]) v *= F.mods[name]; }
   return v;
 };
 RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
@@ -108,6 +106,7 @@ RTS.commands.order = function (G, team, c) {
     if (defOf(u).kind !== 'unit' || defOf(u).uncontrollable) continue;
     if (!c.order) { RTS.issue(G, u, null); continue; }
     if (u.sieged && ['move', 'patrol'].includes(c.order.type)) continue;
+    if (defOf(u).immobile && ['move', 'patrol', 'amove', 'escort'].includes(c.order.type)) continue;
     const pos = c.spread && c.spread[u.id];
     const o = Object.assign({}, c.order, pos ? { x: pos.x, y: pos.y } : null);
     if (o.type === 'patrol') { o.ax = u.x; o.ay = u.y; }
@@ -395,7 +394,7 @@ function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
     if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y;
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;

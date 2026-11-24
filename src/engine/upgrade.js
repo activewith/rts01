@@ -120,10 +120,25 @@ RTS.commands.merge = function (G, team, c) {
   RTS.say(G, team, `${D[m.into].name} 합체: 재료가 모이는 중`, 'ok');
 };
 // 재료는 기준 유닛에게 걸어가고, 기준 유닛은 제자리에서 기다린다. 다른 명령을 받으면 합체가 취소된다.
-// 변신: ★2(RANK.max) 합체 유닛이 정의의 form으로 바뀐다. 체력 비율은 유지. root 형태는 제자리 고정(포격 모드처럼 이동 명령을 받지 않는다)
-RTS.morph = function (G, u) { const F = RTS.defOf(u).form; if (!F || (u.rank || 0) < RTS.RANK.max || u.merging) return false;
-  const old = RTS.stat(G, u, 'hp'), ratio = u.hp / old; u.form = u.form ? 0 : 1; u.sieged = !!(u.form && F.root);
-  u.hp = Math.max(1, Math.min(RTS.stat(G, u, 'hp'), ratio * RTS.stat(G, u, 'hp'))); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
+// 변신: ★2(RANK.max) 합체 유닛이 다른 유닛(형태 정의)으로 바뀐다. 이동 방식(지상·공중·고정), 능력치, 그림이 모두 바뀐다.
+// 형태 정의는 RTS.formDef(원래 id, 바꿀 값)로 만든다. 원래 정의에 formTo, 형태 정의에 formOf가 붙는다. 체력 비율·★·명령 대기열 없음.
+RTS.formDef = function (base, o) { const D = RTS.defs.entities, b = D[base]; if (!b) throw new Error('변신 원래 유닛 없음: ' + base);
+  const d = JSON.parse(JSON.stringify(b)), id = base + '_f'; Object.assign(d, { name: o.name, abbr: o.abbr || b.abbr, art: o.art, desc: o.desc, formOf: base, formAi: o.ai || 'combat', formTxt: o.txt, abilities: b.abilities.slice() });
+  delete d.formTo; d.air = !!o.air; if (o.air) d.tags = (d.tags || []).filter(t => t !== 'ground'); if (o.immobile) d.immobile = true; else delete d.immobile;
+  d.hp = Math.round(b.hp * (o.hp || 1)); d.speed = +(b.speed * (o.speed || 1)).toFixed(2); d.armor = Math.max(0, (b.armor || 0) + (o.armor || 0)); if (o.r) d.r = o.r;
+  if (d.weapon) { const w = d.weapon; w.damage = Math.round(w.damage * (o.damage || 1) * 10) / 10; w.cooldown = Math.round(w.cooldown * (o.cooldown || 1) * 100) / 100; w.range = Math.max(1, +(w.range + (o.range || 0)).toFixed(1));
+    if (o.hitAir !== undefined) { if (o.hitAir) delete w.air; else w.air = false; } if (o.splash !== undefined) w.splash = o.splash; }
+  b.formTo = id; return d; };
+RTS.formPair = d => d.formTo || d.formOf || null;
+RTS.morphBlock = function (G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to) return '변신할 수 없는 유닛입니다';
+  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다';
+  if (d.air && !RTS.defs.entities[to].air && !landSpot(G, u)) return '근처에 내려앉을 땅이 없습니다. 땅 위로 옮기세요'; return ''; };
+// 비행 → 지상: 바로 아래가 못 가는 곳이면 4칸 안의 가장 가까운 땅에 내려앉는다
+function landSpot(G, u) { const ok = (x, y) => RTS.walkable(G, Math.floor(x), Math.floor(y)); if (ok(u.x, u.y)) return { x: u.x, y: u.y }; const p = RTS.nearestFree(G, u.x, u.y, 4); return p && Math.hypot(p.x - u.x, p.y - u.y) <= 4.5 && ok(p.x, p.y) ? p : null; }
+RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const to = RTS.formPair(RTS.defOf(u)), ratio = u.hp / RTS.stat(G, u, 'hp');
+  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); u.x = p.x; u.y = p.y; }
+  u.def = to; u.form = RTS.defs.entities[to].formOf ? 1 : 0; u.sieged = false; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0;
+  u.hp = Math.max(1, ratio * RTS.stat(G, u, 'hp')); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {
   const h = G.byId[o.host]; if (!h || h.dead) { RTS.issue(G, u, null); return; }
   if (h === u) { RTS.stopMove(u); return; }
