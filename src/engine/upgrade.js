@@ -120,6 +120,10 @@ RTS.commands.merge = function (G, team, c) {
   RTS.say(G, team, `${D[m.into].name} 합체: 재료가 모이는 중`, 'ok');
 };
 // 재료는 기준 유닛에게 걸어가고, 기준 유닛은 제자리에서 기다린다. 다른 명령을 받으면 합체가 취소된다.
+// 변신: ★2(RANK.max) 합체 유닛이 정의의 form으로 바뀐다. 체력 비율은 유지. root 형태는 제자리 고정(포격 모드처럼 이동 명령을 받지 않는다)
+RTS.morph = function (G, u) { const F = RTS.defOf(u).form; if (!F || (u.rank || 0) < RTS.RANK.max || u.merging) return false;
+  const old = RTS.stat(G, u, 'hp'), ratio = u.hp / old; u.form = u.form ? 0 : 1; u.sieged = !!(u.form && F.root);
+  u.hp = Math.max(1, Math.min(RTS.stat(G, u, 'hp'), ratio * RTS.stat(G, u, 'hp'))); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {
   const h = G.byId[o.host]; if (!h || h.dead) { RTS.issue(G, u, null); return; }
   if (h === u) { RTS.stopMove(u); return; }
@@ -178,15 +182,18 @@ RTS.healerCount = (G, team) => { let n = 0; for (const e of G.ents) { if (e.dead
 // 수리(개척단 공병): 일꾼 정의의 repair { tag, amount, cooldown, range }
 RTS.repairBlock = function (G, u, t) { const r = RTS.defOf(u).repair; if (!r) return '수리할 수 없는 유닛입니다';
   if (!t || t.dead || t.team !== u.team || t === u) return '내 유닛만 수리할 수 있습니다';
-  const d = RTS.defOf(t); if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛만 수리할 수 있습니다';
+  const d = RTS.defOf(t);
+  if (d.kind === 'building') { if (!r.building) return '건물은 수리할 수 없습니다'; if (!RTS.complete(t)) return '짓는 중인 건물은 공사로 완성하세요'; if (t.demo) return '철거 중인 건물입니다'; }
+  else if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛과 건물만 수리할 수 있습니다';
   if (t.hp >= RTS.stat(G, t, 'hp')) return '체력이 가득 차 있습니다';
   return ''; };
 RTS.orders.repair = function (G, u, o) { const t = G.byId[o.target], r = RTS.defOf(u).repair;
-  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp')) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp') || t.demo) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
   if (RTS.edgeDist(u, t) > r.range) { RTS.goTo(G, u, t); return; }
   RTS.stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
   if (u.cd > 0) return; u.cd = Math.round(r.cooldown * RTS.HZ);
-  if (!RTS.healOnce(G, u, t, r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+  const bld = RTS.defOf(t).kind === 'building';
+  if (!RTS.healOnce(G, u, t, bld ? r.building : r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
 
 // 철거: 일꾼 누구나. 완공된 내 건물, 생산·연구·강화 대기열이 비어 있을 때. 비용은 철거를 시작할 때 한 번 낸다(되돌려 받지 않는다)
 RTS.demoCost = d => { const S = RTS.SERVICE, c = d.cost || {}, out = { ore: Math.max(S.demoMin, Math.round((c.ore || 0) * S.demo)) }; if (c.gas) out.gas = Math.round(c.gas * S.demo); return out; };

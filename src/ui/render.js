@@ -254,6 +254,7 @@ RTS.Renderer = function (canvas, app) {
   R.attach = function (G) {
     RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
@@ -466,8 +467,11 @@ RTS.Renderer = function (canvas, app) {
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
         if ((t + e.id) % 18 === 0) fx({ k: 'dust', x: e.x - Math.cos(e.facing) * d.r * .9, y: e.y - Math.sin(e.facing) * d.r * .9, s: d.r * TS * .8, life: 28 }); }
       if (LON) { light(x, y - lift, d.r * TS * 3, col3((RTS.TEAM[e.team] || NEUTRAL).main), d.air ? .3 : .2); if (d.air) light(x - Math.cos(e.facing) * 12, y - lift - Math.sin(e.facing) * 12, 30, [1, .7, .35], .45); }
-      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
-      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
+      if (e.form) { const k = .55 + Math.sin(t * .15 + e.id) * .25, rr = d.r * TS * 1.25; c.strokeStyle = `rgba(255,214,107,${k})`; c.lineWidth = 2.2; c.beginPath(); c.ellipse(x, y - lift, rr + 3, (rr + 3) * .8, 0, 0, TAU); c.stroke();
+        if (e.sieged) { c.strokeStyle = '#9aa6b8'; c.lineWidth = 3; for (let i = 0; i < 4; i++) { const a2 = i * TAU / 4 + .785; c.beginPath(); c.moveTo(x + Math.cos(a2) * rr * .7, y + Math.sin(a2) * rr * .55); c.lineTo(x + Math.cos(a2) * (rr + 6), y + Math.sin(a2) * (rr * .8 + 5)); c.stroke(); } }
+        if (LON) light(x, y - lift, d.r * TS * 4, [1, .82, .4], .35); }
+      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS * (e.form ? 1.15 : 1), hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
+      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (e.form) c.scale(1.15, 1.15); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별

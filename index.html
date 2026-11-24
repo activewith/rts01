@@ -231,7 +231,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '5e83035';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '119ad5b';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -672,6 +672,7 @@ RTS.stat = function (G, e, name) {
   if (e.lv) { if (name === 'hp') v *= 1 + RTS.LEVEL.hp * e.lv; else if (name === 'armor') v += RTS.LEVEL.armor * e.lv; } // 건물 강화(upgrade.js)
   if (e.rank && name === 'hp') v *= 1 + RTS.RANK.hp * e.rank; // 유닛 강화 ★
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  if (e.form) { const F = d.form; if (F && F.mods[name]) v *= F.mods[name]; } // 변신(upgrade.js RTS.morph)
   return v;
 };
 RTS.weapon = e => { const d = defOf(e); return (e.sieged && d.siegeWeapon) || d.weapon || null; };
@@ -680,6 +681,7 @@ RTS.wStat = function (G, e, w, name) {
   if (e.lv) { if (name === 'damage') v *= 1 + RTS.LEVEL.dmg * e.lv; else if (name === 'range') v += RTS.LEVEL.range * e.lv; }
   if (e.rank && name === 'damage') v *= 1 + RTS.RANK.dmg * e.rank;
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  if (e.form) { const F = defOf(e).form; if (F && F.mods[name]) v *= F.mods[name]; }
   return v;
 };
 RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
@@ -711,6 +713,21 @@ function moveToEnt(G, u, t) {
   u.dest = { x: t.x, y: t.y }; u.destEnt = t.id; u.needPath = true;
 }
 RTS.goTo = moveToEnt;
+RTS.moveToPt = (G, u, x, y) => moveTo(G, u, x, y);
+RTS.engage = (G, u, t, chase) => engage(G, u, t, chase);
+// 호위: 대상(내 유닛·동료·부족 수송차)을 따라다니며, 대상 7칸 안의 적이나 나를 노리는 적을 공격한다. 대상이 사라지면 끝
+RTS.ESCORT = { guard: 7, leash: 10, near: 2.2 };
+RTS.orders.escort = function (G, u, o) { const t = G.byId[o.target], E = RTS.ESCORT;
+  if (!t || t.dead || t === u || !(t.team === u.team || RTS.ally(G, u.team, t.team))) { nextOrder(G, u); return; }
+  const w = RTS.weapon(u), dt = Math.hypot(u.x - t.x, u.y - t.y);
+  if (w && dt < E.leash) { let best = null, bd = 1e9;
+    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
+      if (!best) best = RTS.scan(G, u, w, RTS.wStat(G, u, w, 'range')); u.tgt = best ? best.id : 0; }
+    else { const c = G.byId[u.tgt]; if (c && !c.dead && Math.hypot(c.x - t.x, c.y - t.y) < E.guard + 2) best = c; }
+    if (best && engage(G, u, best, true)) return; }
+  const a = (u.id * 2.39996) % (Math.PI * 2), gx = t.x + Math.cos(a) * E.near, gy = t.y + Math.sin(a) * E.near;
+  if (Math.hypot(u.x - gx, u.y - gy) > 1.1) { if (!u.dest || u.destEnt || Math.hypot(u.dest.x - gx, u.dest.y - gy) > 1.5 && (G.tick + u.id) % 8 === 0 || !u.path && !u.needPath) moveTo(G, u, gx, gy); }
+  else stopMove(u); };
 const arrived = u => !u.path && !u.needPath;
 function releaseNode(G, u) { if (u.claim) { const n = G.byId[u.claim]; if (n && n.busy === u.id) n.busy = 0; u.claim = 0; } }
 
@@ -765,7 +782,7 @@ RTS.commands.ability = function (G, team, c) {
     else RTS.useAbility(G, u, ab, c);
   }
 };
-RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]);
+RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]) && !(ab.need && ab.need(G, u));
 RTS.useAbility = function (G, u, ab, c) { if (ab.use(G, u, c) !== false && ab.cooldown) u.cds[ab.id] = G.tick + Math.round(ab.cooldown * RTS.HZ); RTS.emit(G, 'ability', { e: u, ab }); };
 RTS.addBuff = function (G, u, id, sec, mods) { u.buffs = u.buffs.filter(b => b.id !== id); u.buffs.push({ id, until: G.tick + Math.round(sec * RTS.HZ), mods }); };
 
@@ -830,7 +847,7 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
-  if (e.team === RTS.TRIBE && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
+  if ((e.team === RTS.TRIBE || e.def === 't_cart') && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
   if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 
@@ -1249,6 +1266,10 @@ RTS.commands.merge = function (G, team, c) {
   RTS.say(G, team, `${D[m.into].name} 합체: 재료가 모이는 중`, 'ok');
 };
 // 재료는 기준 유닛에게 걸어가고, 기준 유닛은 제자리에서 기다린다. 다른 명령을 받으면 합체가 취소된다.
+// 변신: ★2(RANK.max) 합체 유닛이 정의의 form으로 바뀐다. 체력 비율은 유지. root 형태는 제자리 고정(포격 모드처럼 이동 명령을 받지 않는다)
+RTS.morph = function (G, u) { const F = RTS.defOf(u).form; if (!F || (u.rank || 0) < RTS.RANK.max || u.merging) return false;
+  const old = RTS.stat(G, u, 'hp'), ratio = u.hp / old; u.form = u.form ? 0 : 1; u.sieged = !!(u.form && F.root);
+  u.hp = Math.max(1, Math.min(RTS.stat(G, u, 'hp'), ratio * RTS.stat(G, u, 'hp'))); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {
   const h = G.byId[o.host]; if (!h || h.dead) { RTS.issue(G, u, null); return; }
   if (h === u) { RTS.stopMove(u); return; }
@@ -1307,15 +1328,18 @@ RTS.healerCount = (G, team) => { let n = 0; for (const e of G.ents) { if (e.dead
 // 수리(개척단 공병): 일꾼 정의의 repair { tag, amount, cooldown, range }
 RTS.repairBlock = function (G, u, t) { const r = RTS.defOf(u).repair; if (!r) return '수리할 수 없는 유닛입니다';
   if (!t || t.dead || t.team !== u.team || t === u) return '내 유닛만 수리할 수 있습니다';
-  const d = RTS.defOf(t); if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛만 수리할 수 있습니다';
+  const d = RTS.defOf(t);
+  if (d.kind === 'building') { if (!r.building) return '건물은 수리할 수 없습니다'; if (!RTS.complete(t)) return '짓는 중인 건물은 공사로 완성하세요'; if (t.demo) return '철거 중인 건물입니다'; }
+  else if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛과 건물만 수리할 수 있습니다';
   if (t.hp >= RTS.stat(G, t, 'hp')) return '체력이 가득 차 있습니다';
   return ''; };
 RTS.orders.repair = function (G, u, o) { const t = G.byId[o.target], r = RTS.defOf(u).repair;
-  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp')) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp') || t.demo) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
   if (RTS.edgeDist(u, t) > r.range) { RTS.goTo(G, u, t); return; }
   RTS.stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
   if (u.cd > 0) return; u.cd = Math.round(r.cooldown * RTS.HZ);
-  if (!RTS.healOnce(G, u, t, r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+  const bld = RTS.defOf(t).kind === 'building';
+  if (!RTS.healOnce(G, u, t, bld ? r.building : r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
 
 // 철거: 일꾼 누구나. 완공된 내 건물, 생산·연구·강화 대기열이 비어 있을 때. 비용은 철거를 시작할 때 한 번 낸다(되돌려 받지 않는다)
 RTS.demoCost = d => { const S = RTS.SERVICE, c = d.cost || {}, out = { ore: Math.max(S.demoMin, Math.round((c.ore || 0) * S.demo)) }; if (c.gas) out.gas = Math.round(c.gas * S.demo); return out; };
@@ -1571,22 +1595,22 @@ RTS.aiDiplomacy = function (G, t, diff, units) {
 // 적대면 주기적으로 습격한다. 직접 공격해도 적대가 된다.
 RTS.TRIBE_RULES = {
   name: '잿빛 부족',
-  cap: 10,            // 유지하는 최대 병력
-  spawnSec: 20,       // 병력 보충 간격
+  cap: 14,            // 유지하는 최대 병력
+  spawnSec: 15,       // 병력 보충 간격
   start: ['t_warrior', 't_warrior', 't_archer', 't_archer'],
   guards: 2,          // 습격·지원 때 회당에 남기는 수
-  helpChance: .5,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
+  helpChance: .7,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
   helpEvery: 25,      // 기지방어: 판정 최소 간격(초)
-  helpMax: 6,         // 기지방어·협공: 한 번에 보내는 원군 수
+  helpMax: 8,         // 기지방어·협공: 한 번에 보내는 원군 수
   helpWar: 45,        // 원군을 보내는 동안 상대와 싸우는 시간(초)
-  towerChance: .35,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
-  towerMax: 3,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
-  strikeChance: .5,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
-  strikeEvery: 30,    // 협공: 판정 최소 간격(초)
-  stockRate: { ore: 2, gas: .5 },   // 자원공유: 부족 창고가 1초마다 채워지는 양
-  stockCap: { ore: 300, gas: 80 },  // 자원공유: 창고 최대
-  shareEvery: 20,     // 자원공유: 이 간격(초)마다(받을 때마다 알림)
-  shareRate: .5,      // 창고의 이 비율을 동맹에게 보낸다
+  towerChance: .5,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
+  towerMax: 5,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
+  strikeChance: .7,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
+  strikeEvery: 25,    // 협공: 판정 최소 간격(초)
+  stockRate: { ore: 4, gas: 1 },    // 자원공유: 부족 창고가 1초마다 채워지는 양
+  stockCap: { ore: 600, gas: 150 }, // 자원공유: 창고 최대
+  shareEvery: 60,     // 자원공유: 이 간격(초)마다 창고를 비워 수송차로 보낸다
+  shareMin: 60,       // 창고 광석이 이만큼은 있어야 출발
   retrySec: 60,       // 미션 1개 성공 뒤 다시 외교할 수 있을 때까지
   raidFirst: 60,      // 적대가 된 뒤 첫 습격까지
   raidEvery: [110, 150],
@@ -1606,7 +1630,7 @@ RTS.tribeRelName = r => REL_NAME[r] || r;
 RTS.TRIBE_REQS = {
   strike: { name: '협공', text: () => `내가 적을 공격하면 ${Math.round(TR().strikeChance * 100)}% 확률로 원군(최대 ${TR().helpMax}기)을 보내 함께 공격합니다 (${TR().strikeEvery}초에 한 번 판정)` },
   defend: { name: '기지방어', text: () => `내 건물이 공격받으면 ${Math.round(TR().helpChance * 100)}% 확률로 방어 병력을 보내고, ${Math.round(TR().towerChance * 100)}% 확률로 방어탑을 지어 줍니다(최대 ${TR().towerMax}개)` },
-  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 차고, ${TR().shareEvery}초마다 창고의 ${Math.round(TR().shareRate * 100)}%를 보내 줍니다` },
+  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 찹니다. ${TR().shareEvery}초마다 창고를 모두 실은 수송차가 내 본진으로 갑니다. 도중에 파괴되면 화물을 잃으니 호위하세요` },
 };
 const reqInit = T => { const n = T.rel.length; if (!T.req) T.req = Array(n).fill(null); if (!T.pick) T.pick = Array(n).fill(false); if (!T.stock) T.stock = { ore: 0, gas: 0 }; if (!T.towers) T.towers = Array(n).fill(0); if (!T.got) T.got = Array(n).fill(null).map(() => ({ ore: 0, gas: 0 })); return T; };
 RTS.tribeReqOf = (G, p) => { const T = G.tribe; if (!T || T.dead || p < 0 || T.rel[p] !== 'ally') return null; return reqInit(T).req[p]; };
@@ -1702,6 +1726,11 @@ RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.team
 RTS.commands.tribeAnswer = (G, team, c) => { RTS.tribeAnswer(G, team, c.mission | 0, c.value); };
 
 // 공병이 회당까지 걸어가서 외교를 신청하고, 끝나면 일터로 돌아간다
+// 부족 수송차: 동맹 본진(가장 가까운 자원 반납 건물)으로 가서 화물을 내려놓는다
+RTS.orders.tribeCart = function (G, u, o) { const drop = RTS.nearestDrop(G, u); if (!drop) { RTS.kill(G, u, null, true); return; }
+  if (RTS.edgeDist(u, drop) < .8) { const t = G.teams[u.team], T = G.tribe; t.res.ore += o.ore; t.res.gas += o.gas; if (T) { reqInit(T); T.got[u.team].ore += o.ore; T.got[u.team].gas += o.gas; }
+    tTell(G, u.team, `${TR().name} 수송차 도착: 광석 +${o.ore} · 에테르 +${o.gas}`, 'ok'); RTS.emit(G, 'tribeShare', { team: u.team, ore: o.ore, gas: o.gas }); u.cartDone = true; RTS.kill(G, u, null, true); return; }
+  RTS.goTo(G, u, drop); };
 RTS.orders.envoy = function (G, u, o) { const h = G.byId[o.target];
   if (!h || h.dead || h.team !== RTS.TRIBE) { RTS.issue(G, u, null); return; }
   RTS.goTo(G, u, h); if (RTS.edgeDist(u, h) > .9) return;
@@ -1737,7 +1766,9 @@ RTS.tribeAllyStrike = function (G, e, src) { const T = G.tribe, p = src && src.t
   if (RTS.rand(G) >= R.strikeChance) { tTell(G, p, `${R.name}은(는) 이번에는 협공하지 않았습니다`, 'market'); return; }
   const n = tribeSend(G, p, e.team, e.x, e.y); if (!n) return;
   tTell(G, p, `${R.name}이 원군 ${n}기를 보내 함께 공격합니다`, 'ok'); tTell(G, e.team, `${R.name}이 상대와 함께 공격해 옵니다`, 'warn'); RTS.emit(G, 'tribeHelp', { team: p, n, strike: 1 }); };
-RTS.tribeDeath = function (G, e, src) { const T = G.tribe; if (!T || !e.tribeHall) return; T.dead = true;
+RTS.tribeDeath = function (G, e, src) { const T = G.tribe;
+  if (e.def === 't_cart' && !e.cartDone && e.order) { tTell(G, e.team, `${TR().name} 수송차가 파괴되었습니다. 광석 ${e.order.ore} · 에테르 ${e.order.gas}을 잃었습니다`, 'warn'); if (T) T.lost = (T.lost || 0) + 1; return; }
+  if (!T || !e.tribeHall) return; T.dead = true;
   const k = src && src.team >= 0 ? src.team : -1; if (k >= 0) { G.teams[k].res.ore += TR().loot; G.teams[k].stats.loot = (G.teams[k].stats.loot || 0) + TR().loot; }
   for (const o of G.teams) tTell(G, o.id, `${TR().name} 회당이 무너졌습니다` + (o.id === k ? `. 광석 +${TR().loot}` : ''), o.id === k ? 'ok' : 'market');
   T.missions = T.missions.map(() => null); };
@@ -1768,9 +1799,10 @@ RTS.addSystem({ id: 'tribe', run(G) {
   const units = tribeUnits(G); reqInit(T);
   // 자원공유: 창고가 차고, shareEvery초마다 자원공유를 고른 동맹에게 일부를 보낸다
   for (const k of ['ore', 'gas']) T.stock[k] = Math.min(R.stockCap[k], T.stock[k] + R.stockRate[k]);
-  if ((G.tick / RTS.HZ) % R.shareEvery === 0) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share') return;
-    const g = {}; for (const k of ['ore', 'gas']) { const v = Math.floor(T.stock[k] * R.shareRate); if (v > 0) { T.stock[k] -= v; t.res[k] += v; T.got[t.id][k] += v; g[k] = v; } }
-    if (g.ore || g.gas) { tTell(G, t.id, `${R.name}이 자원을 보냈습니다: 광석 +${g.ore || 0} · 에테르 +${g.gas || 0}`, 'ok'); RTS.emit(G, 'tribeShare', { team: t.id, ore: g.ore || 0, gas: g.gas || 0 }); } });
+  if ((G.tick / RTS.HZ) % R.shareEvery === 0 && T.stock.ore >= R.shareMin) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share' || !RTS.nearestDrop(G, { team: t.id, x: h.x, y: h.y })) return;
+    const ore = Math.floor(T.stock.ore), gas = Math.floor(T.stock.gas); T.stock.ore -= ore; T.stock.gas -= gas;
+    const p = RTS.nearestFree(G, h.x, h.y + 3), u = RTS.spawn(G, 't_cart', t.id, p.x, p.y); u.order = { type: 'tribeCart', ore, gas }; T.carts = (T.carts || 0) + 1;
+    tTell(G, t.id, `${R.name} 수송차 출발: 광석 ${ore} · 에테르 ${gas}. 병력을 골라 수송차를 누르면 호위합니다`, 'ok'); RTS.emit(G, 'tribeCart', { team: t.id, id: u.id, ore, gas, x: u.x, y: u.y }); });
   // 병력 보충
   if (units.length < R.cap && G.tick >= T.nextSpawn) { T.nextSpawn = G.tick + R.spawnSec * RTS.HZ; tribeSpawn(G, RTS.rand(G) < .5 ? 't_warrior' : 't_archer', units.length); }
   // 한가한 병력은 회당 곁으로
@@ -2407,6 +2439,11 @@ RTS.mod({
     siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
       use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
       ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
+    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다',
+      need: (G, u) => (u.rank || 0) >= RTS.RANK.max ? '' : `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`,
+      use(G, u) { return RTS.morph(G, u); },
+      ai(G, u) { const F = RTS.defOf(u).form; if (!F || (u.rank || 0) < RTS.RANK.max) return; const near = RTS.scan(G, u, RTS.weapon(u), F.root ? 8 : 7);
+        if (!!near !== !!u.form && (near || G.tick % 60 === 0)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
@@ -2436,11 +2473,12 @@ RTS.mod({
     t_hall:    { kind: 'building', name: '부족 회당', art: 't_hall', size: [4, 3], hp: 1600, armor: 2, sight: 10, aggro: 7, weapon: { damage: 10, range: 7, cooldown: 1.2, speed: 22, art: 'tracer' }, desc: '잿빛 부족의 중심. 공병으로 우클릭하면 외교 미션을 받는다' },
     t_tower:   { kind: 'building', name: '부족 망루', art: 't_tower', size: [2, 2], hp: 500, armor: 1, sight: 10, aggro: 7, weapon: { damage: 11, range: 7, cooldown: 1, speed: 22, art: 'tracer' }, desc: '적대 세력만 공격한다' },
     t_warrior: { kind: 'unit', name: '부족 전사', abbr: '전', art: 'tribal', r: .42, hp: 95, armor: 1, speed: 2.9, sight: 8, tags: ['bio'], weapon: { damage: 10, range: .4, cooldown: .9, air: false }, desc: '도끼를 든 근접 전사. 지상만 공격' },
+    t_cart:    { kind: 'unit', name: '부족 수송차', abbr: '송', art: 'caravan', uncontrollable: true, passive: true, r: .6, hp: 320, armor: 1, speed: 2.3, sight: 6, tags: ['bio'], desc: '잿빛 부족이 동맹에게 보내는 자원 수송차. 도착하면 실은 광석·에테르를 내려놓는다. 파괴되면 화물을 잃는다 — 병력으로 호위하세요' },
     t_archer:  { kind: 'unit', name: '부족 궁수', abbr: '궁', art: 'tribal', tint: 1, r: .38, hp: 60, speed: 2.8, sight: 9, tags: ['bio'], weapon: { damage: 8, range: 5.5, cooldown: 1, speed: 20, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
 
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8 }, desc: '자원 채취와 건설, 기계 유닛 수리(자원 소모), 건물 철거' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8, building: 15 }, desc: '자원 채취와 건설, 기계 유닛·건물 수리(자원 소모), 건물 철거' },
     p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
       weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
@@ -2685,12 +2723,12 @@ RTS.mod({
 // at 건물이 강화 2단계면, 재료 유닛 하나를 길게 누르거나 명령 카드 '합체'로 주변 재료를 모아 합친다(upgrade.js).
 // 스탯은 RTS.fuseDef가 재료에서 계산한다: 체력 합, 초당 피해 합 × 0.75(두 기면 1.5배), 속도는 가장 느린 재료.
 RTS.mod({ entities: {
-  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim'], desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전' }),
-  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock'], weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
-  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사' }),
-  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock'], desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
-  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid'], desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
-  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy'], desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
+  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim', 'morph'], form: { name: '돌격 형태', desc: '속도 +25%, 공격 간격 -30%, 체력 -10%', mods: { speed: 1.25, cooldown: .7, hp: .9 } }, desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전. ★2에서 돌격 형태로 변신' }),
+  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock', 'morph'], form: { name: '요새 형태', root: true, desc: '제자리에 고정. 사거리 +60%, 공격력 +40%, 방어 +70%', mods: { range: 1.6, damage: 1.4, armor: 1.7 } }, weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
+  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, abilities: ['morph'], form: { name: '저격 형태', root: true, desc: '제자리에 고정. 사거리 +60%, 공격력 +60%, 공격 간격 +30%', mods: { range: 1.6, damage: 1.6, cooldown: 1.3 } }, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사. ★2에서 저격 형태로 변신' }),
+  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock', 'morph'], form: { name: '방벽 형태', desc: '체력 +30%, 방어 ×2, 속도 -40%, 공격력 -10%', mods: { hp: 1.3, armor: 2, speed: .6, damage: .9 } }, desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
+  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid', 'morph'], form: { name: '맹독 형태', desc: '속도 +30%, 공격력 +35%, 체력 -15%', mods: { speed: 1.3, damage: 1.35, hp: .85 } }, desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
+  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy', 'morph'], form: { name: '분노 형태', desc: '속도 +20%, 공격 간격 -25%, 방어 -50%', mods: { speed: 1.2, cooldown: .75, armor: .5 } }, desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
 }, merges: {
   // parts: 재료와 수, at: 강화 2단계가 필요한 건물, into: 결과 유닛
   commando:   { faction: 'pioneers', at: 'p_barracks', parts: { p_rifle: 1, p_gren: 1 }, into: 'p_commando' },
@@ -3718,6 +3756,7 @@ RTS.Renderer = function (canvas, app) {
   R.attach = function (G) {
     RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
@@ -3930,8 +3969,11 @@ RTS.Renderer = function (canvas, app) {
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
         if ((t + e.id) % 18 === 0) fx({ k: 'dust', x: e.x - Math.cos(e.facing) * d.r * .9, y: e.y - Math.sin(e.facing) * d.r * .9, s: d.r * TS * .8, life: 28 }); }
       if (LON) { light(x, y - lift, d.r * TS * 3, col3((RTS.TEAM[e.team] || NEUTRAL).main), d.air ? .3 : .2); if (d.air) light(x - Math.cos(e.facing) * 12, y - lift - Math.sin(e.facing) * 12, 30, [1, .7, .35], .45); }
-      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
-      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
+      if (e.form) { const k = .55 + Math.sin(t * .15 + e.id) * .25, rr = d.r * TS * 1.25; c.strokeStyle = `rgba(255,214,107,${k})`; c.lineWidth = 2.2; c.beginPath(); c.ellipse(x, y - lift, rr + 3, (rr + 3) * .8, 0, 0, TAU); c.stroke();
+        if (e.sieged) { c.strokeStyle = '#9aa6b8'; c.lineWidth = 3; for (let i = 0; i < 4; i++) { const a2 = i * TAU / 4 + .785; c.beginPath(); c.moveTo(x + Math.cos(a2) * rr * .7, y + Math.sin(a2) * rr * .55); c.lineTo(x + Math.cos(a2) * (rr + 6), y + Math.sin(a2) * (rr * .8 + 5)); c.stroke(); } }
+        if (LON) light(x, y - lift, d.r * TS * 4, [1, .82, .4], .35); }
+      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS * (e.form ? 1.15 : 1), hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
+      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (e.form) c.scale(1.15, 1.15); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
@@ -4762,12 +4804,13 @@ RTS.mount = function (root, opts = {}) {
       items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => send({ type: 'order', ids: allIds, order: null, stop: true }) });
       items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => send({ type: 'order', ids: allIds, order: { type: 'hold' } }) });
       items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
-      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
-        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
+      if (list.some(u => RTS.defOf(u).kind === 'unit' && RTS.weapon(u))) items.push(tgt('escort', '호위', 'G', '호위', '지킬 내 유닛(부족 수송차 포함)을 누릅니다. 따라다니며 그 둘레 7칸 안의 적을 공격합니다. 부족 수송차는 병력을 고른 채 누르기만 해도 호위합니다'));
+      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], need = ab.need ? ab.need(G, L) : '', unlocked = (!ab.requires || t.upgrades[ab.requires]) && !need, cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
+        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : '') + (ab.id === 'morph' && d.form ? (L.form ? ' 해제' : ': ' + d.form.name) : ''), desc: ab.desc + (ab.id === 'morph' && d.form ? ` — ${d.form.name}: ${d.form.desc}` : ''), ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : need || '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
       if (d.gather) items.push({ key: 'D', text: '철거', name: '건물 철거', desc: `철거할 내 건물을 누릅니다. 비용은 건물 값의 ${pct(RTS.SERVICE.demo)}%(돌려받지 않음), 시간은 건설 시간의 ${pct(RTS.SERVICE.demoTime)}%(${RTS.SERVICE.demoTimeMin}~${RTS.SERVICE.demoTimeMax}초). 생산 중인 건물은 철거할 수 없습니다. 건물을 길게 눌러도 됩니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'demolish' }); notice('철거할 내 건물을 누르세요', 'ok'); } });
-      if (d.repair) items.push({ key: 'R', text: '수리', name: '기계 수리', desc: `수리할 내 기계 유닛을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
+      if (d.repair) items.push({ key: 'R', text: '수리', name: '수리', desc: `수리할 내 기계 유닛이나 건물을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
@@ -4978,6 +5021,7 @@ RTS.mount = function (root, opts = {}) {
         app.tribeArm = null; }
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
+    if (t && t.def === 't_cart' && t.team === app.team) { const g = units.filter(e => RTS.weapon(e) && !RTS.defOf(e).gather).map(e => e.id); if (g.length) { send({ type: 'order', ids: g, order: { type: 'escort', target: t.id }, queue }); notice(`${g.length}기가 수송차를 호위합니다`, 'ok'); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); return true; } }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
     const fixers = units.filter(e => RTS.defOf(e).repair && !RTS.repairBlock(G, e, t)).map(e => e.id);
     if (t && fixers.length) { send({ type: 'order', ids: fixers, order: { type: 'repair', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#7dffa8' }); return true; }
@@ -4991,6 +5035,8 @@ RTS.mount = function (root, opts = {}) {
       if (m.svc === 'demolish') { const why = t ? RTS.demoBlock(G, t, app.team) : '철거할 내 건물을 누르세요'; if (why) { notice(why, 'warn'); return; } send({ type: 'demolish', ids: ws.map(e => e.id), building: t.id, queue: shift }); }
       else { const fx = ws.filter(e => RTS.defOf(e).repair), why = fx.length ? RTS.repairBlock(G, fx[0], t) : '수리할 수 있는 일꾼이 없습니다'; if (why) { notice(why, 'warn'); return; } send({ type: 'order', ids: fx.map(e => e.id), order: { type: 'repair', target: t.id }, queue: shift }); }
       R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
+    if (m.order === 'escort') { const t = pick(wx, wy); if (!t || t.dead || RTS.defOf(t).kind !== 'unit' || !(t.team === app.team || RTS.ally(G, app.team, t.team)) || ids.includes(t.id) && ids.length === 1) { notice('호위할 내 유닛(또는 수송차)을 누르세요', 'warn'); return; }
+      send({ type: 'order', ids: ids.filter(i => i !== t.id), order: { type: 'escort', target: t.id }, queue: shift }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); if (!shift) app.mode = null; return; }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }

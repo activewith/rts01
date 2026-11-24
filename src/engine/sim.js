@@ -34,6 +34,7 @@ RTS.stat = function (G, e, name) {
   if (e.lv) { if (name === 'hp') v *= 1 + RTS.LEVEL.hp * e.lv; else if (name === 'armor') v += RTS.LEVEL.armor * e.lv; } // 건물 강화(upgrade.js)
   if (e.rank && name === 'hp') v *= 1 + RTS.RANK.hp * e.rank; // 유닛 강화 ★
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  if (e.form) { const F = d.form; if (F && F.mods[name]) v *= F.mods[name]; } // 변신(upgrade.js RTS.morph)
   return v;
 };
 RTS.weapon = e => { const d = defOf(e); return (e.sieged && d.siegeWeapon) || d.weapon || null; };
@@ -42,6 +43,7 @@ RTS.wStat = function (G, e, w, name) {
   if (e.lv) { if (name === 'damage') v *= 1 + RTS.LEVEL.dmg * e.lv; else if (name === 'range') v += RTS.LEVEL.range * e.lv; }
   if (e.rank && name === 'damage') v *= 1 + RTS.RANK.dmg * e.rank;
   for (const b of e.buffs || []) if (b.mods && b.mods[name]) v *= b.mods[name];
+  if (e.form) { const F = defOf(e).form; if (F && F.mods[name]) v *= F.mods[name]; }
   return v;
 };
 RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
@@ -73,6 +75,21 @@ function moveToEnt(G, u, t) {
   u.dest = { x: t.x, y: t.y }; u.destEnt = t.id; u.needPath = true;
 }
 RTS.goTo = moveToEnt;
+RTS.moveToPt = (G, u, x, y) => moveTo(G, u, x, y);
+RTS.engage = (G, u, t, chase) => engage(G, u, t, chase);
+// 호위: 대상(내 유닛·동료·부족 수송차)을 따라다니며, 대상 7칸 안의 적이나 나를 노리는 적을 공격한다. 대상이 사라지면 끝
+RTS.ESCORT = { guard: 7, leash: 10, near: 2.2 };
+RTS.orders.escort = function (G, u, o) { const t = G.byId[o.target], E = RTS.ESCORT;
+  if (!t || t.dead || t === u || !(t.team === u.team || RTS.ally(G, u.team, t.team))) { nextOrder(G, u); return; }
+  const w = RTS.weapon(u), dt = Math.hypot(u.x - t.x, u.y - t.y);
+  if (w && dt < E.leash) { let best = null, bd = 1e9;
+    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
+      if (!best) best = RTS.scan(G, u, w, RTS.wStat(G, u, w, 'range')); u.tgt = best ? best.id : 0; }
+    else { const c = G.byId[u.tgt]; if (c && !c.dead && Math.hypot(c.x - t.x, c.y - t.y) < E.guard + 2) best = c; }
+    if (best && engage(G, u, best, true)) return; }
+  const a = (u.id * 2.39996) % (Math.PI * 2), gx = t.x + Math.cos(a) * E.near, gy = t.y + Math.sin(a) * E.near;
+  if (Math.hypot(u.x - gx, u.y - gy) > 1.1) { if (!u.dest || u.destEnt || Math.hypot(u.dest.x - gx, u.dest.y - gy) > 1.5 && (G.tick + u.id) % 8 === 0 || !u.path && !u.needPath) moveTo(G, u, gx, gy); }
+  else stopMove(u); };
 const arrived = u => !u.path && !u.needPath;
 function releaseNode(G, u) { if (u.claim) { const n = G.byId[u.claim]; if (n && n.busy === u.id) n.busy = 0; u.claim = 0; } }
 
@@ -127,7 +144,7 @@ RTS.commands.ability = function (G, team, c) {
     else RTS.useAbility(G, u, ab, c);
   }
 };
-RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]);
+RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]) && !(ab.need && ab.need(G, u));
 RTS.useAbility = function (G, u, ab, c) { if (ab.use(G, u, c) !== false && ab.cooldown) u.cds[ab.id] = G.tick + Math.round(ab.cooldown * RTS.HZ); RTS.emit(G, 'ability', { e: u, ab }); };
 RTS.addBuff = function (G, u, id, sec, mods) { u.buffs = u.buffs.filter(b => b.id !== id); u.buffs.push({ id, until: G.tick + Math.round(sec * RTS.HZ), mods }); };
 
@@ -192,7 +209,7 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
-  if (e.team === RTS.TRIBE && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
+  if ((e.team === RTS.TRIBE || e.def === 't_cart') && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
   if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 

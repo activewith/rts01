@@ -25,6 +25,11 @@ RTS.mod({
     siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
       use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
       ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
+    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다',
+      need: (G, u) => (u.rank || 0) >= RTS.RANK.max ? '' : `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`,
+      use(G, u) { return RTS.morph(G, u); },
+      ai(G, u) { const F = RTS.defOf(u).form; if (!F || (u.rank || 0) < RTS.RANK.max) return; const near = RTS.scan(G, u, RTS.weapon(u), F.root ? 8 : 7);
+        if (!!near !== !!u.form && (near || G.tick % 60 === 0)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
@@ -54,11 +59,12 @@ RTS.mod({
     t_hall:    { kind: 'building', name: '부족 회당', art: 't_hall', size: [4, 3], hp: 1600, armor: 2, sight: 10, aggro: 7, weapon: { damage: 10, range: 7, cooldown: 1.2, speed: 22, art: 'tracer' }, desc: '잿빛 부족의 중심. 공병으로 우클릭하면 외교 미션을 받는다' },
     t_tower:   { kind: 'building', name: '부족 망루', art: 't_tower', size: [2, 2], hp: 500, armor: 1, sight: 10, aggro: 7, weapon: { damage: 11, range: 7, cooldown: 1, speed: 22, art: 'tracer' }, desc: '적대 세력만 공격한다' },
     t_warrior: { kind: 'unit', name: '부족 전사', abbr: '전', art: 'tribal', r: .42, hp: 95, armor: 1, speed: 2.9, sight: 8, tags: ['bio'], weapon: { damage: 10, range: .4, cooldown: .9, air: false }, desc: '도끼를 든 근접 전사. 지상만 공격' },
+    t_cart:    { kind: 'unit', name: '부족 수송차', abbr: '송', art: 'caravan', uncontrollable: true, passive: true, r: .6, hp: 320, armor: 1, speed: 2.3, sight: 6, tags: ['bio'], desc: '잿빛 부족이 동맹에게 보내는 자원 수송차. 도착하면 실은 광석·에테르를 내려놓는다. 파괴되면 화물을 잃는다 — 병력으로 호위하세요' },
     t_archer:  { kind: 'unit', name: '부족 궁수', abbr: '궁', art: 'tribal', tint: 1, r: .38, hp: 60, speed: 2.8, sight: 9, tags: ['bio'], weapon: { damage: 8, range: 5.5, cooldown: 1, speed: 20, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
 
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8 }, desc: '자원 채취와 건설, 기계 유닛 수리(자원 소모), 건물 철거' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8, building: 15 }, desc: '자원 채취와 건설, 기계 유닛·건물 수리(자원 소모), 건물 철거' },
     p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
       weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
@@ -303,12 +309,12 @@ RTS.mod({
 // at 건물이 강화 2단계면, 재료 유닛 하나를 길게 누르거나 명령 카드 '합체'로 주변 재료를 모아 합친다(upgrade.js).
 // 스탯은 RTS.fuseDef가 재료에서 계산한다: 체력 합, 초당 피해 합 × 0.75(두 기면 1.5배), 속도는 가장 느린 재료.
 RTS.mod({ entities: {
-  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim'], desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전' }),
-  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock'], weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
-  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사' }),
-  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock'], desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
-  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid'], desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
-  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy'], desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
+  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim', 'morph'], form: { name: '돌격 형태', desc: '속도 +25%, 공격 간격 -30%, 체력 -10%', mods: { speed: 1.25, cooldown: .7, hp: .9 } }, desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전. ★2에서 돌격 형태로 변신' }),
+  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock', 'morph'], form: { name: '요새 형태', root: true, desc: '제자리에 고정. 사거리 +60%, 공격력 +40%, 방어 +70%', mods: { range: 1.6, damage: 1.4, armor: 1.7 } }, weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
+  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, abilities: ['morph'], form: { name: '저격 형태', root: true, desc: '제자리에 고정. 사거리 +60%, 공격력 +60%, 공격 간격 +30%', mods: { range: 1.6, damage: 1.6, cooldown: 1.3 } }, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사. ★2에서 저격 형태로 변신' }),
+  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock', 'morph'], form: { name: '방벽 형태', desc: '체력 +30%, 방어 ×2, 속도 -40%, 공격력 -10%', mods: { hp: 1.3, armor: 2, speed: .6, damage: .9 } }, desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
+  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid', 'morph'], form: { name: '맹독 형태', desc: '속도 +30%, 공격력 +35%, 체력 -15%', mods: { speed: 1.3, damage: 1.35, hp: .85 } }, desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
+  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy', 'morph'], form: { name: '분노 형태', desc: '속도 +20%, 공격 간격 -25%, 방어 -50%', mods: { speed: 1.2, cooldown: .75, armor: .5 } }, desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
 }, merges: {
   // parts: 재료와 수, at: 강화 2단계가 필요한 건물, into: 결과 유닛
   commando:   { faction: 'pioneers', at: 'p_barracks', parts: { p_rifle: 1, p_gren: 1 }, into: 'p_commando' },

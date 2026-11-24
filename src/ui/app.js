@@ -161,12 +161,13 @@ RTS.mount = function (root, opts = {}) {
       items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => send({ type: 'order', ids: allIds, order: null, stop: true }) });
       items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => send({ type: 'order', ids: allIds, order: { type: 'hold' } }) });
       items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
-      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
-        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
+      if (list.some(u => RTS.defOf(u).kind === 'unit' && RTS.weapon(u))) items.push(tgt('escort', '호위', 'G', '호위', '지킬 내 유닛(부족 수송차 포함)을 누릅니다. 따라다니며 그 둘레 7칸 안의 적을 공격합니다. 부족 수송차는 병력을 고른 채 누르기만 해도 호위합니다'));
+      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], need = ab.need ? ab.need(G, L) : '', unlocked = (!ab.requires || t.upgrades[ab.requires]) && !need, cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
+        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : '') + (ab.id === 'morph' && d.form ? (L.form ? ' 해제' : ': ' + d.form.name) : ''), desc: ab.desc + (ab.id === 'morph' && d.form ? ` — ${d.form.name}: ${d.form.desc}` : ''), ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : need || '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
       if (d.gather) items.push({ key: 'D', text: '철거', name: '건물 철거', desc: `철거할 내 건물을 누릅니다. 비용은 건물 값의 ${pct(RTS.SERVICE.demo)}%(돌려받지 않음), 시간은 건설 시간의 ${pct(RTS.SERVICE.demoTime)}%(${RTS.SERVICE.demoTimeMin}~${RTS.SERVICE.demoTimeMax}초). 생산 중인 건물은 철거할 수 없습니다. 건물을 길게 눌러도 됩니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'demolish' }); notice('철거할 내 건물을 누르세요', 'ok'); } });
-      if (d.repair) items.push({ key: 'R', text: '수리', name: '기계 수리', desc: `수리할 내 기계 유닛을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
+      if (d.repair) items.push({ key: 'R', text: '수리', name: '수리', desc: `수리할 내 기계 유닛이나 건물을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
@@ -377,6 +378,7 @@ RTS.mount = function (root, opts = {}) {
         app.tribeArm = null; }
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
+    if (t && t.def === 't_cart' && t.team === app.team) { const g = units.filter(e => RTS.weapon(e) && !RTS.defOf(e).gather).map(e => e.id); if (g.length) { send({ type: 'order', ids: g, order: { type: 'escort', target: t.id }, queue }); notice(`${g.length}기가 수송차를 호위합니다`, 'ok'); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); return true; } }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
     const fixers = units.filter(e => RTS.defOf(e).repair && !RTS.repairBlock(G, e, t)).map(e => e.id);
     if (t && fixers.length) { send({ type: 'order', ids: fixers, order: { type: 'repair', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#7dffa8' }); return true; }
@@ -390,6 +392,8 @@ RTS.mount = function (root, opts = {}) {
       if (m.svc === 'demolish') { const why = t ? RTS.demoBlock(G, t, app.team) : '철거할 내 건물을 누르세요'; if (why) { notice(why, 'warn'); return; } send({ type: 'demolish', ids: ws.map(e => e.id), building: t.id, queue: shift }); }
       else { const fx = ws.filter(e => RTS.defOf(e).repair), why = fx.length ? RTS.repairBlock(G, fx[0], t) : '수리할 수 있는 일꾼이 없습니다'; if (why) { notice(why, 'warn'); return; } send({ type: 'order', ids: fx.map(e => e.id), order: { type: 'repair', target: t.id }, queue: shift }); }
       R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
+    if (m.order === 'escort') { const t = pick(wx, wy); if (!t || t.dead || RTS.defOf(t).kind !== 'unit' || !(t.team === app.team || RTS.ally(G, app.team, t.team)) || ids.includes(t.id) && ids.length === 1) { notice('호위할 내 유닛(또는 수송차)을 누르세요', 'warn'); return; }
+      send({ type: 'order', ids: ids.filter(i => i !== t.id), order: { type: 'escort', target: t.id }, queue: shift }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); if (!shift) app.mode = null; return; }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
