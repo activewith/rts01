@@ -19,7 +19,7 @@ RTS.TRIBE_RULES = {
   strikeEvery: 30,    // 협공: 판정 최소 간격(초)
   stockRate: { ore: 2, gas: .5 },   // 자원공유: 부족 창고가 1초마다 채워지는 양
   stockCap: { ore: 300, gas: 80 },  // 자원공유: 창고 최대
-  shareEvery: 10,     // 자원공유: 이 간격(초)마다
+  shareEvery: 20,     // 자원공유: 이 간격(초)마다(받을 때마다 알림)
   shareRate: .5,      // 창고의 이 비율을 동맹에게 보낸다
   retrySec: 60,       // 미션 1개 성공 뒤 다시 외교할 수 있을 때까지
   raidFirst: 60,      // 적대가 된 뒤 첫 습격까지
@@ -203,7 +203,8 @@ RTS.addSystem({ id: 'tribe', run(G) {
   // 자원공유: 창고가 차고, shareEvery초마다 자원공유를 고른 동맹에게 일부를 보낸다
   for (const k of ['ore', 'gas']) T.stock[k] = Math.min(R.stockCap[k], T.stock[k] + R.stockRate[k]);
   if ((G.tick / RTS.HZ) % R.shareEvery === 0) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share') return;
-    for (const k of ['ore', 'gas']) { const v = Math.floor(T.stock[k] * R.shareRate); if (v > 0) { T.stock[k] -= v; t.res[k] += v; T.got[t.id][k] += v; } } });
+    const g = {}; for (const k of ['ore', 'gas']) { const v = Math.floor(T.stock[k] * R.shareRate); if (v > 0) { T.stock[k] -= v; t.res[k] += v; T.got[t.id][k] += v; g[k] = v; } }
+    if (g.ore || g.gas) { tTell(G, t.id, `${R.name}이 자원을 보냈습니다: 광석 +${g.ore || 0} · 에테르 +${g.gas || 0}`, 'ok'); RTS.emit(G, 'tribeShare', { team: t.id, ore: g.ore || 0, gas: g.gas || 0 }); } });
   // 병력 보충
   if (units.length < R.cap && G.tick >= T.nextSpawn) { T.nextSpawn = G.tick + R.spawnSec * RTS.HZ; tribeSpawn(G, RTS.rand(G) < .5 ? 't_warrior' : 't_archer', units.length); }
   // 한가한 병력은 회당 곁으로
