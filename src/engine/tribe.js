@@ -5,22 +5,22 @@
 // 적대면 주기적으로 습격한다. 직접 공격해도 적대가 된다.
 RTS.TRIBE_RULES = {
   name: '잿빛 부족',
-  cap: 10,            // 유지하는 최대 병력
-  spawnSec: 20,       // 병력 보충 간격
+  cap: 14,            // 유지하는 최대 병력
+  spawnSec: 15,       // 병력 보충 간격
   start: ['t_warrior', 't_warrior', 't_archer', 't_archer'],
   guards: 2,          // 습격·지원 때 회당에 남기는 수
-  helpChance: .5,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
+  helpChance: .7,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
   helpEvery: 25,      // 기지방어: 판정 최소 간격(초)
-  helpMax: 6,         // 기지방어·협공: 한 번에 보내는 원군 수
+  helpMax: 8,         // 기지방어·협공: 한 번에 보내는 원군 수
   helpWar: 45,        // 원군을 보내는 동안 상대와 싸우는 시간(초)
-  towerChance: .35,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
-  towerMax: 3,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
-  strikeChance: .5,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
-  strikeEvery: 30,    // 협공: 판정 최소 간격(초)
-  stockRate: { ore: 2, gas: .5 },   // 자원공유: 부족 창고가 1초마다 채워지는 양
-  stockCap: { ore: 300, gas: 80 },  // 자원공유: 창고 최대
-  shareEvery: 10,     // 자원공유: 이 간격(초)마다
-  shareRate: .5,      // 창고의 이 비율을 동맹에게 보낸다
+  towerChance: .5,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
+  towerMax: 5,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
+  strikeChance: .7,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
+  strikeEvery: 25,    // 협공: 판정 최소 간격(초)
+  stockRate: { ore: 4, gas: 1 },    // 자원공유: 부족 창고가 1초마다 채워지는 양
+  stockCap: { ore: 600, gas: 150 }, // 자원공유: 창고 최대
+  shareEvery: 60,     // 자원공유: 이 간격(초)마다 창고를 비워 수송차로 보낸다
+  shareMin: 60,       // 창고 광석이 이만큼은 있어야 출발
   retrySec: 60,       // 미션 1개 성공 뒤 다시 외교할 수 있을 때까지
   raidFirst: 60,      // 적대가 된 뒤 첫 습격까지
   raidEvery: [110, 150],
@@ -40,7 +40,7 @@ RTS.tribeRelName = r => REL_NAME[r] || r;
 RTS.TRIBE_REQS = {
   strike: { name: '협공', text: () => `내가 적을 공격하면 ${Math.round(TR().strikeChance * 100)}% 확률로 원군(최대 ${TR().helpMax}기)을 보내 함께 공격합니다 (${TR().strikeEvery}초에 한 번 판정)` },
   defend: { name: '기지방어', text: () => `내 건물이 공격받으면 ${Math.round(TR().helpChance * 100)}% 확률로 방어 병력을 보내고, ${Math.round(TR().towerChance * 100)}% 확률로 방어탑을 지어 줍니다(최대 ${TR().towerMax}개)` },
-  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 차고, ${TR().shareEvery}초마다 창고의 ${Math.round(TR().shareRate * 100)}%를 보내 줍니다` },
+  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 찹니다. ${TR().shareEvery}초마다 창고를 모두 실은 수송차가 내 본진으로 갑니다. 도중에 파괴되면 화물을 잃으니 호위하세요` },
 };
 const reqInit = T => { const n = T.rel.length; if (!T.req) T.req = Array(n).fill(null); if (!T.pick) T.pick = Array(n).fill(false); if (!T.stock) T.stock = { ore: 0, gas: 0 }; if (!T.towers) T.towers = Array(n).fill(0); if (!T.got) T.got = Array(n).fill(null).map(() => ({ ore: 0, gas: 0 })); return T; };
 RTS.tribeReqOf = (G, p) => { const T = G.tribe; if (!T || T.dead || p < 0 || T.rel[p] !== 'ally') return null; return reqInit(T).req[p]; };
@@ -136,6 +136,11 @@ RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.team
 RTS.commands.tribeAnswer = (G, team, c) => { RTS.tribeAnswer(G, team, c.mission | 0, c.value); };
 
 // 공병이 회당까지 걸어가서 외교를 신청하고, 끝나면 일터로 돌아간다
+// 부족 수송차: 동맹 본진(가장 가까운 자원 반납 건물)으로 가서 화물을 내려놓는다
+RTS.orders.tribeCart = function (G, u, o) { const drop = RTS.nearestDrop(G, u); if (!drop) { RTS.kill(G, u, null, true); return; }
+  if (RTS.edgeDist(u, drop) < .8) { const t = G.teams[u.team], T = G.tribe; t.res.ore += o.ore; t.res.gas += o.gas; if (T) { reqInit(T); T.got[u.team].ore += o.ore; T.got[u.team].gas += o.gas; }
+    tTell(G, u.team, `${TR().name} 수송차 도착: 광석 +${o.ore} · 에테르 +${o.gas}`, 'ok'); RTS.emit(G, 'tribeShare', { team: u.team, ore: o.ore, gas: o.gas }); u.cartDone = true; RTS.kill(G, u, null, true); return; }
+  RTS.goTo(G, u, drop); };
 RTS.orders.envoy = function (G, u, o) { const h = G.byId[o.target];
   if (!h || h.dead || h.team !== RTS.TRIBE) { RTS.issue(G, u, null); return; }
   RTS.goTo(G, u, h); if (RTS.edgeDist(u, h) > .9) return;
@@ -171,7 +176,9 @@ RTS.tribeAllyStrike = function (G, e, src) { const T = G.tribe, p = src && src.t
   if (RTS.rand(G) >= R.strikeChance) { tTell(G, p, `${R.name}은(는) 이번에는 협공하지 않았습니다`, 'market'); return; }
   const n = tribeSend(G, p, e.team, e.x, e.y); if (!n) return;
   tTell(G, p, `${R.name}이 원군 ${n}기를 보내 함께 공격합니다`, 'ok'); tTell(G, e.team, `${R.name}이 상대와 함께 공격해 옵니다`, 'warn'); RTS.emit(G, 'tribeHelp', { team: p, n, strike: 1 }); };
-RTS.tribeDeath = function (G, e, src) { const T = G.tribe; if (!T || !e.tribeHall) return; T.dead = true;
+RTS.tribeDeath = function (G, e, src) { const T = G.tribe;
+  if (e.def === 't_cart' && !e.cartDone && e.order) { tTell(G, e.team, `${TR().name} 수송차가 파괴되었습니다. 광석 ${e.order.ore} · 에테르 ${e.order.gas}을 잃었습니다`, 'warn'); if (T) T.lost = (T.lost || 0) + 1; return; }
+  if (!T || !e.tribeHall) return; T.dead = true;
   const k = src && src.team >= 0 ? src.team : -1; if (k >= 0) { G.teams[k].res.ore += TR().loot; G.teams[k].stats.loot = (G.teams[k].stats.loot || 0) + TR().loot; }
   for (const o of G.teams) tTell(G, o.id, `${TR().name} 회당이 무너졌습니다` + (o.id === k ? `. 광석 +${TR().loot}` : ''), o.id === k ? 'ok' : 'market');
   T.missions = T.missions.map(() => null); };
@@ -202,8 +209,10 @@ RTS.addSystem({ id: 'tribe', run(G) {
   const units = tribeUnits(G); reqInit(T);
   // 자원공유: 창고가 차고, shareEvery초마다 자원공유를 고른 동맹에게 일부를 보낸다
   for (const k of ['ore', 'gas']) T.stock[k] = Math.min(R.stockCap[k], T.stock[k] + R.stockRate[k]);
-  if ((G.tick / RTS.HZ) % R.shareEvery === 0) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share') return;
-    for (const k of ['ore', 'gas']) { const v = Math.floor(T.stock[k] * R.shareRate); if (v > 0) { T.stock[k] -= v; t.res[k] += v; T.got[t.id][k] += v; } } });
+  if ((G.tick / RTS.HZ) % R.shareEvery === 0 && T.stock.ore >= R.shareMin) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share' || !RTS.nearestDrop(G, { team: t.id, x: h.x, y: h.y })) return;
+    const ore = Math.floor(T.stock.ore), gas = Math.floor(T.stock.gas); T.stock.ore -= ore; T.stock.gas -= gas;
+    const p = RTS.nearestFree(G, h.x, h.y + 3), u = RTS.spawn(G, 't_cart', t.id, p.x, p.y); u.order = { type: 'tribeCart', ore, gas }; T.carts = (T.carts || 0) + 1;
+    tTell(G, t.id, `${R.name} 수송차 출발: 광석 ${ore} · 에테르 ${gas}. 병력을 골라 수송차를 누르면 호위합니다`, 'ok'); RTS.emit(G, 'tribeCart', { team: t.id, id: u.id, ore, gas, x: u.x, y: u.y }); });
   // 병력 보충
   if (units.length < R.cap && G.tick >= T.nextSpawn) { T.nextSpawn = G.tick + R.spawnSec * RTS.HZ; tribeSpawn(G, RTS.rand(G) < .5 ? 't_warrior' : 't_archer', units.length); }
   // 한가한 병력은 회당 곁으로

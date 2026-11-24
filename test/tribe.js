@@ -83,8 +83,15 @@ const notes = g => { const L = []; RTS.on(g, 'notice', d => { if (d.team === 0) 
   const hq = g.ents.find(e => e.team === 0 && RTS.defOf(e).dropoff), atk = RTS.spawn(g, 'i_blade', 1, hq.x + 3, hq.y); RTS.damage(g, hq, 1, atk); assert(!TU(g).some(u => u.order && u.order.help), '고르기 전에는 지원 없음');
   RTS.command(g, 0, { type: 'tribeReq', req: 'share' }); RTS.step(g); assert.equal(RTS.tribeReqOf(g, 0), 'share'); assert(!g.tribe.pick[0]);
   RTS.command(g, 0, { type: 'tribeReq', req: 'strike' }); RTS.step(g); assert.equal(RTS.tribeReqOf(g, 0), 'share', '문제 없이 못 바꿈');
-  const o0 = t.res.ore, g0 = t.res.gas; run(g, 60); const gotO = g.tribe.got[0].ore, gotG = g.tribe.got[0].gas; console.log('자원공유 60초: 광석', gotO, '에테르', gotG);
-  assert(gotO >= 80 && gotO <= 130 && gotG >= 15, '자원공유 양'); assert(t.res.gas - g0 >= gotG - 1);
+  // 자원공유: shareEvery초마다 창고를 모두 실은 수송차가 출발 → 본진에 도착하면 지급
+  let cart = null; for (let k = 0; k < RTS.TRIBE_RULES.shareEvery * RTS.HZ + 40 && !cart; k++) { RTS.step(g); cart = g.ents.find(e => e.def === 't_cart' && !e.dead); }
+  assert(cart && cart.team === 0 && cart.order.ore >= RTS.TRIBE_RULES.shareMin, '수송차 출발'); assert.equal(g.tribe.got[0].ore, 0, '출발만으로는 지급 안 함'); assert(g.tribe.stock.ore < 5, '창고를 비움');
+  const load = cart.order, g0 = t.res.gas; let k = 0; while (!cart.dead && k++ < 200 * RTS.HZ) RTS.step(g);
+  console.log(`자원공유 수송차: 광석 ${load.ore} · 에테르 ${load.gas}, 이동 ${(k / RTS.HZ).toFixed(0)}초`); assert.equal(g.tribe.got[0].ore, load.ore, '도착 지급'); assert(t.res.gas - g0 >= load.gas - 1);
+  // 수송차가 파괴되면 화물을 잃는다
+  { const N = []; RTS.on(g, 'notice', d => { if (d.team === 0) N.push(d.text); }); g.tribe.stock.ore = 400; g.tribe.stock.gas = 100; while (!g.ents.some(e => e.def === 't_cart' && !e.dead)) RTS.step(g);
+    const c2 = g.ents.find(e => e.def === 't_cart' && !e.dead), before = g.tribe.got[0].ore, foe = RTS.spawn(g, 'i_blade', 1, c2.x + 1, c2.y); RTS.damage(g, c2, 9999, foe); run(g, 1);
+    assert.equal(g.tribe.got[0].ore, before, '파괴된 화물은 지급 안 함'); assert(N.some(x => x.includes('파괴')), '파괴 알림'); RTS.kill(g, foe, null, true); }
   // 바꾸기: 1개만 맞히면 그대로 + 대기, 2개 맞히면 다시 고르기
   RTS.command(g, 0, { type: 'tribeRenew' }); RTS.step(g); const M = g.tribe.missions[0]; assert(M && M.length === 2, '바꾸기 문제');
   t.res.ore = 999; RTS.command(g, 0, { type: 'tribeAnswer', mission: 0, value: M[0].ans }); for (const v of [1, 2, 3]) RTS.command(g, 0, { type: 'tribeAnswer', mission: 1, value: v }); run(g, 2);

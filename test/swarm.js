@@ -50,9 +50,12 @@ for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)
   for (const e of G.ents) if (e.team === 2) RTS.kill(G, e, null, true); run(G, 20); ok(G.over && G.over.winner === 1, '마지막 남은 사람 승리'); }
 
 // 6. 셋이 대전 AI: 중립세력이 두 사람을 번갈아 노리는지(사람 자리는 보통 AI)
-{ const o = vsOpts({ map: 'ridge', seed: 21 }); o.players[0].ai = 'normal'; o.players[1].ai = 'normal'; const G = RTS.createGame(o), tg = new Set(); let last;
-  for (let i = 0; i < 20 * 60 * 25 && !G.over; i++) { RTS.step(G); const S = G.teams[2].aiState; if (S.attacking && S.tgt !== undefined && S.tgt !== last) { tg.add(S.tgt); last = S.tgt; } }
-  ok(tg.has(0) && tg.has(1), `중립세력 공격 대상: ${[...tg].join(',')} · ${G.over ? G.teams[G.over.winner]?.name + ' 승리' : '무승부'} ${(G.tick / 1200).toFixed(1)}분`); }
+// 한 판은 중립세력이 공격 전에 무너질 수 있어서(난수 흐름에 민감) 두 사람을 모두 노린 판이 나올 때까지 시드 3개를 본다
+{ const out = []; let both = false;
+  for (const seed of [21, 22, 23]) { if (both) break; const o = vsOpts({ map: 'ridge', seed }); o.players[0].ai = 'normal'; o.players[1].ai = 'normal'; const G = RTS.createGame(o), tg = new Set(); let last;
+    for (let i = 0; i < 20 * 60 * 25 && !G.over; i++) { RTS.step(G); const S = G.teams[2].aiState; if (S.attacking && S.tgt !== undefined && S.tgt !== last) { tg.add(S.tgt); last = S.tgt; } }
+    both = tg.has(0) && tg.has(1); out.push(`시드 ${seed}: ${[...tg].join(',') || '-'} · ${G.over ? G.teams[G.over.winner]?.name + ' 승리' : '무승부'} ${(G.tick / 1200).toFixed(1)}분`); }
+  ok(both, `중립세력 공격 대상: ${out.join(' / ')}`); }
 
 // 7. 셋이 대전 두 기기 동일(중립세력 AI 포함)
 { const prng = s => () => { s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), s | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };

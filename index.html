@@ -231,7 +231,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '4ef0303';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '762b68c';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -711,6 +711,21 @@ function moveToEnt(G, u, t) {
   u.dest = { x: t.x, y: t.y }; u.destEnt = t.id; u.needPath = true;
 }
 RTS.goTo = moveToEnt;
+RTS.moveToPt = (G, u, x, y) => moveTo(G, u, x, y);
+RTS.engage = (G, u, t, chase) => engage(G, u, t, chase);
+// 호위: 대상(내 유닛·동료·부족 수송차)을 따라다니며, 대상 7칸 안의 적이나 나를 노리는 적을 공격한다. 대상이 사라지면 끝
+RTS.ESCORT = { guard: 7, leash: 10, near: 2.2 };
+RTS.orders.escort = function (G, u, o) { const t = G.byId[o.target], E = RTS.ESCORT;
+  if (!t || t.dead || t === u || !(t.team === u.team || RTS.ally(G, u.team, t.team))) { nextOrder(G, u); return; }
+  const w = RTS.weapon(u), dt = Math.hypot(u.x - t.x, u.y - t.y);
+  if (w && dt < E.leash) { let best = null, bd = 1e9;
+    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
+      if (!best) best = RTS.scan(G, u, w, RTS.wStat(G, u, w, 'range')); u.tgt = best ? best.id : 0; }
+    else { const c = G.byId[u.tgt]; if (c && !c.dead && Math.hypot(c.x - t.x, c.y - t.y) < E.guard + 2) best = c; }
+    if (best && engage(G, u, best, true)) return; }
+  const a = (u.id * 2.39996) % (Math.PI * 2), gx = t.x + Math.cos(a) * E.near, gy = t.y + Math.sin(a) * E.near;
+  if (Math.hypot(u.x - gx, u.y - gy) > 1.1) { if (!u.dest || u.destEnt || Math.hypot(u.dest.x - gx, u.dest.y - gy) > 1.5 && (G.tick + u.id) % 8 === 0 || !u.path && !u.needPath) moveTo(G, u, gx, gy); }
+  else stopMove(u); };
 const arrived = u => !u.path && !u.needPath;
 function releaseNode(G, u) { if (u.claim) { const n = G.byId[u.claim]; if (n && n.busy === u.id) n.busy = 0; u.claim = 0; } }
 
@@ -729,6 +744,7 @@ RTS.commands.order = function (G, team, c) {
     if (defOf(u).kind !== 'unit' || defOf(u).uncontrollable) continue;
     if (!c.order) { RTS.issue(G, u, null); continue; }
     if (u.sieged && ['move', 'patrol'].includes(c.order.type)) continue;
+    if (defOf(u).immobile && ['move', 'patrol', 'amove', 'escort'].includes(c.order.type)) continue;
     const pos = c.spread && c.spread[u.id];
     const o = Object.assign({}, c.order, pos ? { x: pos.x, y: pos.y } : null);
     if (o.type === 'patrol') { o.ax = u.x; o.ay = u.y; }
@@ -765,7 +781,7 @@ RTS.commands.ability = function (G, team, c) {
     else RTS.useAbility(G, u, ab, c);
   }
 };
-RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]);
+RTS.abilityReady = (G, u, ab) => (u.cds[ab.id] || 0) <= G.tick && (!ab.requires || G.teams[u.team].upgrades[ab.requires]) && !(ab.need && ab.need(G, u));
 RTS.useAbility = function (G, u, ab, c) { if (ab.use(G, u, c) !== false && ab.cooldown) u.cds[ab.id] = G.tick + Math.round(ab.cooldown * RTS.HZ); RTS.emit(G, 'ability', { e: u, ab }); };
 RTS.addBuff = function (G, u, id, sec, mods) { u.buffs = u.buffs.filter(b => b.id !== id); u.buffs.push({ id, until: G.tick + Math.round(sec * RTS.HZ), mods }); };
 
@@ -830,7 +846,7 @@ RTS.kill = function (G, e, src, silent) {
   if (src && src.team >= 0 && !silent) G.teams[src.team].stats.kills++;
   if (d.kind === 'building') for (const p of e.prod || []) if (p.kind === 'upgrade') delete G.teams[e.team].research[p.id];
   if (!silent) RTS.emit(G, 'death', { e });
-  if (e.team === RTS.TRIBE && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
+  if ((e.team === RTS.TRIBE || e.def === 't_cart') && RTS.tribeDeath) RTS.tribeDeath(G, e, src);
   if (d.dropoff && e.team >= 0 && !silent && RTS.complete(e) && !G.ents.some(o => !o.dead && o.team === e.team && defOf(o).dropoff && RTS.complete(o))) RTS.warFall(G, e.team);
 };
 
@@ -1016,7 +1032,7 @@ function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
     if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y;
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
@@ -1249,6 +1265,25 @@ RTS.commands.merge = function (G, team, c) {
   RTS.say(G, team, `${D[m.into].name} 합체: 재료가 모이는 중`, 'ok');
 };
 // 재료는 기준 유닛에게 걸어가고, 기준 유닛은 제자리에서 기다린다. 다른 명령을 받으면 합체가 취소된다.
+// 변신: ★2(RANK.max) 합체 유닛이 다른 유닛(형태 정의)으로 바뀐다. 이동 방식(지상·공중·고정), 능력치, 그림이 모두 바뀐다.
+// 형태 정의는 RTS.formDef(원래 id, 바꿀 값)로 만든다. 원래 정의에 formTo, 형태 정의에 formOf가 붙는다. 체력 비율·★·명령 대기열 없음.
+RTS.formDef = function (base, o) { const D = RTS.defs.entities, b = D[base]; if (!b) throw new Error('변신 원래 유닛 없음: ' + base);
+  const d = JSON.parse(JSON.stringify(b)), id = base + '_f'; Object.assign(d, { name: o.name, abbr: o.abbr || b.abbr, art: o.art, desc: o.desc, formOf: base, formAi: o.ai || 'combat', formTxt: o.txt, abilities: b.abilities.slice() });
+  delete d.formTo; d.air = !!o.air; if (o.air) d.tags = (d.tags || []).filter(t => t !== 'ground'); if (o.immobile) d.immobile = true; else delete d.immobile;
+  d.hp = Math.round(b.hp * (o.hp || 1)); d.speed = +(b.speed * (o.speed || 1)).toFixed(2); d.armor = Math.max(0, (b.armor || 0) + (o.armor || 0)); if (o.r) d.r = o.r;
+  if (d.weapon) { const w = d.weapon; w.damage = Math.round(w.damage * (o.damage || 1) * 10) / 10; w.cooldown = Math.round(w.cooldown * (o.cooldown || 1) * 100) / 100; w.range = Math.max(1, +(w.range + (o.range || 0)).toFixed(1));
+    if (o.hitAir !== undefined) { if (o.hitAir) delete w.air; else w.air = false; } if (o.splash !== undefined) w.splash = o.splash; }
+  b.formTo = id; return d; };
+RTS.formPair = d => d.formTo || d.formOf || null;
+RTS.morphBlock = function (G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to) return '변신할 수 없는 유닛입니다';
+  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다';
+  if (d.air && !RTS.defs.entities[to].air && !landSpot(G, u)) return '근처에 내려앉을 땅이 없습니다. 땅 위로 옮기세요'; return ''; };
+// 비행 → 지상: 바로 아래가 못 가는 곳이면 4칸 안의 가장 가까운 땅에 내려앉는다
+function landSpot(G, u) { const ok = (x, y) => RTS.walkable(G, Math.floor(x), Math.floor(y)); if (ok(u.x, u.y)) return { x: u.x, y: u.y }; const p = RTS.nearestFree(G, u.x, u.y, 4); return p && Math.hypot(p.x - u.x, p.y - u.y) <= 4.5 && ok(p.x, p.y) ? p : null; }
+RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const to = RTS.formPair(RTS.defOf(u)), ratio = u.hp / RTS.stat(G, u, 'hp');
+  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); u.x = p.x; u.y = p.y; }
+  u.def = to; u.form = RTS.defs.entities[to].formOf ? 1 : 0; u.sieged = false; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0;
+  u.hp = Math.max(1, ratio * RTS.stat(G, u, 'hp')); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {
   const h = G.byId[o.host]; if (!h || h.dead) { RTS.issue(G, u, null); return; }
   if (h === u) { RTS.stopMove(u); return; }
@@ -1307,15 +1342,18 @@ RTS.healerCount = (G, team) => { let n = 0; for (const e of G.ents) { if (e.dead
 // 수리(개척단 공병): 일꾼 정의의 repair { tag, amount, cooldown, range }
 RTS.repairBlock = function (G, u, t) { const r = RTS.defOf(u).repair; if (!r) return '수리할 수 없는 유닛입니다';
   if (!t || t.dead || t.team !== u.team || t === u) return '내 유닛만 수리할 수 있습니다';
-  const d = RTS.defOf(t); if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛만 수리할 수 있습니다';
+  const d = RTS.defOf(t);
+  if (d.kind === 'building') { if (!r.building) return '건물은 수리할 수 없습니다'; if (!RTS.complete(t)) return '짓는 중인 건물은 공사로 완성하세요'; if (t.demo) return '철거 중인 건물입니다'; }
+  else if (d.kind !== 'unit' || !(d.tags || []).includes(r.tag)) return '기계 유닛과 건물만 수리할 수 있습니다';
   if (t.hp >= RTS.stat(G, t, 'hp')) return '체력이 가득 차 있습니다';
   return ''; };
 RTS.orders.repair = function (G, u, o) { const t = G.byId[o.target], r = RTS.defOf(u).repair;
-  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp')) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
+  if (!r || !t || t.dead || t.team !== u.team || t.hp >= RTS.stat(G, t, 'hp') || t.demo) { RTS.issue(G, u, null); RTS.backToWork(G, u); return; }
   if (RTS.edgeDist(u, t) > r.range) { RTS.goTo(G, u, t); return; }
   RTS.stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
   if (u.cd > 0) return; u.cd = Math.round(r.cooldown * RTS.HZ);
-  if (!RTS.healOnce(G, u, t, r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
+  const bld = RTS.defOf(t).kind === 'building';
+  if (!RTS.healOnce(G, u, t, bld ? r.building : r.amount, RTS.SERVICE.repair, '수리')) { RTS.issue(G, u, null); RTS.backToWork(G, u); } };
 
 // 철거: 일꾼 누구나. 완공된 내 건물, 생산·연구·강화 대기열이 비어 있을 때. 비용은 철거를 시작할 때 한 번 낸다(되돌려 받지 않는다)
 RTS.demoCost = d => { const S = RTS.SERVICE, c = d.cost || {}, out = { ore: Math.max(S.demoMin, Math.round((c.ore || 0) * S.demo)) }; if (c.gas) out.gas = Math.round(c.gas * S.demo); return out; };
@@ -1571,22 +1609,22 @@ RTS.aiDiplomacy = function (G, t, diff, units) {
 // 적대면 주기적으로 습격한다. 직접 공격해도 적대가 된다.
 RTS.TRIBE_RULES = {
   name: '잿빛 부족',
-  cap: 10,            // 유지하는 최대 병력
-  spawnSec: 20,       // 병력 보충 간격
+  cap: 14,            // 유지하는 최대 병력
+  spawnSec: 15,       // 병력 보충 간격
   start: ['t_warrior', 't_warrior', 't_archer', 't_archer'],
   guards: 2,          // 습격·지원 때 회당에 남기는 수
-  helpChance: .5,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
+  helpChance: .7,     // 기지방어: 내 건물이 공격받을 때 지원군을 보낼 확률
   helpEvery: 25,      // 기지방어: 판정 최소 간격(초)
-  helpMax: 6,         // 기지방어·협공: 한 번에 보내는 원군 수
+  helpMax: 8,         // 기지방어·협공: 한 번에 보내는 원군 수
   helpWar: 45,        // 원군을 보내는 동안 상대와 싸우는 시간(초)
-  towerChance: .35,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
-  towerMax: 3,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
-  strikeChance: .5,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
-  strikeEvery: 30,    // 협공: 판정 최소 간격(초)
-  stockRate: { ore: 2, gas: .5 },   // 자원공유: 부족 창고가 1초마다 채워지는 양
-  stockCap: { ore: 300, gas: 80 },  // 자원공유: 창고 최대
-  shareEvery: 10,     // 자원공유: 이 간격(초)마다
-  shareRate: .5,      // 창고의 이 비율을 동맹에게 보낸다
+  towerChance: .5,   // 기지방어: 판정마다 내 방어탑을 지어 줄 확률
+  towerMax: 5,        // 기지방어: 한 게임에 지어 주는 최대 방어탑 수
+  strikeChance: .7,   // 협공: 내가 적을 공격할 때 원군을 보낼 확률
+  strikeEvery: 25,    // 협공: 판정 최소 간격(초)
+  stockRate: { ore: 4, gas: 1 },    // 자원공유: 부족 창고가 1초마다 채워지는 양
+  stockCap: { ore: 600, gas: 150 }, // 자원공유: 창고 최대
+  shareEvery: 60,     // 자원공유: 이 간격(초)마다 창고를 비워 수송차로 보낸다
+  shareMin: 60,       // 창고 광석이 이만큼은 있어야 출발
   retrySec: 60,       // 미션 1개 성공 뒤 다시 외교할 수 있을 때까지
   raidFirst: 60,      // 적대가 된 뒤 첫 습격까지
   raidEvery: [110, 150],
@@ -1606,7 +1644,7 @@ RTS.tribeRelName = r => REL_NAME[r] || r;
 RTS.TRIBE_REQS = {
   strike: { name: '협공', text: () => `내가 적을 공격하면 ${Math.round(TR().strikeChance * 100)}% 확률로 원군(최대 ${TR().helpMax}기)을 보내 함께 공격합니다 (${TR().strikeEvery}초에 한 번 판정)` },
   defend: { name: '기지방어', text: () => `내 건물이 공격받으면 ${Math.round(TR().helpChance * 100)}% 확률로 방어 병력을 보내고, ${Math.round(TR().towerChance * 100)}% 확률로 방어탑을 지어 줍니다(최대 ${TR().towerMax}개)` },
-  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 차고, ${TR().shareEvery}초마다 창고의 ${Math.round(TR().shareRate * 100)}%를 보내 줍니다` },
+  share:  { name: '자원공유', text: () => `부족 창고가 초당 광석 ${TR().stockRate.ore}·에테르 ${TR().stockRate.gas}씩 찹니다. ${TR().shareEvery}초마다 창고를 모두 실은 수송차가 내 본진으로 갑니다. 도중에 파괴되면 화물을 잃으니 호위하세요` },
 };
 const reqInit = T => { const n = T.rel.length; if (!T.req) T.req = Array(n).fill(null); if (!T.pick) T.pick = Array(n).fill(false); if (!T.stock) T.stock = { ore: 0, gas: 0 }; if (!T.towers) T.towers = Array(n).fill(0); if (!T.got) T.got = Array(n).fill(null).map(() => ({ ore: 0, gas: 0 })); return T; };
 RTS.tribeReqOf = (G, p) => { const T = G.tribe; if (!T || T.dead || p < 0 || T.rel[p] !== 'ally') return null; return reqInit(T).req[p]; };
@@ -1702,6 +1740,11 @@ RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.team
 RTS.commands.tribeAnswer = (G, team, c) => { RTS.tribeAnswer(G, team, c.mission | 0, c.value); };
 
 // 공병이 회당까지 걸어가서 외교를 신청하고, 끝나면 일터로 돌아간다
+// 부족 수송차: 동맹 본진(가장 가까운 자원 반납 건물)으로 가서 화물을 내려놓는다
+RTS.orders.tribeCart = function (G, u, o) { const drop = RTS.nearestDrop(G, u); if (!drop) { RTS.kill(G, u, null, true); return; }
+  if (RTS.edgeDist(u, drop) < .8) { const t = G.teams[u.team], T = G.tribe; t.res.ore += o.ore; t.res.gas += o.gas; if (T) { reqInit(T); T.got[u.team].ore += o.ore; T.got[u.team].gas += o.gas; }
+    tTell(G, u.team, `${TR().name} 수송차 도착: 광석 +${o.ore} · 에테르 +${o.gas}`, 'ok'); RTS.emit(G, 'tribeShare', { team: u.team, ore: o.ore, gas: o.gas }); u.cartDone = true; RTS.kill(G, u, null, true); return; }
+  RTS.goTo(G, u, drop); };
 RTS.orders.envoy = function (G, u, o) { const h = G.byId[o.target];
   if (!h || h.dead || h.team !== RTS.TRIBE) { RTS.issue(G, u, null); return; }
   RTS.goTo(G, u, h); if (RTS.edgeDist(u, h) > .9) return;
@@ -1737,7 +1780,9 @@ RTS.tribeAllyStrike = function (G, e, src) { const T = G.tribe, p = src && src.t
   if (RTS.rand(G) >= R.strikeChance) { tTell(G, p, `${R.name}은(는) 이번에는 협공하지 않았습니다`, 'market'); return; }
   const n = tribeSend(G, p, e.team, e.x, e.y); if (!n) return;
   tTell(G, p, `${R.name}이 원군 ${n}기를 보내 함께 공격합니다`, 'ok'); tTell(G, e.team, `${R.name}이 상대와 함께 공격해 옵니다`, 'warn'); RTS.emit(G, 'tribeHelp', { team: p, n, strike: 1 }); };
-RTS.tribeDeath = function (G, e, src) { const T = G.tribe; if (!T || !e.tribeHall) return; T.dead = true;
+RTS.tribeDeath = function (G, e, src) { const T = G.tribe;
+  if (e.def === 't_cart' && !e.cartDone && e.order) { tTell(G, e.team, `${TR().name} 수송차가 파괴되었습니다. 광석 ${e.order.ore} · 에테르 ${e.order.gas}을 잃었습니다`, 'warn'); if (T) T.lost = (T.lost || 0) + 1; return; }
+  if (!T || !e.tribeHall) return; T.dead = true;
   const k = src && src.team >= 0 ? src.team : -1; if (k >= 0) { G.teams[k].res.ore += TR().loot; G.teams[k].stats.loot = (G.teams[k].stats.loot || 0) + TR().loot; }
   for (const o of G.teams) tTell(G, o.id, `${TR().name} 회당이 무너졌습니다` + (o.id === k ? `. 광석 +${TR().loot}` : ''), o.id === k ? 'ok' : 'market');
   T.missions = T.missions.map(() => null); };
@@ -1768,8 +1813,10 @@ RTS.addSystem({ id: 'tribe', run(G) {
   const units = tribeUnits(G); reqInit(T);
   // 자원공유: 창고가 차고, shareEvery초마다 자원공유를 고른 동맹에게 일부를 보낸다
   for (const k of ['ore', 'gas']) T.stock[k] = Math.min(R.stockCap[k], T.stock[k] + R.stockRate[k]);
-  if ((G.tick / RTS.HZ) % R.shareEvery === 0) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share') return;
-    for (const k of ['ore', 'gas']) { const v = Math.floor(T.stock[k] * R.shareRate); if (v > 0) { T.stock[k] -= v; t.res[k] += v; T.got[t.id][k] += v; } } });
+  if ((G.tick / RTS.HZ) % R.shareEvery === 0 && T.stock.ore >= R.shareMin) G.teams.forEach(t => { if (RTS.tribeReqOf(G, t.id) !== 'share' || !RTS.nearestDrop(G, { team: t.id, x: h.x, y: h.y })) return;
+    const ore = Math.floor(T.stock.ore), gas = Math.floor(T.stock.gas); T.stock.ore -= ore; T.stock.gas -= gas;
+    const p = RTS.nearestFree(G, h.x, h.y + 3), u = RTS.spawn(G, 't_cart', t.id, p.x, p.y); u.order = { type: 'tribeCart', ore, gas }; T.carts = (T.carts || 0) + 1;
+    tTell(G, t.id, `${R.name} 수송차 출발: 광석 ${ore} · 에테르 ${gas}. 병력을 골라 수송차를 누르면 호위합니다`, 'ok'); RTS.emit(G, 'tribeCart', { team: t.id, id: u.id, ore, gas, x: u.x, y: u.y }); });
   // 병력 보충
   if (units.length < R.cap && G.tick >= T.nextSpawn) { T.nextSpawn = G.tick + R.spawnSec * RTS.HZ; tribeSpawn(G, RTS.rand(G) < .5 ? 't_warrior' : 't_archer', units.length); }
   // 한가한 병력은 회당 곁으로
@@ -2406,6 +2453,12 @@ RTS.mod({
     siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
       use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
       ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
+    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다',
+      need: (G, u) => RTS.morphBlock(G, u),
+      use(G, u) { return RTS.morph(G, u); },
+      // AI: 'combat' 형태는 적이 가까울 때, 'travel' 형태(빠른 이동·비행)는 적이 없을 때 쓴다
+      ai(G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to || (u.rank || 0) < RTS.RANK.max) return; const f = RTS.defs.entities[d.formOf || to], near = !!RTS.scan(G, u, RTS.weapon(u), 8);
+        const want = f.formAi === 'combat' ? near : !near; if (want !== !!d.formOf && !RTS.morphBlock(G, u)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
@@ -2435,11 +2488,12 @@ RTS.mod({
     t_hall:    { kind: 'building', name: '부족 회당', art: 't_hall', size: [4, 3], hp: 1600, armor: 2, sight: 10, aggro: 7, weapon: { damage: 10, range: 7, cooldown: 1.2, speed: 22, art: 'tracer' }, desc: '잿빛 부족의 중심. 공병으로 우클릭하면 외교 미션을 받는다' },
     t_tower:   { kind: 'building', name: '부족 망루', art: 't_tower', size: [2, 2], hp: 500, armor: 1, sight: 10, aggro: 7, weapon: { damage: 11, range: 7, cooldown: 1, speed: 22, art: 'tracer' }, desc: '적대 세력만 공격한다' },
     t_warrior: { kind: 'unit', name: '부족 전사', abbr: '전', art: 'tribal', r: .42, hp: 95, armor: 1, speed: 2.9, sight: 8, tags: ['bio'], weapon: { damage: 10, range: .4, cooldown: .9, air: false }, desc: '도끼를 든 근접 전사. 지상만 공격' },
+    t_cart:    { kind: 'unit', name: '부족 수송차', abbr: '송', art: 'caravan', uncontrollable: true, passive: true, r: .6, hp: 320, armor: 1, speed: 2.3, sight: 6, tags: ['bio'], desc: '잿빛 부족이 동맹에게 보내는 자원 수송차. 도착하면 실은 광석·에테르를 내려놓는다. 파괴되면 화물을 잃는다 — 병력으로 호위하세요' },
     t_archer:  { kind: 'unit', name: '부족 궁수', abbr: '궁', art: 'tribal', tint: 1, r: .38, hp: 60, speed: 2.8, sight: 9, tags: ['bio'], weapon: { damage: 8, range: 5.5, cooldown: 1, speed: 20, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
 
     // ── 개척단: 일꾼이 건물 옆에서 끝까지 짓는다 ──
     p_worker:  { kind: 'unit', name: '공병', abbr: '공', key: 'W', art: 'worker', r: .36, hp: 45, speed: 2.9, sight: 7, supply: 1, cost: { ore: 50 }, time: 12, gather: true, carry: 5, passive: true, tags: ['bio'],
-      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8 }, desc: '자원 채취와 건설, 기계 유닛 수리(자원 소모), 건물 철거' },
+      weapon: { damage: 4, range: .3, cooldown: 1.2 }, builds: ['p_depot', 'p_extractor', 'p_barracks', 'p_lab', 'p_turret', 'p_factory', 'p_hq'], repair: { tag: 'mech', amount: 8, cooldown: 1, range: .8, building: 15 }, desc: '자원 채취와 건설, 기계 유닛·건물 수리(자원 소모), 건물 철거' },
     p_rifle:   { kind: 'unit', name: '소총병', abbr: '소', key: 'R', art: 'trooper', r: .38, hp: 50, speed: 2.7, sight: 8, supply: 1, cost: { ore: 50 }, time: 14, tags: ['bio'], abilities: ['stim'],
       weapon: { damage: 6, range: 5, cooldown: .8, speed: 26, art: 'tracer' }, desc: '기본 보병. 공중 공격 가능' },
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
@@ -2684,12 +2738,12 @@ RTS.mod({
 // at 건물이 강화 2단계면, 재료 유닛 하나를 길게 누르거나 명령 카드 '합체'로 주변 재료를 모아 합친다(upgrade.js).
 // 스탯은 RTS.fuseDef가 재료에서 계산한다: 체력 합, 초당 피해 합 × 0.75(두 기면 1.5배), 속도는 가장 느린 재료.
 RTS.mod({ entities: {
-  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim'], desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전' }),
-  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock'], weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
-  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사' }),
-  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock'], desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
-  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid'], desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
-  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy'], desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
+  p_commando: RTS.fuseDef({ p_rifle: 1, p_gren: 1 }, { name: '특공대', abbr: '특', art: 'commando', r: .48, abilities: ['stim', 'morph'], desc: '소총병과 척탄병의 합체. 범위 사격, 공중 공격 가능, 과충전.' }),
+  p_titan:    RTS.fuseDef({ p_tank: 2, p_gunship: 2, p_worker: 1 }, { name: '거대로봇', abbr: '거', art: 'titan', r: 1.25, abilities: ['shock', 'morph'], weapon: { splash: 1.2 }, desc: '포격전차 2·강습기 2·공병 1의 합체. 지상·공중 범위 화력, 충격파' }),
+  i_duelist:  RTS.fuseDef({ i_blade: 2, i_striker: 1 }, { name: '쌍날기사', abbr: '쌍', art: 'duelist', r: .6, abilities: ['morph'], desc: '칼날봇 2·사수봇 1의 합체. 단단한 원거리 기사.' }),
+  i_juggernaut: RTS.fuseDef({ i_colossus: 2, i_wasp: 1, i_worker: 1 }, { name: '철갑거신', abbr: '신', art: 'juggernaut', r: 1.3, abilities: ['shock', 'morph'], desc: '중장봇 2·말벌기 1·수집봇 1의 합체. 매우 단단한 범위 화력, 공중 공격 가능' }),
+  s_venom:    RTS.fuseDef({ s_claw: 2, s_spitter: 1 }, { name: '맹독충', abbr: '맹', art: 'venom', r: .55, abilities: ['acid', 'morph'], desc: '갈퀴충 2·산탄충 1의 합체. 원거리 사격, 산성 분사' }),
+  s_behemoth: RTS.fuseDef({ s_brute: 2, s_drake: 2 }, { name: '포자거수', abbr: '수', art: 'behemoth', r: 1.3, abilities: ['frenzy', 'morph'], desc: '거대충 2·독침비행체 2의 합체. 거대한 체력, 지상·공중 공격, 광분' }),
 }, merges: {
   // parts: 재료와 수, at: 강화 2단계가 필요한 건물, into: 결과 유닛
   commando:   { faction: 'pioneers', at: 'p_barracks', parts: { p_rifle: 1, p_gren: 1 }, into: 'p_commando' },
@@ -2699,6 +2753,16 @@ RTS.mod({ entities: {
   venom:      { faction: 'swarm', at: 's_pool', parts: { s_claw: 2, s_spitter: 1 }, into: 's_venom' },
   behemoth:   { faction: 'swarm', at: 's_nest', parts: { s_brute: 2, s_drake: 2 }, into: 's_behemoth' },
 } });
+// 변신 형태(★2 합체 유닛, 명령 카드 '변신'). 원래 유닛과 이동 방식·능력치·그림이 다르다. 값은 원래 유닛 대비(곱하기, armor·range는 더하기)
+RTS.mod({ entities: {
+  p_commando_f:   RTS.formDef('p_commando',   { name: '강습 바이크', art: 'bike', ai: 'travel', speed: 1.7, hp: .75, damage: .8, range: -1.5, txt: '지상 고속 이동. 속도 ×1.7, 체력 ×0.75, 공격력 ×0.8, 사거리 -1.5', desc: '특공대가 변신한 고속 바이크. 빠르지만 약하다' }),
+  p_titan_f:      RTS.formDef('p_titan',      { name: '비행 전함', art: 'skyship', ai: 'travel', air: true, speed: 1.5, hp: .85, armor: -2, damage: .7, hitAir: true, txt: '하늘을 난다(지형 무시, 대공 무기에만 맞음). 속도 ×1.5, 체력 ×0.85, 방어 -2, 공격력 ×0.7', desc: '거대로봇이 변신한 비행 전함. 지형을 넘어 빠르게 날지만 장갑과 화력이 약해진다' }),
+  i_duelist_f:    RTS.formDef('i_duelist',    { name: '포격 요새', art: 'fortress', ai: 'combat', immobile: true, range: 5, damage: 1.6, cooldown: 1.3, armor: 2, splash: .8, txt: '제자리 고정 포대. 사거리 +5, 공격력 ×1.6(범위), 공격 간격 ×1.3, 방어 +2', desc: '쌍날기사가 땅에 다리를 박고 변신한 포격 요새. 움직일 수 없다' }),
+  i_juggernaut_f: RTS.formDef('i_juggernaut', { name: '강습 비행선', art: 'airship', ai: 'travel', air: true, speed: 1.4, hp: .85, armor: -3, damage: .75, txt: '하늘을 난다. 속도 ×1.4, 체력 ×0.85, 방어 -3, 공격력 ×0.75', desc: '철갑거신이 변신한 비행선. 느린 보행 대신 하늘로 이동하지만 약해진다' }),
+  s_venom_f:      RTS.formDef('s_venom',      { name: '날개 맹독충', art: 'wingvenom', ai: 'travel', air: true, speed: 1.5, hp: .7, damage: .8, txt: '하늘을 난다. 속도 ×1.5, 체력 ×0.7, 공격력 ×0.8', desc: '맹독충이 날개를 펼친 모습. 빠르게 날아 기습하지만 연약하다' }),
+  s_behemoth_f:   RTS.formDef('s_behemoth',   { name: '갑각 거수', art: 'shellbeast', ai: 'combat', hp: 1.4, armor: 3, speed: .55, damage: .9, txt: '두꺼운 갑각. 체력 ×1.4, 방어 +3, 속도 ×0.55, 공격력 ×0.9', desc: '포자거수가 갑각을 두른 모습. 매우 단단하지만 느리다' }),
+} });
+
 
 // settings.js — 설정 항목 정의. 항목을 추가하면 설정 메뉴에 자동으로 나타난다.
 // 코드에서는 RTS.cfg(G).키 로 읽는다. startOnly는 새 게임부터, client는 이 브라우저 전용(시뮬레이션과 무관).
@@ -3717,6 +3781,7 @@ RTS.Renderer = function (canvas, app) {
   R.attach = function (G) {
     RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
@@ -3814,6 +3879,25 @@ RTS.Renderer = function (canvas, app) {
     return { roof: S.roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
   }
   let unitLight = null;
+  // 유닛 그림 저장소: (그림, 팀 색, 진영, 종류, 방향 16칸, 움직임 단계, 상태, 크기, 배율)마다 한 번 그려 두고 매 프레임 복사한다.
+  // 방향 칸 사이는 복사할 때 남은 각도만큼 돌린다(빛 방향 오차 ±11°). 메모리는 픽셀 수 한도(UCACHE.budget)를 넘으면 오래 안 쓴 그림부터 버린다.
+  const UCACHE = { map: new Map(), px: 0, budget: 7e6, dirs: 16, phases: 6, hits: 0, miss: 0 };
+  R.ucache = UCACHE;
+  function unitSpriteCached(name, fn, P, st, facing, size) {
+    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = UCACHE.dirs, fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
+    const ph = Math.floor(st.t / 3) % UCACHE.phases; st.t = ph * 3 + (st.moving ? 0 : 0);
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
+    let e = UCACHE.map.get(key);
+    if (e) { UCACHE.hits++; UCACHE.map.delete(key); UCACHE.map.set(key, e); }
+    else { UCACHE.miss++; const L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), cv = document.createElement('canvas'); cv.width = cv.height = px; const u = cv.getContext('2d');
+      u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); u.rotate(fq); fn(u, P, st);
+      u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); const sc = Math.max(.8, size / 13); u.scale(sc, sc); u.globalCompositeOperation = 'source-atop';
+      if (!unitLight) { unitLight = u.createRadialGradient(-5, -6, 1, -5, -6, 19); unitLight.addColorStop(0, 'rgba(255,255,255,.34)'); unitLight.addColorStop(.42, 'rgba(255,255,255,0)'); unitLight.addColorStop(.68, 'rgba(0,0,0,0)'); unitLight.addColorStop(1, 'rgba(0,0,0,.42)'); }
+      u.fillStyle = unitLight; u.fillRect(-L, -L, L * 2, L * 2);
+      e = { cv, L, px }; UCACHE.map.set(key, e); UCACHE.px += px * px;
+      for (const [kk, v] of UCACHE.map) { if (UCACHE.px <= UCACHE.budget) break; UCACHE.map.delete(kk); UCACHE.px -= v.px * v.px; } }
+    return { cv: e.cv, L: e.L, rot: facing - fq };
+  }
   function unitSprite(fn, P, st, facing, size, hit) { // 유닛: 몸체를 그린 뒤 고정된 방향의 빛을 입혀 둥글게 보이게 한다
     const k = Math.min(2, R.cam.z), L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), u = fit(S.unit, px, px); // 큰 합체 유닛은 그림 판을 키운다
     u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); u.rotate(facing); fn(u, P, st);
@@ -3929,8 +4013,9 @@ RTS.Renderer = function (canvas, app) {
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
         if ((t + e.id) % 18 === 0) fx({ k: 'dust', x: e.x - Math.cos(e.facing) * d.r * .9, y: e.y - Math.sin(e.facing) * d.r * .9, s: d.r * TS * .8, life: 28 }); }
       if (LON) { light(x, y - lift, d.r * TS * 3, col3((RTS.TEAM[e.team] || NEUTRAL).main), d.air ? .3 : .2); if (d.air) light(x - Math.cos(e.facing) * 12, y - lift - Math.sin(e.facing) * 12, 30, [1, .7, .35], .45); }
-      if (depthOn()) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
-      else { c.save(); c.translate(x, y - lift); c.rotate(e.facing); if (hit) c.filter = 'brightness(1.8)'; fn(c, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3)); c.restore(); }
+      if (d.air) { c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(x + 6, y + 4, d.r * TS * .9, d.r * TS * .55, 0, 0, TAU); c.fill(); } // 나는 유닛 그림자
+      if (hit) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
+      else { const sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS); c.save(); c.translate(x, y - lift); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
@@ -4055,6 +4140,229 @@ RTS.Renderer = function (canvas, app) {
   };
   return R;
 };
+
+// unitart.js — 유닛 그림(자세한 판). render.js의 RTS.art.units를 같은 이름으로 덮어쓴다.
+// 그림은 (ctx, 팔레트 p{main,dark,light}, 상태 s) 로 그린다. 원점은 몸 중심, +x가 앞쪽, 단위 px(타일 32px).
+// render.js가 그림을 방향·움직임 단계별로 한 번 그려 두고(유닛 그림 저장소) 매 프레임 복사하므로, 선을 많이 써도 매 프레임 부담은 늘지 않는다.
+// 변신 형태(★2 합체 유닛)는 원래 그림과 실루엣·색이 확실히 다르게: 금색 장식(FORM_GOLD)과 형태별 색을 쓴다.
+(function () {
+  const U = RTS.art.units, OUT = 'rgba(6,8,14,.82)', GOLD = '#ffd27a', FORM_GOLD = ['#ffe6a6', '#f2b840', '#a8741c'], GLASS = '#9fe3ff';
+  const path = (c, pts) => { c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.closePath(); };
+  const poly = (c, pts, fill, stroke = OUT, lw = 1.2) => { path(c, pts); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); } };
+  const rr = (c, x, y, w, h, r, fill, stroke = OUT, lw = 1.2) => { c.beginPath(); c.roundRect(x, y, w, h, r); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); } };
+  const ell = (c, x, y, rx, ry, fill, stroke = OUT, lw = 1.2, rot = 0) => { c.beginPath(); c.ellipse(x, y, rx, ry, rot, 0, TAU); if (fill) { c.fillStyle = fill; c.fill(); } if (stroke) { c.strokeStyle = stroke; c.lineWidth = lw; c.stroke(); } };
+  const dot = (c, x, y, r, fill) => { c.fillStyle = fill; c.beginPath(); c.arc(x, y, r, 0, TAU); c.fill(); };
+  const ln = (c, pts, col, lw = 1, cap = 'round') => { c.strokeStyle = col; c.lineWidth = lw; c.lineCap = cap; c.beginPath(); c.moveTo(pts[0], pts[1]); for (let i = 2; i < pts.length; i += 2) c.lineTo(pts[i], pts[i + 1]); c.stroke(); c.lineCap = 'butt'; };
+  const glint = (c, x, y, r = 1.4) => dot(c, x, y, r, 'rgba(255,255,255,.75)');
+  const grad = (c, x0, y0, x1, y1, a, b) => { const g = c.createLinearGradient(x0, y0, x1, y1); g.addColorStop(0, a); g.addColorStop(1, b); return g; };
+  const lamp = (c, x, y, r, col, s, k = 0) => { const on = (s.t + k) % 16 < 9; dot(c, x, y, r + (on ? .6 : 0), on ? col : 'rgba(40,30,20,.8)'); if (on) dot(c, x, y, r * .45, '#fff'); };
+  // 궤도: 링크가 움직일 때 흘러간다
+  function tread(c, x, y, w, h, s) { rr(c, x, y, w, h, h / 2.4, '#1a1f2a'); const off = s.moving ? (s.t * .9) % 5 : 0; c.fillStyle = '#3b4456';
+    for (let i = x + off; i < x + w - 1.5; i += 5) c.fillRect(i, y + 1, 2, h - 2); ln(c, [x + 2, y + h / 2, x + w - 2, y + h / 2], 'rgba(0,0,0,.35)', 1); }
+  function visor(c, x, y, rx, ry) { ell(c, x, y, rx, ry, grad(c, x - rx, y - ry, x + rx, y + ry, '#d7f6ff', '#2e7fa8'), 'rgba(0,0,0,.6)', .8); glint(c, x - rx * .3, y - ry * .35, Math.min(rx, ry) * .35); }
+  function cargoBox(c, s) { if (!s.cargo) return; const g = s.cargo === 'gas'; rr(c, -14, -4.5, 7, 9, 2, g ? '#e06bd8' : '#ffc35a'); if (g) dot(c, -10.5, 0, 1.6, '#ffe0fa'); else poly(c, [-12.5, -2, -9, -3, -8.5, 2, -12, 2.5], '#fff0b8', null); }
+  function boots(c, w, col, y = 5, r = 3.4) { ell(c, -2 + w, y, r + .8, r, col); ell(c, -2 - w, -y, r + .8, r, col); }
+  function legStroke(c, pts, col, lw) { ln(c, pts, OUT, lw + 1.6); ln(c, pts, col, lw); }
+
+  // ── 개척단 ──
+  U.worker = function (c, p, s) { const m = matOf(s.faction), sw = Math.sin(s.t * .5) * 2;
+    if (s.faction === 'pioneers' || !s.faction) {
+      boots(c, s.moving ? Math.sin(s.t * .4) * 2.5 : 0, '#2a3242', 5.5, 3);
+      rr(c, -10, -7, 9, 14, 3, m[2]); rr(c, -9, -5.5, 6, 11, 2, '#c8913a', null); ln(c, [-8.5, -3, -4, -3], 'rgba(0,0,0,.35)', 1); ln(c, [-8.5, 3, -4, 3], 'rgba(0,0,0,.35)', 1); // 등짐 + 연료통
+      ell(c, 0, 0, 7.5, 8.5, p.dark); ell(c, .5, 0, 5.2, 6.5, p.main, null);
+      poly(c, [6, -6.5, 15, -8 + sw * .3, 15.5, -5.5, 7, -3.5], m[1]); poly(c, [13.5, -9.5 + sw * .3, 17.5, -8, 16.5, -4, 13, -5], '#ffb43c'); // 용접기
+      ln(c, [6, 4, 13, 6 + sw], OUT, 4.2); ln(c, [6, 4, 13, 6 + sw], m[0], 2.6); dot(c, 13.5, 6.2 + sw, 2.2, '#e9c35a');
+      ell(c, 2.2, 0, 4.4, 4.2, '#f2c440'); ln(c, [-1.6, -2.5, 6, -2.5], '#c99010', 1.2); visor(c, 3.6, 0, 1.8, 2.6); // 노란 안전모
+      if (s.cargo) cargoBox(c, s); return; }
+    U.iworker(c, p, s); };
+  U.trooper = function (c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0), t1 = s.tint === 1, t2 = s.tint === 2; // 소총병 / 척탄병(1) / 의무병(2)
+    boots(c, w, '#232a38');
+    rr(c, -9.5, -5.5, 6, 11, 2, t2 ? '#c9d2de' : '#3c4a5e'); ln(c, [-8.5, -3, -5, -3], 'rgba(255,255,255,.18)', 1);
+    ell(c, 0, 0, 7, 10, t1 ? '#3a6a58' : t2 ? '#d7dde6' : p.dark);
+    poly(c, [-3, -8.5, 3, -9.5, 4.5, -5, -2.5, -5], p.main, null); poly(c, [-3, 8.5, 3, 9.5, 4.5, 5, -2.5, 5], p.main, null); // 어깨 보호대
+    ell(c, .8, 0, 5.4, 5.4, p.main); ell(c, 1.2, 0, 4.2, 4.6, grad(c, -3, -4, 4, 4, p.light, p.main), null); visor(c, 3.3, 0, 1.7, 3.2);
+    if (t2) { rr(c, -2.5, -7, 3, 5.5, .6, '#e7495a', null); rr(c, -4.2, -5.6, 6.4, 2.6, .6, '#e7495a', null); rr(c, 4, 4.5, 7, 3.6, 1.2, '#f2f4f8'); dot(c, 7.5, 6.3, 1, '#e7495a'); }
+    else if (t1) { rr(c, 3, 3, 12, 6, 2, '#2b3a33'); rr(c, 13, 3.5, 4, 5, 1.2, '#1a2026'); dot(c, 16.5, 6, 1.6, '#0c0f14'); ln(c, [5, 4.5, 12, 4.5], 'rgba(255,255,255,.2)', 1); }
+    else { rr(c, 3, 3.2, 14, 2.8, .8, '#1c2230'); rr(c, 6, 2.6, 4, 4.4, .8, '#2c3546', null); ln(c, [12, 3.2, 17, 3.2], 'rgba(255,255,255,.25)', .7); } };
+  U.tank = function (c, p, s) { // 포격전차: 궤도 두 줄, 각진 차체, 포탑. 포격 모드면 지지대와 긴 포신
+    tread(c, -21, -16, 42, 8, s); tread(c, -21, 8, 42, 8, s);
+    if (s.sieged) for (const [a, b] of [[-15, -21], [15, -21], [-15, 21], [15, 21]]) { legStroke(c, [a * .6, b * .45, a, b], STEEL[2], 3.4); rr(c, a - 3, b - 2, 6, 4, 1.5, STEEL[3]); }
+    poly(c, [-19, -10, 14, -11, 20, -6, 20, 6, 14, 11, -19, 10], STEEL[1]); poly(c, [-15, -7.5, 10, -8, 14, -4, 14, 4, 10, 8, -15, 7.5], p.dark, null);
+    ln(c, [-17, -9, 12, -9.5], 'rgba(255,255,255,.22)', 1); for (const x of [-12, -4, 4]) { dot(c, x, -9, .8, STEEL[0]); dot(c, x, 9, .8, STEEL[0]); }
+    rr(c, -18, -4, 5, 8, 1.5, '#2a3242'); lamp(c, 18, -7, 1.1, '#ffe08a', s); lamp(c, 18, 7, 1.1, '#ffe08a', s, 4);
+    const L = s.sieged ? 30 : 21; rr(c, 4, -2.6, L, 5.2, 1.2, STEEL[3]); rr(c, 4 + L - 4, -3.4, 5, 6.8, 1.2, STEEL[2]); ln(c, [6, -1.4, 4 + L - 5, -1.4], 'rgba(255,255,255,.25)', .8);
+    ell(c, -1, 0, 9, 8.5, p.main); ell(c, -1.5, -.5, 6.5, 6, grad(c, -7, -6, 5, 6, p.light, p.main), null); rr(c, -4, -2.5, 6, 5, 1.2, '#1d2533'); dot(c, -1, 0, 1.4, GLASS); };
+  U.flyer = function (c, p, s) { const f = s.tint === 1, flick = s.t % 4 < 2 ? 1 : 0, M = f ? MECH : STEEL; // 강습기 / 말벌기(1)
+    if (f) { for (const b of [-1, 1]) { ell(c, -4, 11 * b, 9, 3.2, 'rgba(200,230,255,.28)', 'rgba(200,230,255,.5)', .8, b * (.35 + Math.sin(s.t * 1.3) * .25)); }
+      poly(c, [18, 0, 6, -6, -14, -4, -18, 0, -14, 4, 6, 6], M[1]); poly(c, [-10, -3, -22, -2, -24, 0, -22, 2, -10, 3], '#e0a33c'); for (let i = 0; i < 3; i++) ln(c, [-12 - i * 4, -2.6, -12 - i * 4, 2.6], '#2a2014', 1.4);
+      poly(c, [12, 0, 4, -4, -6, -2.5, -6, 2.5, 4, 4], p.dark, null); ell(c, 9, 0, 3.4, 2.6, GLASS, 'rgba(0,0,0,.5)', .8); ln(c, [17, -1.5, 23, -3], OUT, 1.6); ln(c, [17, 1.5, 23, 3], OUT, 1.6); return; }
+    poly(c, [21, 0, 4, -6, -12, -20, -9, -6, -15, 0, -9, 6, -12, 20, 4, 6], M[1]); poly(c, [-2, -12, -10, -18, -7, -9], p.main, null); poly(c, [-2, 12, -10, 18, -7, 9], p.main, null);
+    poly(c, [14, 0, 2, -5, -8, -3.5, -8, 3.5, 2, 5], p.dark, null); ln(c, [16, 0, -10, 0], 'rgba(255,255,255,.2)', 1);
+    ell(c, 7, 0, 4.4, 2.8, grad(c, 3, -3, 11, 3, '#e8fbff', '#2c7fa6'), 'rgba(0,0,0,.6)', .8);
+    for (const b of [-1, 1]) { rr(c, -2, 9 * b - 1.5, 10, 3, 1, '#1d2533'); dot(c, -13, 7.5 * b, 3 + flick, 'rgba(255,170,60,.55)'); dot(c, -13, 7.5 * b, 1.8 + flick * .6, GOLD); } };
+
+  // ── 철갑회 ──
+  U.bot = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 3 : 0, t1 = s.tint === 1, t2 = s.tint === 2; // 칼날봇 / 사수봇(1) / 정비봇(2)
+    for (const [a, b] of [[-1, 1], [1, -1]]) legStroke(c, [-3 * a, 6 * b, -7 * a + k * b, 11 * b, -9 * a + k * b, 13 * b], MECH[2], 3);
+    const hex = []; for (let i = 0; i < 6; i++) hex.push(Math.cos(i * TAU / 6) * 10.5, Math.sin(i * TAU / 6) * 9.5); poly(c, hex, MECH[1], OUT, 1.4);
+    const in2 = []; for (let i = 0; i < 6; i++) in2.push(Math.cos(i * TAU / 6) * 7.5, Math.sin(i * TAU / 6) * 6.8); poly(c, in2, MECH[2], null);
+    for (let i = 0; i < 6; i++) dot(c, Math.cos(i * TAU / 6 + .5) * 8.6, Math.sin(i * TAU / 6 + .5) * 7.8, .8, MECH[0]);
+    ell(c, 0, 0, 5.8, 5.8, p.dark); ell(c, 2.6, 0, 3.4, 3.4, p.main, null); dot(c, 3.4, 0, 1.6, '#ffe7b0'); glint(c, 1.6, -1.2, .9);
+    if (t2) { rr(c, -4.5, -1.6, 9, 3.2, .8, '#7fe0b0', null); rr(c, -1.6, -4.5, 3.2, 9, .8, '#7fe0b0', null); ln(c, [6, -6, 13, -9, 15, -6], MECH[0], 2); ln(c, [6, 6, 13, 9, 15, 6], MECH[0], 2); dot(c, 15, -6, 1.4, '#7fe0b0'); }
+    else if (t1) { for (const b of [-1, 1]) { rr(c, 5, 4.5 * b - 1.6, 13, 3.2, .8, '#20242c'); rr(c, 15, 4.5 * b - 2, 3.5, 4, .8, '#3a3f4a', null); } }
+    else for (const b of [-1, 1]) { poly(c, [4, 8 * b, 18, 3.5 * b, 19, 1.5 * b, 6, 3 * b], '#d6dde5'); ln(c, [6, 4.5 * b, 17, 2.6 * b], 'rgba(255,255,255,.7)', .7); } };
+  U.walker = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .3) * 5 : 0; // 중장봇: 두 다리 보행, 쌍포
+    rr(c, -11 + k, -24, 19, 10, 2.5, MECH[3]); rr(c, -11 - k, 14, 19, 10, 2.5, MECH[3]); for (const [x, y] of [[-8 + k, -19], [-8 - k, 19]]) ln(c, [x, y, x + 13, y], 'rgba(255,255,255,.15)', 1);
+    poly(c, [-17, -15, 12, -17, 20, 0, 12, 17, -17, 15], MECH[1], OUT, 1.4); poly(c, [-13, -12, 9, -13.5, 15, 0, 9, 13.5, -13, 12], MECH[2], null);
+    poly(c, [-11, -9, 8, -10, 14, 0, 8, 10, -11, 9], p.dark, null); for (const y of [-11, 11]) for (const x of [-12, -4, 4]) dot(c, x, y, .9, MECH[0]);
+    for (const b of [-1, 1]) { rr(c, 9, 11 * b - 3, 21, 6, 1.4, '#20242c'); rr(c, 26, 11 * b - 3.6, 5, 7.2, 1.2, '#3a3f4a'); ln(c, [11, 11 * b - 1.4, 25, 11 * b - 1.4], 'rgba(255,255,255,.22)', .8); }
+    ell(c, 1, 0, 6.5, 6.5, p.main); ell(c, 1.5, -.5, 4.6, 4.6, grad(c, -3, -4, 5, 4, p.light, p.main), null); dot(c, 4, 0, 1.8, '#ffe7b0');
+    for (const b of [-1, 1]) lamp(c, -15, 9 * b, 1.2, '#ff9a3c', s, b > 0 ? 5 : 0); };
+  U.iworker = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 2 : 0, m = MECH; // 수집봇: 네 다리, 집게 팔, 수집통
+    for (const a of [-1, 1]) for (const x of [-5, 1]) legStroke(c, [x, 5 * a, x - 2 + k * a, 10 * a, x - 3 + k * a, 12 * a], m[2], 2.2);
+    ell(c, 0, 0, 8.8, 8.8, m[1], OUT, 1.4); ell(c, 0, 0, 6.6, 6.6, m[2], null); ell(c, 0, 0, 5.2, 5.2, p.dark, null); ell(c, 2, 0, 3, 3, p.main, null); dot(c, 2.8, 0, 1.3, '#ffe7b0');
+    for (let i = 0; i < 8; i++) dot(c, Math.cos(i * TAU / 8) * 7.6, Math.sin(i * TAU / 8) * 7.6, .7, m[0]);
+    for (const a of [-1, 1]) { ln(c, [6, 4 * a, 12, 7 * a, 14.5, 2 * a], OUT, 4); ln(c, [6, 4 * a, 12, 7 * a, 14.5, 2 * a], m[0], 2.2); dot(c, 14.5, 2 * a, 1.4, '#ffb43c'); }
+    rr(c, -13, -4.5, 6, 9, 2, m[2]); if (s.cargo) cargoBox(c, s); };
+
+  // ── 중립: 상단 수레·부족 ──
+  U.caravan = function (c, p, s) { const tr = s.faction === undefined ? 0 : 0, roll = s.moving ? (s.t * .5) % TAU : 0; // 수레: 바퀴, 짐칸, 덮개, 마부석
+    for (const [x, y] of [[-10, -12], [7, -12], [-10, 12], [7, 12]]) { ell(c, x, y, 4.5, 2.6, '#2a2018'); ln(c, [x - 3.4 * Math.cos(roll), y, x + 3.4 * Math.cos(roll), y], '#8a6a40', 1.2); }
+    rr(c, -16, -10, 30, 20, 3, '#6d4f2c', OUT, 1.4); for (const x of [-11, -5, 1, 7]) ln(c, [x, -9, x, 9], 'rgba(0,0,0,.28)', 1);
+    rr(c, -13, -8.5, 18, 17, 4, grad(c, -13, -8, 5, 8, '#f0d9a0', '#b89155')); for (const x of [-9, -4, 1]) ln(c, [x, -8, x, 8], 'rgba(120,80,30,.45)', 1.2);
+    rr(c, 7, -7, 10, 14, 2, p.main); dot(c, 12, 0, 2.2, p.light); poly(c, [-3, -3, 1, -5, 2, 0, 0, 4, -4, 3], '#ffc35a', 'rgba(0,0,0,.4)', .7); void tr; };
+  U.tribal = function (c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0), bow = s.tint === 1; // 잿빛 부족: 가죽 망토, 깃털, 도끼 / 활
+    boots(c, w, '#4a3a2a', 5, 3.1);
+    poly(c, [-9, -8, 2, -9, 4, 0, 2, 9, -9, 8, -11, 0], '#6b5236'); for (const y of [-5, 0, 5]) ln(c, [-9, y, -3, y + 1], 'rgba(0,0,0,.25)', 1);
+    ell(c, 0, 0, 5.4, 8, p.dark); poly(c, [-2, -7, 2, -8, 2.5, 8, -2, 7], p.main, null);
+    ell(c, 1.2, 0, 4.4, 4.4, '#c9a27a'); ln(c, [-1, -3, 4, -3], '#7a5a34', 1.4); poly(c, [-3, -2, -9, -6, -8, -3], '#e8e2d0', OUT, .7); dot(c, 3.6, -1.4, .7, '#2a1a10'); dot(c, 3.6, 1.4, .7, '#2a1a10');
+    if (bow) { c.strokeStyle = OUT; c.lineWidth = 3.4; c.beginPath(); c.arc(4, 0, 9, -1.15, 1.15); c.stroke(); c.strokeStyle = '#9a7442'; c.lineWidth = 2; c.stroke();
+      ln(c, [4 + Math.cos(-1.15) * 9, Math.sin(-1.15) * 9, 4 + Math.cos(1.15) * 9, Math.sin(1.15) * 9], '#e8e2d0', .8); ln(c, [2, 0, 15, 0], '#7a5a34', 1); poly(c, [15, 0, 12.5, -1.4, 12.5, 1.4], '#c8ced8', null); }
+    else { ln(c, [3, 4, 14, 6], OUT, 4); ln(c, [3, 4, 14, 6], '#7a5a34', 2.4); poly(c, [12, 1, 18.5, 2.5, 17.5, 11, 12, 9], grad(c, 12, 1, 18, 11, '#eef1f6', '#8a93a3')); ln(c, [17.6, 3, 16.8, 10], 'rgba(255,255,255,.8)', .8); } };
+
+  // ── 포자군락 ──
+  const veins = (c, x, y, rx, ry, col) => { c.strokeStyle = col; c.lineWidth = .8; for (let i = -1; i <= 1; i++) { c.beginPath(); c.moveTo(x - rx * .7, y + i * ry * .35); c.quadraticCurveTo(x, y + i * ry * .6, x + rx * .6, y + i * ry * .3); c.stroke(); } };
+  U.sworker = function (c, p, s) { legs(c, 3, 9, 5, s.t, s.moving, FLESH[3], 1.8);
+    ell(c, -2, 0, 9, 7, FLESH[2]); ell(c, -1, 0, 7, 5.4, p.dark, null); veins(c, -2, 0, 7, 5, 'rgba(255,170,210,.35)');
+    ell(c, 3.5, 0, 4.4, 4, FLESH[0]); dot(c, 5.6, -1.8, 1.3, p.light); dot(c, 5.6, 1.8, 1.3, p.light); glint(c, 2.5, -1.6, .9);
+    for (const b of [-1, 1]) { c.strokeStyle = OUT; c.lineWidth = 3; c.beginPath(); c.moveTo(6, 2.5 * b); c.quadraticCurveTo(11, 4 * b, 12, 1 * b + Math.sin(s.t * .5) * b); c.stroke(); c.strokeStyle = FLESH[0]; c.lineWidth = 1.8; c.stroke(); }
+    if (s.cargo) { ell(c, -9, 0, 4, 3.6, s.cargo === 'gas' ? '#e06bd8' : '#ffc35a'); glint(c, -10, -1, 1); } };
+  U.claw = function (c, p, s) { legs(c, 3, 9, 5, s.t, s.moving, FLESH[3], 1.6); const k = Math.sin(s.t * .8) * 1.5;
+    ell(c, -3, 0, 8, 5.5, FLESH[2]); ell(c, -2, 0, 6, 4, p.dark, null); for (let i = 0; i < 3; i++) ell(c, -6 + i * 3, 0, 1.2, 3.6, p.main, null);
+    ell(c, 4, 0, 4, 3.6, FLESH[1]); dot(c, 6, -1.5, 1.1, '#ffe08a'); dot(c, 6, 1.5, 1.1, '#ffe08a');
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(6, 3 * b); c.quadraticCurveTo(14, (6 + k) * b, 15.5, (1 + k * .3) * b); c.lineTo(9, 1.5 * b); c.closePath(); c.fillStyle = '#e8dccb'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1; c.stroke(); } };
+  U.spitter = function (c, p, s) { const w = s.moving ? Math.sin(s.t * .4) * 3 : 0;
+    ln(c, [-14, w, -7, -w, -1, 0], OUT, 8); ln(c, [-14, w, -7, -w, -1, 0], FLESH[2], 6); for (let i = 0; i < 3; i++) dot(c, -12 + i * 4, (i % 2 ? -w : w) * .5, 1, FLESH[0]);
+    for (const b of [-1, 1]) poly(c, [-2, 5 * b, -7, 12 * b, 2, 7 * b], p.main);
+    ell(c, 1, 0, 8, 7.5, FLESH[1]); ell(c, 1, 0, 6, 5.6, p.dark, null); veins(c, 1, 0, 6, 5, 'rgba(160,240,110,.35)');
+    ell(c, 7, 0, 4.6, 3.8, FLESH[0]); ell(c, 11, 0, 2.6, 2.2, '#9be05a'); glint(c, 10.4, -.8, .8); dot(c, 7.5, -2, 1.1, p.light); dot(c, 7.5, 2, 1.1, p.light); };
+  U.nurse = function (c, p, s) { legs(c, 2, 8, 3, s.t, s.moving, FLESH[3], 1.6); const b = 1 + Math.sin(s.t * .15) * .06;
+    ell(c, -1, 0, 10, 9, FLESH[1]); ell(c, -2, 0, 7.5 * b, 7 * b, p.dark, null);
+    for (const [x, y, r] of [[-3, -2, 3], [-4, 2.5, 2.4], [0, 1, 2]]) { ell(c, x, y, r, r, '#ffb7d0', 'rgba(120,30,60,.5)', .6); glint(c, x - r * .35, y - r * .35, r * .3); }
+    ell(c, 7, 0, 3.6, 3.2, FLESH[0]); dot(c, 8.5, 0, 1.3, p.light); };
+  U.brute = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .3) * 4 : 0;
+    for (const [x, b] of [[-12, -1], [-12, 1], [2, -1], [2, 1]]) rr(c, x + (b > 0 ? k : -k), b > 0 ? 13 : -21, 9, 8, 2.5, FLESH[3]);
+    ell(c, -2, 0, 20, 16, FLESH[2], OUT, 1.6); ell(c, -3, 0, 16, 12.5, p.dark, null); for (let i = 0; i < 4; i++) ell(c, -13 + i * 7, 0, 2.6, 11, FLESH[1], 'rgba(0,0,0,.3)', .8);
+    for (let i = 0; i < 3; i++) poly(c, [-14 + i * 8, -9, -11 + i * 8, -17, -8 + i * 8, -9], p.main);
+    ell(c, 14, 0, 7, 8, FLESH[1]); dot(c, 17, -3, 1.6, '#ffe08a'); dot(c, 17, 3, 1.6, '#ffe08a');
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(16, 5 * b); c.quadraticCurveTo(30, 12 * b, 31, 2 * b); c.lineTo(20, 2 * b); c.closePath(); c.fillStyle = '#efe4d2'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1; c.stroke(); } };
+  U.drake = function (c, p, s) { const f = Math.sin(s.t * .5) * 4;
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(2, 2 * b); c.quadraticCurveTo(-4, (18 + f) * b, -14, (16 + f) * b); c.quadraticCurveTo(-8, 8 * b, -6, 2 * b); c.closePath(); c.fillStyle = FLESH[1]; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1; c.stroke();
+      c.beginPath(); c.moveTo(0, 3 * b); c.quadraticCurveTo(-4, (12 + f * .6) * b, -10, (12 + f * .6) * b); c.lineTo(-5, 3 * b); c.closePath(); c.fillStyle = p.dark; c.fill();
+      ln(c, [-1, 3 * b, -9, (13 + f * .7) * b], 'rgba(255,180,220,.35)', .8); }
+    ln(c, [-6, 0, -13, 3, -18, -1], OUT, 4.4); ln(c, [-6, 0, -13, 3, -18, -1], FLESH[2], 3);
+    ell(c, 1, 0, 8, 4.5, FLESH[2]); ell(c, 2, 0, 5.5, 3, p.main, null); ell(c, 8, 0, 3, 3, FLESH[0]); dot(c, 9.5, 0, 1.3, '#ffe08a'); };
+
+  // ── 합체 유닛 ──
+  U.commando = function (c, p, s) { const w = Math.sin(s.t * .4) * (s.moving ? 3 : 0);
+    boots(c, w, STEEL[2], 6.5, 3.8);
+    rr(c, -15, -8, 9, 16, 2.5, STEEL[1]); rr(c, -13.5, -5.5, 2, 11, .5, GOLD, null); rr(c, -10.5, -5.5, 2, 11, .5, '#ff9a3c', null);
+    ell(c, 0, 0, 8.5, 12, p.dark); poly(c, [-4, -11, 4, -12, 6, -6, -3, -6], p.main, null); poly(c, [-4, 11, 4, 12, 6, 6, -3, 6], p.main, null);
+    ell(c, 1, 0, 6.2, 6.2, p.main); ell(c, 1.4, -.4, 4.8, 4.8, grad(c, -3, -4, 5, 4, p.light, p.main), null); visor(c, 4, 0, 2, 3.6);
+    rr(c, 4, -7.6, 15, 3, .8, '#1c2230'); rr(c, 4, 2.6, 12, 6, 1.6, '#3a6a58'); rr(c, 14, 3.6, 4.4, 4, 1, '#1c2230'); ln(c, [6, -7, 18, -7], 'rgba(255,255,255,.25)', .7); };
+  U.titan = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .22) * 6 : 0, j = s.t % 4 < 2 ? 1.2 : 0;
+    rr(c, -15 + k, -33, 24, 12, 3, STEEL[3]); rr(c, -15 - k, 21, 24, 12, 3, STEEL[3]); ln(c, [-12 + k, -27, 6 + k, -27], 'rgba(255,255,255,.14)', 1.4); ln(c, [-12 - k, 27, 6 - k, 27], 'rgba(255,255,255,.14)', 1.4);
+    rr(c, -9 + k * .5, -24, 12, 9, 2, STEEL[2]); rr(c, -9 - k * .5, 15, 12, 9, 2, STEEL[2]);
+    for (const b of [-1, 1]) { dot(c, -23, 10 * b, 4.6 + j, 'rgba(255,170,60,.45)'); dot(c, -23, 10 * b, 3 + j * .6, GOLD); }
+    rr(c, -21, -21, 36, 42, 7, STEEL[1], OUT, 1.6); rr(c, -16, -16, 26, 32, 5, p.dark, null); ln(c, [-18, -19, 10, -19], 'rgba(255,255,255,.2)', 1.2);
+    for (const [x, y] of [[-18, -12], [-18, 12], [10, -17], [10, 17], [-18, 0]]) dot(c, x, y, 1, STEEL[0]);
+    for (const b of [-1, 1]) { rr(c, -8, b > 0 ? 15 : -28, 24, 13, 3, STEEL[2]); rr(c, 14, b > 0 ? 18.5 : -24.5, 20, 6, 1.5, STEEL[3]); rr(c, 30, b > 0 ? 17.5 : -25.5, 5, 8, 1.2, STEEL[0]); dot(c, 3, b * 21.5, 4.2, p.main); dot(c, 3, b * 21.5, 1.8, p.light); }
+    ell(c, 0, 0, 10, 10, p.main); ell(c, .5, -.5, 7.5, 7.5, grad(c, -6, -6, 6, 6, p.light, p.main), null); rr(c, 9, -2.5, 9, 5, 1.2, GOLD); visor(c, 3, 0, 3, 5); };
+  U.duelist = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .6) * 3 : 0;
+    for (const [a, b] of [[-1, 1], [1, -1], [-1, -1], [1, 1]]) legStroke(c, [-3 * a, 7 * b, -9 * a + k * b, 15 * b, -11 * a + k * b, 17 * b], MECH[2], 3.2);
+    const hex = []; for (let i = 0; i < 6; i++) hex.push(Math.cos(i * TAU / 6) * 13.5, Math.sin(i * TAU / 6) * 12.5); poly(c, hex, MECH[1], OUT, 1.5);
+    const in2 = []; for (let i = 0; i < 6; i++) in2.push(Math.cos(i * TAU / 6) * 10, Math.sin(i * TAU / 6) * 9.2); poly(c, in2, MECH[2], null);
+    for (let i = 0; i < 6; i++) dot(c, Math.cos(i * TAU / 6 + .5) * 11.5, Math.sin(i * TAU / 6 + .5) * 10.6, 1, MECH[0]);
+    ell(c, 0, 0, 8.5, 8.5, p.dark); ell(c, 3, 0, 4.4, 4.4, p.main, null); dot(c, 4, 0, 2, '#ffe7b0');
+    for (const b of [-1, 1]) { poly(c, [5, 11.5 * b, 25, 5 * b, 26, 3 * b, 8, 5 * b], grad(c, 5, 11 * b, 25, 4 * b, '#f3f6fa', '#9aa4b4')); ln(c, [8, 7 * b, 24, 4.2 * b], 'rgba(255,255,255,.8)', .7); }
+    rr(c, 6, -2, 17, 4, 1, '#20242c'); ln(c, [8, -1, 22, -1], 'rgba(255,255,255,.25)', .7); };
+  U.juggernaut = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .22) * 5 : 0;
+    for (const [x, b] of [[-22, -1], [-22, 1], [6, -1], [6, 1]]) { rr(c, x + (b > 0 ? k : -k), b > 0 ? 23 : -35, 17, 12, 3, MECH[3]); ln(c, [x + 3 + (b > 0 ? k : -k), b > 0 ? 29 : -29, x + 14 + (b > 0 ? k : -k), b > 0 ? 29 : -29], 'rgba(255,255,255,.14)', 1.2); }
+    poly(c, [-30, -24, 15, -28, 31, 0, 15, 28, -30, 24], MECH[2], OUT, 1.8); poly(c, [-24, -18, 11, -21, 24, 0, 11, 21, -24, 18], MECH[1], null);
+    poly(c, [-16, -11, 6, -13, 14, 0, 6, 13, -16, 11], p.dark, null); ln(c, [-27, -22, 13, -26], 'rgba(255,255,255,.18)', 1.4);
+    for (const y of [-20, 20]) for (const x of [-22, -12, -2, 8]) dot(c, x, y * (x > 0 ? 1.05 : 1), 1.1, MECH[0]);
+    for (const b of [-1, 1]) { rr(c, 12, 15 * b - 4, 26, 8, 1.5, '#20242c'); rr(c, 34, 15 * b - 5, 5, 10, 1.2, MECH[0]); ln(c, [14, 15 * b - 2, 33, 15 * b - 2], 'rgba(255,255,255,.22)', .9); lamp(c, -20, b * 12, 2.4, '#ff9a3c', s, b > 0 ? 3 : 0); }
+    ell(c, -3, 0, 8, 8, p.main); ell(c, -2.5, -.5, 5.6, 5.6, grad(c, -7, -5, 3, 5, p.light, p.main), null); dot(c, 0, 0, 2.6, '#ffe7b0'); };
+  U.venom = function (c, p, s) { const w = s.moving ? Math.sin(s.t * .5) * 3 : 0;
+    legs(c, 3, 12, 7, s.t, s.moving, FLESH[3], 2.2);
+    ln(c, [-17, w, -10, -w, -3, 0], OUT, 9); ln(c, [-17, w, -10, -w, -3, 0], FLESH[2], 7);
+    ell(c, 0, 0, 11, 9, FLESH[1], OUT, 1.4); ell(c, 0, 0, 8.5, 6.8, p.dark, null); ell(c, -3, 0, 4, 3.4, '#9be05a', 'rgba(20,60,10,.6)', .8); glint(c, -4, -1.2, 1.2);
+    for (const b of [-1, 1]) poly(c, [-3, 6 * b, -9, 14 * b, 2, 8 * b], p.main);
+    ell(c, 9, 0, 5.4, 4.6, FLESH[0]); ell(c, 13.5, 0, 2.8, 2.4, '#9be05a'); dot(c, 10, -2.4, 1.2, p.light); dot(c, 10, 2.4, 1.2, p.light);
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(9, 4 * b); c.quadraticCurveTo(18, 9 * b, 19, 2 * b); c.lineTo(12, 2 * b); c.closePath(); c.fillStyle = '#e8dccb'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1; c.stroke(); } };
+  U.behemoth = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .25) * 4 : 0, f = Math.sin(s.t * .2) * 3;
+    for (const [x, b] of [[-18, -1], [-18, 1], [4, -1], [4, 1]]) rr(c, x + (b > 0 ? k : -k), b > 0 ? 18 : -29, 12, 11, 3, FLESH[3]);
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(-4, 6 * b); c.quadraticCurveTo(-14, (36 + f) * b, -32, (30 + f) * b); c.quadraticCurveTo(-20, 16 * b, -18, 6 * b); c.closePath(); c.fillStyle = FLESH[1]; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.2; c.stroke();
+      for (let i = 0; i < 3; i++) ln(c, [-8 - i * 4, 7 * b, -16 - i * 5, (24 + f - i * 3) * b], 'rgba(255,180,220,.3)', .9); }
+    ell(c, -3, 0, 25, 20, FLESH[2], OUT, 1.8); ell(c, -4, 0, 20, 15.5, p.dark, null); for (let i = 0; i < 5; i++) ell(c, -18 + i * 7, 0, 2.8, 13, FLESH[1], 'rgba(0,0,0,.3)', .8);
+    for (let i = 0; i < 4; i++) poly(c, [-19 + i * 8, -12, -16 + i * 8, -21, -13 + i * 8, -12], p.main);
+    ell(c, 18, 0, 9, 10, FLESH[1]); dot(c, 22, -4, 2, '#ffe08a'); dot(c, 22, 4, 2, '#ffe08a');
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(20, 6 * b); c.quadraticCurveTo(38, 15 * b, 39, 3 * b); c.lineTo(25, 2 * b); c.closePath(); c.fillStyle = '#efe4d2'; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.2; c.stroke(); } };
+
+  // ── 변신 형태: 실루엣과 색이 원래와 확실히 다르게(금색 장식 + 형태별 색) ──
+  const FG = FORM_GOLD;
+  U.bike = function (c, p, s) { const spin = s.moving ? (s.t * .8) % TAU : 0; // 강습 바이크(특공대): 앞뒤 바퀴, 긴 차체, 금색 줄, 배기 불꽃
+    for (const x of [-11, 11]) { ell(c, x, 0, 6, 4.2, '#141820', OUT, 1.4); ln(c, [x - 4.6 * Math.cos(spin), -3 * Math.sin(spin), x + 4.6 * Math.cos(spin), 3 * Math.sin(spin)], '#59677b', 1.4); dot(c, x, 0, 1.4, FG[1]); }
+    poly(c, [-15, -3.5, 13, -5, 18, 0, 13, 5, -15, 3.5], grad(c, -15, -5, 18, 5, '#2b3446', '#0f141e'), OUT, 1.4); poly(c, [-6, -4.5, 12, -5, 16, 0, 12, 5, -6, 4.5], p.main, null);
+    ln(c, [-12, -2.6, 14, -3.4], FG[0], 1.4); ln(c, [-12, 2.6, 14, 3.4], FG[0], 1.4); poly(c, [12, -4, 19, -2, 19, 2, 12, 4], FG[1]);
+    if (s.moving || s.t % 6 < 3) { poly(c, [-15, -2, -23 - (s.t % 3) * 2, 0, -15, 2], 'rgba(255,170,60,.85)', null); poly(c, [-15, -1, -19, 0, -15, 1], '#fff3c0', null); }
+    ell(c, -1, 0, 5, 5.6, p.dark); ell(c, 0, 0, 3.8, 4.2, p.main, null); visor(c, 2.4, 0, 1.6, 2.8); rr(c, 3, -7.6, 10, 2.4, .6, '#1c2230'); rr(c, 3, 5.2, 10, 2.4, .6, '#1c2230'); };
+  U.skyship = function (c, p, s) { const j = s.t % 4 < 2 ? 1.5 : 0; // 비행 전함(거대로봇): 날개, 선체, 함교, 엔진 넷, 금색 함수
+    for (const b of [-1, 1]) { poly(c, [6, 12 * b, -16, 36 * b, -26, 34 * b, -14, 12 * b], grad(c, 0, 12 * b, -20, 36 * b, '#c8d2e0', '#59677b'), OUT, 1.5); ln(c, [-2, 15 * b, -20, 32 * b], FG[1], 1.6); dot(c, -22, 33 * b, 2, p.main); }
+    poly(c, [38, 0, 26, -10, -24, -14, -34, -8, -34, 8, -24, 14, 26, 10], grad(c, 0, -14, 0, 14, '#dfe6ef', '#5d6b80'), OUT, 1.8);
+    poly(c, [30, 0, 22, -7, -20, -9, -20, 9, 22, 7], p.dark, null); poly(c, [38, 0, 30, -5, 30, 5], FG[1]); ln(c, [-30, -11, 26, -8], 'rgba(255,255,255,.35)', 1.2);
+    for (let i = 0; i < 5; i++) dot(c, -14 + i * 8, 0, 1.6, GLASS);
+    rr(c, -6, -6, 14, 12, 3, FG[2]); rr(c, -4, -4, 10, 8, 2, FG[0], null); visor(c, 4, 0, 2.4, 3);
+    for (const b of [-1, 1]) for (const y of [6, 11]) { rr(c, -40, y * b - 2.5, 8, 5, 1.5, '#2a3242'); dot(c, -42, y * b, 3.4 + j, 'rgba(120,200,255,.5)'); dot(c, -42, y * b, 2 + j * .5, '#dff6ff'); }
+    for (const b of [-1, 1]) { rr(c, 12, 8 * b - 2, 18, 4, 1, '#1c2230'); dot(c, 30, 8 * b, 1.3, FG[1]); } };
+  U.fortress = function (c, p, s) { // 포격 요새(쌍날기사): 땅에 박은 세 지지대, 둥근 포대, 아주 긴 포신, 금색 고리
+    for (let i = 0; i < 3; i++) { const a = i * TAU / 3 + Math.PI; legStroke(c, [Math.cos(a) * 8, Math.sin(a) * 8, Math.cos(a) * 20, Math.sin(a) * 20], MECH[2], 4.4); rr(c, Math.cos(a) * 20 - 4, Math.sin(a) * 20 - 3, 8, 6, 2, MECH[3]); }
+    ell(c, 0, 0, 15, 15, MECH[2], OUT, 1.8); ell(c, 0, 0, 12, 12, '#3b3428', null); c.strokeStyle = FG[1]; c.lineWidth = 2; c.beginPath(); c.arc(0, 0, 13.4, 0, TAU); c.stroke();
+    for (let i = 0; i < 8; i++) dot(c, Math.cos(i * TAU / 8) * 13.4, Math.sin(i * TAU / 8) * 13.4, 1, FG[0]);
+    rr(c, 4, -3.4, 34, 6.8, 1.6, '#1e2228'); rr(c, 34, -4.4, 7, 8.8, 1.6, FG[2]); rr(c, 16, -4.2, 4, 8.4, 1, '#3a3f4a', null); ln(c, [6, -1.8, 33, -1.8], 'rgba(255,255,255,.28)', .9);
+    ell(c, 0, 0, 8, 8, p.dark); ell(c, 1, 0, 5.2, 5.2, p.main, null); dot(c, 2, 0, 2.2, '#ffe7b0'); lamp(c, -9, -6, 1.4, '#ff6a4a', s); lamp(c, -9, 6, 1.4, '#ff6a4a', s, 8); };
+  U.airship = function (c, p, s) { const pr = (s.t * .9) % TAU; // 강습 비행선(철갑회): 큰 기낭, 아래 곤돌라, 프로펠러 둘, 꼬리 날개
+    for (const b of [-1, 1]) poly(c, [-26, 6 * b, -38, 18 * b, -40, 6 * b], MECH[1]);
+    ell(c, 0, 0, 34, 16, grad(c, 0, -16, 0, 16, '#e8c98a', '#8a6a3a'), OUT, 1.8); for (let i = -2; i <= 2; i++) ln(c, [i * 10, -15 + Math.abs(i) * 1.5, i * 10, 15 - Math.abs(i) * 1.5], 'rgba(90,60,20,.4)', 1.2);
+    ln(c, [-30, -6, 28, -9], 'rgba(255,255,255,.35)', 1.4); poly(c, [34, 0, 26, -6, 26, 6], FG[1]);
+    rr(c, -14, -6, 26, 12, 3, MECH[2]); rr(c, -11, -4, 20, 8, 2, p.dark, null); for (let i = 0; i < 4; i++) dot(c, -7 + i * 5, 0, 1.4, '#ffd27a');
+    for (const b of [-1, 1]) { rr(c, -4, 16 * b - 3, 10, 6, 2, MECH[3]); c.save(); c.translate(-6, 16 * b); c.rotate(pr * b); ln(c, [-7, 0, 7, 0], 'rgba(220,220,220,.75)', 2.2); ln(c, [0, -7, 0, 7], 'rgba(220,220,220,.45)', 2.2); c.restore(); }
+    rr(c, 10, -2, 18, 4, 1, '#20242c'); ell(c, -3, 0, 4.4, 4.4, p.main); dot(c, -2, 0, 1.8, '#ffe7b0'); };
+  U.wingvenom = function (c, p, s) { const f = Math.sin(s.t * .9) * 5; // 날개 맹독충: 네 장 막날개(초록 빛), 가는 몸, 독침 꼬리
+    for (const b of [-1, 1]) for (const [x, len, k] of [[2, 20, 1], [-5, 15, .7]]) { c.beginPath(); c.moveTo(x, 2 * b); c.quadraticCurveTo(x - 4, (len + f * k) * b, x - 14, (len - 2 + f * k) * b); c.quadraticCurveTo(x - 8, 6 * b, x - 4, 2 * b); c.closePath();
+      c.fillStyle = 'rgba(155,224,90,.42)'; c.fill(); c.strokeStyle = '#4c8a2a'; c.lineWidth = 1; c.stroke(); ln(c, [x - 1, 3 * b, x - 10, (len - 3 + f * k) * b], 'rgba(220,255,180,.6)', .7); }
+    ln(c, [-6, 0, -14, 2, -20, -1], OUT, 5.4); ln(c, [-6, 0, -14, 2, -20, -1], FLESH[2], 3.6); poly(c, [-20, -1, -26, -3, -24, 1], '#9be05a');
+    ell(c, 0, 0, 8, 4.8, FLESH[1], OUT, 1.3); ell(c, 0, 0, 5.6, 3.2, p.dark, null); ell(c, -2, 0, 2.6, 2, '#9be05a', null);
+    ell(c, 8, 0, 4, 3.6, FLESH[0]); dot(c, 10.5, -1.6, 1.3, '#d6ff8a'); dot(c, 10.5, 1.6, 1.3, '#d6ff8a'); ln(c, [11, -2, 15, -5], FG[1], 1); ln(c, [11, 2, 15, 5], FG[1], 1); };
+  U.shellbeast = function (c, p, s) { const k = s.moving ? Math.sin(s.t * .2) * 3 : 0; // 갑각 거수: 겹겹 육각 갑각판, 금속 광택 회청색, 큰 뿔
+    for (const [x, b] of [[-18, -1], [-18, 1], [4, -1], [4, 1]]) rr(c, x + (b > 0 ? k : -k), b > 0 ? 18 : -30, 13, 12, 3, '#2a2f3a');
+    ell(c, -3, 0, 27, 22, '#3a4252', OUT, 2); const plate = (x, y, r, col) => { const pts = []; for (let i = 0; i < 6; i++) pts.push(x + Math.cos(i * TAU / 6) * r, y + Math.sin(i * TAU / 6) * r * .9); poly(c, pts, col, 'rgba(10,12,18,.8)', 1.1); };
+    for (const [x, y] of [[-18, -9], [-18, 9], [-8, -14], [-8, 0], [-8, 14], [2, -9], [2, 9], [-28, 0]]) plate(x, y, 7, grad(c, x - 6, y - 6, x + 6, y + 6, '#9fb0c8', '#4a566c'));
+    for (const [x, y] of [[-18, -9], [-8, 0], [2, 9], [-8, -14]]) ln(c, [x - 3, y - 3, x + 1, y - 4], 'rgba(255,255,255,.55)', 1);
+    for (let i = 0; i < 4; i++) poly(c, [-22 + i * 8, -16, -19 + i * 8, -26, -16 + i * 8, -16], FG[1]);
+    ell(c, 18, 0, 10, 11, '#4a566c', OUT, 1.6); dot(c, 22, -4, 2, '#ff6a4a'); dot(c, 22, 4, 2, '#ff6a4a'); ell(c, 15, 0, 3, 7, p.main, null);
+    for (const b of [-1, 1]) { c.beginPath(); c.moveTo(22, 6 * b); c.quadraticCurveTo(42, 18 * b, 43, 3 * b); c.lineTo(27, 2 * b); c.closePath(); c.fillStyle = FG[0]; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.3; c.stroke(); } };
+})();
 
 // buildart.js — 진영 건물 그림(화면 전용). render.js의 기본 그림을 같은 이름으로 덮어쓴다.
 // 실루엣(바닥판 모양)은 그대로 두고 지붕 디테일·발광 창문·움직이는 부품을 더한다.
@@ -4761,12 +5069,13 @@ RTS.mount = function (root, opts = {}) {
       items.push({ key: 'S', text: '정지', name: '정지', ok: true, run: () => send({ type: 'order', ids: allIds, order: null, stop: true }) });
       items.push({ key: 'H', text: '고수', name: '위치 고수', desc: '자리를 지키며 사거리 안만 공격합니다', ok: true, run: () => send({ type: 'order', ids: allIds, order: { type: 'hold' } }) });
       items.push(tgt('patrol', '순찰', 'P', '순찰', '현재 위치와 지정 지점을 왕복합니다'));
-      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], unlocked = !ab.requires || t.upgrades[ab.requires], cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
-        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : ''), desc: ab.desc, ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
+      if (list.some(u => RTS.defOf(u).kind === 'unit' && RTS.weapon(u))) items.push(tgt('escort', '호위', 'G', '호위', '지킬 내 유닛(부족 수송차 포함)을 누릅니다. 따라다니며 그 둘레 7칸 안의 적을 공격합니다. 부족 수송차는 병력을 고른 채 누르기만 해도 호위합니다'));
+      for (const id of d.abilities || []) { const ab = RTS.defs.abilities[id], need = ab.need ? ab.need(G, L) : '', unlocked = (!ab.requires || t.upgrades[ab.requires]) && !need, cd = Math.max(0, ((L.cds[id] || 0) - G.tick) / 20);
+        items.push({ key: ab.key, text: ab.short || ab.name.slice(0, 2), name: ab.name + (ab.id === 'siege' && L.sieged ? ' 해제' : '') + (ab.id === 'morph' && RTS.formPair(d) ? ': ' + RTS.defs.entities[RTS.formPair(d)].name : ''), desc: ab.desc + (ab.id === 'morph' && RTS.formPair(d) ? (d.formOf ? ` — 원래 모습(${RTS.defs.entities[d.formOf].name})으로 돌아갑니다` : ` — ${RTS.defs.entities[d.formTo].name}: ${RTS.defs.entities[d.formTo].formTxt}`) : ''), ok: !!unlocked, cool: cd > 0 ? Math.ceil(cd) : 0, why: unlocked ? '' : need || '연구 필요: ' + RTS.defs.upgrades[ab.requires].name, run: () => ab.target === 'point' ? setMode({ type: 'target', ability: id, radius: 2.5 }) : send({ type: 'ability', ids, ability: id }) }); }
       items.push(...upgradeItems(L, ids));
       if (d.builds) items.push({ key: 'B', text: '건설', name: '건설', desc: '건물을 고릅니다', ok: true, run: () => { app.menu = 'build'; } });
       if (d.gather) items.push({ key: 'D', text: '철거', name: '건물 철거', desc: `철거할 내 건물을 누릅니다. 비용은 건물 값의 ${pct(RTS.SERVICE.demo)}%(돌려받지 않음), 시간은 건설 시간의 ${pct(RTS.SERVICE.demoTime)}%(${RTS.SERVICE.demoTimeMin}~${RTS.SERVICE.demoTimeMax}초). 생산 중인 건물은 철거할 수 없습니다. 건물을 길게 눌러도 됩니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'demolish' }); notice('철거할 내 건물을 누르세요', 'ok'); } });
-      if (d.repair) items.push({ key: 'R', text: '수리', name: '기계 수리', desc: `수리할 내 기계 유닛을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
+      if (d.repair) items.push({ key: 'R', text: '수리', name: '수리', desc: `수리할 내 기계 유닛이나 건물을 누릅니다(우클릭도 됨). 체력을 가득 채우면 그 유닛 값의 ${pct(RTS.SERVICE.repair)}%가 듭니다`, ok: true, run: () => { setMode({ type: 'target', svc: 'repair' }); notice('수리할 기계 유닛을 누르세요', 'ok'); } });
     } else {
       for (const id of d.trains || []) items.push(ent(id, () => { const q = ids.map(i => G.byId[i]).sort((a, b) => a.prod.length - b.prod.length)[0]; send({ type: 'train', building: q.id, unit: id }); }));
       for (const id of d.researches || []) { const u = RTS.defs.upgrades[id]; if (t.upgrades[id] || t.research[id]) continue; const tech = RTS.techOk(t, u); items.push({ up: id, key: u.key, text: u.short || u.name.slice(0, 2), name: u.name, desc: u.desc, cost: u.cost, ok: tech, why: tech ? '' : '필요: ' + u.requires.map(r => RTS.defs.entities[r]?.name).join(', '), run: () => send({ type: 'research', building: L.id, upgrade: id }) }); }
@@ -4977,6 +5286,7 @@ RTS.mount = function (root, opts = {}) {
         app.tribeArm = null; }
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
+    if (t && t.def === 't_cart' && t.team === app.team) { const g = units.filter(e => RTS.weapon(e) && !RTS.defOf(e).gather).map(e => e.id); if (g.length) { send({ type: 'order', ids: g, order: { type: 'escort', target: t.id }, queue }); notice(`${g.length}기가 수송차를 호위합니다`, 'ok'); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); return true; } }
     const workers = units.filter(e => RTS.defOf(e).gather).map(e => e.id), rest = ids.filter(i => !workers.includes(i));
     const fixers = units.filter(e => RTS.defOf(e).repair && !RTS.repairBlock(G, e, t)).map(e => e.id);
     if (t && fixers.length) { send({ type: 'order', ids: fixers, order: { type: 'repair', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#7dffa8' }); return true; }
@@ -4990,6 +5300,8 @@ RTS.mount = function (root, opts = {}) {
       if (m.svc === 'demolish') { const why = t ? RTS.demoBlock(G, t, app.team) : '철거할 내 건물을 누르세요'; if (why) { notice(why, 'warn'); return; } send({ type: 'demolish', ids: ws.map(e => e.id), building: t.id, queue: shift }); }
       else { const fx = ws.filter(e => RTS.defOf(e).repair), why = fx.length ? RTS.repairBlock(G, fx[0], t) : '수리할 수 있는 일꾼이 없습니다'; if (why) { notice(why, 'warn'); return; } send({ type: 'order', ids: fx.map(e => e.id), order: { type: 'repair', target: t.id }, queue: shift }); }
       R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
+    if (m.order === 'escort') { const t = pick(wx, wy); if (!t || t.dead || RTS.defOf(t).kind !== 'unit' || !(t.team === app.team || RTS.ally(G, app.team, t.team)) || ids.includes(t.id) && ids.length === 1) { notice('호위할 내 유닛(또는 수송차)을 누르세요', 'warn'); return; }
+      send({ type: 'order', ids: ids.filter(i => i !== t.id), order: { type: 'escort', target: t.id }, queue: shift }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); if (!shift) app.mode = null; return; }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
