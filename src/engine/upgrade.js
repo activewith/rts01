@@ -130,13 +130,25 @@ RTS.formDef = function (base, o) { const D = RTS.defs.entities, b = D[base]; if 
     if (o.hitAir !== undefined) { if (o.hitAir) delete w.air; else w.air = false; } if (o.splash !== undefined) w.splash = o.splash; }
   b.formTo = id; return d; };
 RTS.formPair = d => d.formTo || d.formOf || null;
+// 변신 대가: 걸리는 시간(그동안 움직이지도 공격하지도 못하고, 받는 피해 ×dmgTaken), 자원(원래 합체 유닛 값의 비율)
+RTS.MORPH = { time: [3, 6], big: 1, cost: .15, back: .08, minOre: 20, dmgTaken: 1.3 };
+RTS.morphCost = function (d) { const M = RTS.MORPH, base = RTS.defs.entities[d.formOf || d.id] || d, k = d.formOf ? M.back : M.cost, c = {};
+  for (const r of Object.keys(base.cost || {})) { const v = Math.round(base.cost[r] * k); if (v > 0) c[r] = v; } c.ore = Math.max(M.minOre, c.ore || 0); return c; };
+RTS.morphTime = d => { const M = RTS.MORPH, base = RTS.defs.entities[d.formOf || d.id] || d; return (base.r >= M.big ? M.time[1] : M.time[0]); };
 RTS.morphBlock = function (G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to) return '변신할 수 없는 유닛입니다';
-  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다';
+  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다'; if (u.morphing) return '변신 중입니다';
+  const c = RTS.morphCost(d); if (!RTS.canPay(G.teams[u.team], c)) return `자원이 모자랍니다 (광석 ${c.ore}${c.gas ? ' · 에테르 ' + c.gas : ''})`;
   if (d.air && !RTS.defs.entities[to].air && !landSpot(G, u)) return '근처에 내려앉을 땅이 없습니다. 땅 위로 옮기세요'; return ''; };
 // 비행 → 지상: 바로 아래가 못 가는 곳이면 4칸 안의 가장 가까운 땅에 내려앉는다
 function landSpot(G, u) { const ok = (x, y) => RTS.walkable(G, Math.floor(x), Math.floor(y)); if (ok(u.x, u.y)) return { x: u.x, y: u.y }; const p = RTS.nearestFree(G, u.x, u.y, 4); return p && Math.hypot(p.x - u.x, p.y - u.y) <= 4.5 && ok(p.x, p.y) ? p : null; }
-RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const to = RTS.formPair(RTS.defOf(u)), ratio = u.hp / RTS.stat(G, u, 'hp');
-  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); u.x = p.x; u.y = p.y; }
+// 변신 시작: 자원을 내고 morphTime초 동안 변신한다. 끝나면 RTS.morphDone이 형태를 바꾼다
+RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const d = RTS.defOf(u), c = RTS.morphCost(d), t = G.teams[u.team];
+  for (const r of Object.keys(c)) t.res[r] -= c[r]; const n = RTS.morphTime(d) * RTS.HZ;
+  u.morphing = { at: G.tick, until: G.tick + n, to: RTS.formPair(d), paid: c }; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0; RTS.issue(G, u, null);
+  RTS.emit(G, 'morphStart', { e: u, to: u.morphing.to, n }); return true; };
+// 변신 취소(합체 유닛이 죽으면 자동). 자원은 돌려주지 않는다
+RTS.morphDone = function (G, u) { const m = u.morphing; u.morphing = null; if (!m || u.dead) return false; const to = m.to, ratio = u.hp / RTS.stat(G, u, 'hp');
+  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); if (!p) { const t = G.teams[u.team]; for (const r of Object.keys(m.paid)) t.res[r] += m.paid[r]; RTS.emit(G, 'notice', { team: u.team, text: '내려앉을 땅이 없어 변신을 취소했습니다(자원 돌려받음)', kind: 'warn' }); return false; } u.x = p.x; u.y = p.y; }
   u.def = to; u.form = RTS.defs.entities[to].formOf ? 1 : 0; u.sieged = false; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0;
   u.hp = Math.max(1, ratio * RTS.stat(G, u, 'hp')); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {

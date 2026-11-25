@@ -107,6 +107,7 @@ RTS.commands.order = function (G, team, c) {
     if (!c.order) { RTS.issue(G, u, null); continue; }
     if (u.sieged && ['move', 'patrol'].includes(c.order.type)) continue;
     if (defOf(u).immobile && ['move', 'patrol', 'amove', 'escort'].includes(c.order.type)) continue;
+    if (u.morphing) continue;
     const pos = c.spread && c.spread[u.id];
     const o = Object.assign({}, c.order, pos ? { x: pos.x, y: pos.y } : null);
     if (o.type === 'patrol') { o.ax = u.x; o.ay = u.y; }
@@ -191,6 +192,7 @@ RTS.hit = function (G, t, x, y, dmg, w, src) {
 RTS.damage = function (G, t, dmg, src) {
   if (t.dead) return;
   if (G.coop && src && src.team !== t.team && RTS.ally(G, src.team, t.team)) return; // 협동: 동맹은 맞지 않는다
+  if (t.morphing) dmg *= RTS.MORPH.dmgTaken; // 변신 중에는 더 아프다
   const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
@@ -394,7 +396,7 @@ function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
     if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y; if (defOf(u).immobile) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
@@ -470,6 +472,7 @@ RTS.systems.push(
       if (d.kind === 'building') { runBuilding(G, e); continue; }
       if (e.cd > 0) e.cd--;
       if (e.stunned > G.tick) continue;
+      if (e.morphing) { if (G.tick >= e.morphing.until) RTS.morphDone(G, e); continue; } // 변신 중: 아무것도 하지 않는다
       if (d.regen && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + d.regen);
       if (e.order) RTS.orders[e.order.type](G, e, e.order);
       else if (!d.passive) { if (tryHeal(G, e, true)) continue;

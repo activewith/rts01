@@ -254,6 +254,7 @@ RTS.Renderer = function (canvas, app) {
   R.attach = function (G) {
     RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'morphStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: RTS.defOf(e).r * 1.5 }); });
     RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
@@ -489,6 +490,9 @@ RTS.Renderer = function (canvas, app) {
       if (d.air) { c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(x + 6, y + 4, d.r * TS * .9, d.r * TS * .55, 0, 0, TAU); c.fill(); } // 나는 유닛 그림자
       if (hit) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
       else { const sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS); c.save(); c.translate(x, y - lift); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); }
+      if (e.morphing) { const m = e.morphing, f = Math.min(1, (G.tick - m.at) / (m.until - m.at)), rr = d.r * TS + 8; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke();
+        c.strokeStyle = '#ffe6a6'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); c.fillStyle = `rgba(255,236,170,${.18 + .18 * Math.sin(t * .5)})`; c.beginPath(); c.arc(x, y - lift, d.r * TS + 4, 0, TAU); c.fill();
+        if (t % 6 === 0) sparks(x / TS, (y - lift) / TS, 2, '#ffe6a6'); if (LON) light(x, y - lift, d.r * TS * 4, [1, .9, .6], .45); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
