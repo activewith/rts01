@@ -25,12 +25,14 @@ RTS.mod({
     siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
       use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
       ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
-    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다',
+    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다. 변신하는 동안(작은 유닛 3초, 큰 유닛 6초) 움직이지도 공격하지도 못하고 피해를 30% 더 받는다. 자원이 든다(변신: 유닛 값의 15%, 되돌리기: 8%)',
       need: (G, u) => RTS.morphBlock(G, u),
       use(G, u) { return RTS.morph(G, u); },
       // AI: 'combat' 형태는 적이 가까울 때, 'travel' 형태(빠른 이동·비행)는 적이 없을 때 쓴다
       ai(G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to || (u.rank || 0) < RTS.RANK.max) return; const f = RTS.defs.entities[d.formOf || to], near = !!RTS.scan(G, u, RTS.weapon(u), 8);
-        const want = f.formAi === 'combat' ? near : !near; if (want !== !!d.formOf && !RTS.morphBlock(G, u)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
+        const want = f.formAi === 'combat' ? near : !near; if (want === !!d.formOf || G.tick < (u.aiMorphAt || 0) || RTS.morphBlock(G, u)) return;
+        if (!near && G.teams[u.team].res.ore < RTS.morphCost(d).ore + 150) return; // 이동용 변신은 여유 자원이 있을 때만
+        u.aiMorphAt = G.tick + 20 * RTS.HZ; RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },

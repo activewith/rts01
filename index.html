@@ -231,7 +231,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '762b68c';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '5eb006c';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -745,6 +745,7 @@ RTS.commands.order = function (G, team, c) {
     if (!c.order) { RTS.issue(G, u, null); continue; }
     if (u.sieged && ['move', 'patrol'].includes(c.order.type)) continue;
     if (defOf(u).immobile && ['move', 'patrol', 'amove', 'escort'].includes(c.order.type)) continue;
+    if (u.morphing) continue;
     const pos = c.spread && c.spread[u.id];
     const o = Object.assign({}, c.order, pos ? { x: pos.x, y: pos.y } : null);
     if (o.type === 'patrol') { o.ax = u.x; o.ay = u.y; }
@@ -829,6 +830,7 @@ RTS.hit = function (G, t, x, y, dmg, w, src) {
 RTS.damage = function (G, t, dmg, src) {
   if (t.dead) return;
   if (G.coop && src && src.team !== t.team && RTS.ally(G, src.team, t.team)) return; // 협동: 동맹은 맞지 않는다
+  if (t.morphing) dmg *= RTS.MORPH.dmgTaken; // 변신 중에는 더 아프다
   const hpBefore = t.hp; t.hp -= Math.max(1, dmg - RTS.stat(G, t, 'armor')); t.hitAt = G.tick;
   if (t.branch) { if (t.hp <= 0) RTS.branchDown(G, t); else if (t.team >= 0) RTS.emit(G, 'attacked', { e: t, src }); return; }
   if (defOf(t).site) { RTS.siteHit(G, t, dmg, src); return; }
@@ -1032,7 +1034,7 @@ function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
     if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y; if (defOf(u).immobile) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
@@ -1108,6 +1110,7 @@ RTS.systems.push(
       if (d.kind === 'building') { runBuilding(G, e); continue; }
       if (e.cd > 0) e.cd--;
       if (e.stunned > G.tick) continue;
+      if (e.morphing) { if (G.tick >= e.morphing.until) RTS.morphDone(G, e); continue; } // 변신 중: 아무것도 하지 않는다
       if (d.regen && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + d.regen);
       if (e.order) RTS.orders[e.order.type](G, e, e.order);
       else if (!d.passive) { if (tryHeal(G, e, true)) continue;
@@ -1275,13 +1278,25 @@ RTS.formDef = function (base, o) { const D = RTS.defs.entities, b = D[base]; if 
     if (o.hitAir !== undefined) { if (o.hitAir) delete w.air; else w.air = false; } if (o.splash !== undefined) w.splash = o.splash; }
   b.formTo = id; return d; };
 RTS.formPair = d => d.formTo || d.formOf || null;
+// 변신 대가: 걸리는 시간(그동안 움직이지도 공격하지도 못하고, 받는 피해 ×dmgTaken), 자원(원래 합체 유닛 값의 비율)
+RTS.MORPH = { time: [3, 6], big: 1, cost: .15, back: .08, minOre: 20, dmgTaken: 1.3 };
+RTS.morphCost = function (d) { const M = RTS.MORPH, base = RTS.defs.entities[d.formOf || d.id] || d, k = d.formOf ? M.back : M.cost, c = {};
+  for (const r of Object.keys(base.cost || {})) { const v = Math.round(base.cost[r] * k); if (v > 0) c[r] = v; } c.ore = Math.max(M.minOre, c.ore || 0); return c; };
+RTS.morphTime = d => { const M = RTS.MORPH, base = RTS.defs.entities[d.formOf || d.id] || d; return (base.r >= M.big ? M.time[1] : M.time[0]); };
 RTS.morphBlock = function (G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to) return '변신할 수 없는 유닛입니다';
-  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다';
+  if ((u.rank || 0) < RTS.RANK.max) return `★${RTS.RANK.max}까지 강화해야 변신할 수 있습니다`; if (u.merging) return '합체 중입니다'; if (u.morphing) return '변신 중입니다';
+  const c = RTS.morphCost(d); if (!RTS.canPay(G.teams[u.team], c)) return `자원이 모자랍니다 (광석 ${c.ore}${c.gas ? ' · 에테르 ' + c.gas : ''})`;
   if (d.air && !RTS.defs.entities[to].air && !landSpot(G, u)) return '근처에 내려앉을 땅이 없습니다. 땅 위로 옮기세요'; return ''; };
 // 비행 → 지상: 바로 아래가 못 가는 곳이면 4칸 안의 가장 가까운 땅에 내려앉는다
 function landSpot(G, u) { const ok = (x, y) => RTS.walkable(G, Math.floor(x), Math.floor(y)); if (ok(u.x, u.y)) return { x: u.x, y: u.y }; const p = RTS.nearestFree(G, u.x, u.y, 4); return p && Math.hypot(p.x - u.x, p.y - u.y) <= 4.5 && ok(p.x, p.y) ? p : null; }
-RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const to = RTS.formPair(RTS.defOf(u)), ratio = u.hp / RTS.stat(G, u, 'hp');
-  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); u.x = p.x; u.y = p.y; }
+// 변신 시작: 자원을 내고 morphTime초 동안 변신한다. 끝나면 RTS.morphDone이 형태를 바꾼다
+RTS.morph = function (G, u) { if (RTS.morphBlock(G, u)) return false; const d = RTS.defOf(u), c = RTS.morphCost(d), t = G.teams[u.team];
+  for (const r of Object.keys(c)) t.res[r] -= c[r]; const n = RTS.morphTime(d) * RTS.HZ;
+  u.morphing = { at: G.tick, until: G.tick + n, to: RTS.formPair(d), paid: c }; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0; RTS.issue(G, u, null);
+  RTS.emit(G, 'morphStart', { e: u, to: u.morphing.to, n }); return true; };
+// 변신 취소(합체 유닛이 죽으면 자동). 자원은 돌려주지 않는다
+RTS.morphDone = function (G, u) { const m = u.morphing; u.morphing = null; if (!m || u.dead) return false; const to = m.to, ratio = u.hp / RTS.stat(G, u, 'hp');
+  if (RTS.defOf(u).air && !RTS.defs.entities[to].air) { const p = landSpot(G, u); if (!p) { const t = G.teams[u.team]; for (const r of Object.keys(m.paid)) t.res[r] += m.paid[r]; RTS.emit(G, 'notice', { team: u.team, text: '내려앉을 땅이 없어 변신을 취소했습니다(자원 돌려받음)', kind: 'warn' }); return false; } u.x = p.x; u.y = p.y; }
   u.def = to; u.form = RTS.defs.entities[to].formOf ? 1 : 0; u.sieged = false; u.path = null; u.needPath = false; u.dest = null; u.destEnt = null; u.tgt = 0;
   u.hp = Math.max(1, ratio * RTS.stat(G, u, 'hp')); RTS.issue(G, u, null); RTS.emit(G, 'morph', { e: u, form: u.form }); return true; };
 RTS.orders.merge = function (G, u, o) {
@@ -2453,12 +2468,14 @@ RTS.mod({
     siege: { short: '포격', name: '포격 모드', key: 'Q', target: 'self', cooldown: 2, desc: '고정 포격 전환. 사거리 11, 범위 피해. 이동 불가',
       use(G, u) { u.sieged = !u.sieged; RTS.issue(G, u, null); },
       ai(G, u) { const near = RTS.scan(G, u, RTS.defOf(u).siegeWeapon, 9); if (!!near !== !!u.sieged) { if (near || G.tick % 40 === 0) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'siege' }); } } },
-    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다',
+    morph: { short: '변신', name: '변신', key: 'T', target: 'self', cooldown: 4, desc: '★2까지 강화한 합체 유닛만 쓸 수 있다. 다른 형태로 바뀌고, 다시 누르면 원래대로 돌아온다. 변신하는 동안(작은 유닛 3초, 큰 유닛 6초) 움직이지도 공격하지도 못하고 피해를 30% 더 받는다. 자원이 든다(변신: 유닛 값의 15%, 되돌리기: 8%)',
       need: (G, u) => RTS.morphBlock(G, u),
       use(G, u) { return RTS.morph(G, u); },
       // AI: 'combat' 형태는 적이 가까울 때, 'travel' 형태(빠른 이동·비행)는 적이 없을 때 쓴다
       ai(G, u) { const d = RTS.defOf(u), to = RTS.formPair(d); if (!to || (u.rank || 0) < RTS.RANK.max) return; const f = RTS.defs.entities[d.formOf || to], near = !!RTS.scan(G, u, RTS.weapon(u), 8);
-        const want = f.formAi === 'combat' ? near : !near; if (want !== !!d.formOf && !RTS.morphBlock(G, u)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
+        const want = f.formAi === 'combat' ? near : !near; if (want === !!d.formOf || G.tick < (u.aiMorphAt || 0) || RTS.morphBlock(G, u)) return;
+        if (!near && G.teams[u.team].res.ore < RTS.morphCost(d).ore + 150) return; // 이동용 변신은 여유 자원이 있을 때만
+        u.aiMorphAt = G.tick + 20 * RTS.HZ; RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'morph' }); } },
     shock: { name: '충격파', key: 'Q', target: 'point', range: 8, cooldown: 25, desc: '지점 반경 2.5에 피해 40, 2초 기절',
       use(G, u, c) { RTS.query(G, c.x, c.y, 2.5, o => { if (o.dead || o.team === u.team || o.team < 0 || Math.hypot(o.x - c.x, o.y - c.y) > 3) return; RTS.damage(G, o, 40, u); if (RTS.defOf(o).kind === 'unit') o.stunned = G.tick + 40; }); RTS.emit(G, 'impact', { x: c.x, y: c.y, w: { splash: 2.5 }, team: u.team }); },
       ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 7); if (t && RTS.defOf(t).kind === 'unit') RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'shock', x: t.x, y: t.y, one: true }); } },
@@ -3781,6 +3798,7 @@ RTS.Renderer = function (canvas, app) {
   R.attach = function (G) {
     RTS.on(G, 'merged', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 24, s: d.r * 2.6 }); fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: d.r * 1.4 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2.5); });
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
+    RTS.on(G, 'morphStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: RTS.defOf(e).r * 1.5 }); });
     RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
@@ -4016,6 +4034,9 @@ RTS.Renderer = function (canvas, app) {
       if (d.air) { c.fillStyle = 'rgba(0,0,0,.22)'; c.beginPath(); c.ellipse(x + 6, y + 4, d.r * TS * .9, d.r * TS * .55, 0, 0, TAU); c.fill(); } // 나는 유닛 그림자
       if (hit) { const sp = unitSprite(fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS, hit); c.drawImage(S.unit, 0, 0, sp.px, sp.px, x - sp.L / 2, y - lift - sp.L / 2, sp.L, sp.L); }
       else { const sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS); c.save(); c.translate(x, y - lift); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); }
+      if (e.morphing) { const m = e.morphing, f = Math.min(1, (G.tick - m.at) / (m.until - m.at)), rr = d.r * TS + 8; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke();
+        c.strokeStyle = '#ffe6a6'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); c.fillStyle = `rgba(255,236,170,${.18 + .18 * Math.sin(t * .5)})`; c.beginPath(); c.arc(x, y - lift, d.r * TS + 4, 0, TAU); c.fill();
+        if (t % 6 === 0) sparks(x / TS, (y - lift) / TS, 2, '#ffe6a6'); if (LON) light(x, y - lift, d.r * TS * 4, [1, .9, .6], .45); }
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
@@ -5188,6 +5209,7 @@ RTS.mount = function (root, opts = {}) {
       if (w) stats.push(`공격 ${Math.round(RTS.wStat(G, e, w, 'damage'))}`, `사거리 ${+RTS.wStat(G, e, w, 'range').toFixed(1)}`);
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
       if (e.demoPaid) stats.push(`철거 중 ${Math.floor((e.demo || 0) / RTS.demoTicks(RTS.defOf(e)) * 100)}%`);
+      if (e.morphing) { const m = e.morphing; stats.push(`변신 중 → ${RTS.defs.entities[m.to].name} ${Math.floor((G.tick - m.at) / (m.until - m.at) * 100)}% (받는 피해 +${Math.round((RTS.MORPH.dmgTaken - 1) * 100)}%)`); }
       if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
