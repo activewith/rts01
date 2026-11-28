@@ -1,6 +1,6 @@
 // 잿빛 부족: 배치·도달, 발견, 동맹 요청(고르기·협공·기지방어·자원공유·바꾸기), 공병 외교 미션(수학 문제: 수준별 출제·답 범위·정답/오답/힌트/시간 초과), 결과(동맹/중립/적대), 직접 공격, 동맹 지원(확률), 습격, 회당 함락, 저장 복원
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const mk = (seed, map = 'ridge', ai) => RTS.createGame({ map, seed, players: [{ faction: 'pioneers' }, { faction: 'ironclad', ai }] });
 const run = (G, sec) => { for (let i = 0; i < sec * RTS.HZ; i++) RTS.step(G); };
 const TU = G => G.ents.filter(e => e.team === RTS.TRIBE && !e.dead && RTS.defOf(e).kind === 'unit');

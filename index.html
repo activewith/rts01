@@ -235,7 +235,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '0ed4a36';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '053b757';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -513,7 +513,7 @@ RTS.findPath = function (G, sx, sy, goal) {
 // 공간 해시 — 매 틱 재구성. 저장되지 않는다.
 RTS.rebuildGrid = function (G) {
   for (const c of G._grid) c.length = 0;
-  for (const e of G.ents) { if (e.dead || e.team === -1) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
+  for (const e of G.ents) { if (e.dead || e.team === -1 || e.inside) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
 };
 RTS.query = function (G, x, y, r, fn) {
   const pad = r + 3, x0 = Math.max(0, (x - pad) >> 2), x1 = Math.min(G._cols - 1, (x + pad) >> 2), y0 = Math.max(0, (y - pad) >> 2), y1 = Math.min(G._rows - 1, (y + pad) >> 2);
@@ -694,6 +694,9 @@ RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
 // 적대 판정. 같은 팀과 -1(자원·거점)은 적이 아니다. 잿빛 부족(RTS.TRIBE)은 플레이어마다 관계가 다르다(tribe.js)
 RTS.foe = (G, a, b) => { if (a === b || a === -1 || b === -1) return false; if (G.coop && RTS.ally(G, a, b)) return false; if (a === RTS.TRIBE || b === RTS.TRIBE) return !!(G.tribe && RTS.tribeFoe && RTS.tribeFoe(G, a === RTS.TRIBE ? b : a)); return true; };
 RTS.canHit = (w, t) => { const air = !!defOf(t).air; return air ? w.air !== false : w.ground !== false; };
+// 숨은 유닛(은신·잠복, super.js): 그 팀의 탐지 유닛(★1 이상 치료 유닛) 범위 안이거나 같은 편일 때만 보이고 겨눌 수 있다. t.det = 이번 틱에 탐지한 팀 목록
+RTS.stealthed = (G, t) => !!(t.burrowed || (t.cloakUntil || 0) > G.tick);
+RTS.seen = (G, team, t) => !RTS.stealthed(G, t) || team === t.team || (RTS.ally && RTS.ally(G, team, t.team)) || !!(t.det && t.det.includes(team));
 
 // ── 명령 ───────────────────────────────────────────────────
 RTS.issue = function (G, u, order, queue) {
@@ -723,7 +726,7 @@ RTS.orders.escort = function (G, u, o) { const t = G.byId[o.target], E = RTS.ESC
   if (!t || t.dead || t === u || !(t.team === u.team || RTS.ally(G, u.team, t.team))) { nextOrder(G, u); return; }
   const w = RTS.weapon(u), dt = Math.hypot(u.x - t.x, u.y - t.y);
   if (w && dt < E.leash) { let best = null, bd = 1e9;
-    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
+    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f) || !RTS.seen(G, u.team, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
       if (!best) best = RTS.scan(G, u, w, RTS.wStat(G, u, w, 'range')); u.tgt = best ? best.id : 0; }
     else { const c = G.byId[u.tgt]; if (c && !c.dead && Math.hypot(c.x - t.x, c.y - t.y) < E.guard + 2) best = c; }
     if (best && engage(G, u, best, true)) return; }
@@ -859,7 +862,7 @@ RTS.kill = function (G, e, src, silent) {
 RTS.scan = function (G, u, w, r) {
   let best = null, bs = -1e9;
   RTS.query(G, u.x, u.y, r, t => {
-    if (t.dead || !RTS.foe(G, u.team, t.team) || t.downUntil > G.tick || !RTS.canHit(w, t)) return;
+    if (t.dead || !RTS.foe(G, u.team, t.team) || t.downUntil > G.tick || !RTS.canHit(w, t) || !RTS.seen(G, u.team, t)) return;
     const d = RTS.edgeDist(u, t); if (d > r) return;
     const td = defOf(t), s = (td.weapon ? (td.kind === 'unit' ? 3 : 2.4) : td.kind === 'unit' ? 2 : 1) * 100 - d * 8;
     if (s > bs) { bs = s; best = t; }
@@ -867,7 +870,7 @@ RTS.scan = function (G, u, w, r) {
   return best;
 };
 function engage(G, u, t, chase) {
-  const w = RTS.weapon(u); if (!w || !RTS.canHit(w, t)) return false;
+  const w = RTS.weapon(u); if (!w || !RTS.canHit(w, t) || u.burrowed || !RTS.seen(G, u.team, t)) return false;
   const rng = RTS.wStat(G, u, w, 'range');
   if (RTS.edgeDist(u, t) <= rng + .05) {
     stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
@@ -880,7 +883,7 @@ function engage(G, u, t, chase) {
 function autoTarget(G, u) {
   const w = RTS.weapon(u); if (!w) return null;
   const cur = u.tgt && G.byId[u.tgt];
-  if (cur && !cur.dead && RTS.edgeDist(u, cur) <= (defOf(u).aggro || 8) + 2 && (G.tick + u.id) % 12) return cur;
+  if (cur && !cur.dead && RTS.seen(G, u.team, cur) && RTS.edgeDist(u, cur) <= (defOf(u).aggro || 8) + 2 && (G.tick + u.id) % 12) return cur;
   if ((G.tick + u.id) % 6 && !cur) return null;
   const t = RTS.scan(G, u, w, Math.max(defOf(u).aggro || 8, RTS.wStat(G, u, w, 'range')));
   u.tgt = t ? t.id : 0; return t;
@@ -912,7 +915,7 @@ Object.assign(RTS.orders, {
   patrol(G, u, o) { const t = autoTarget(G, u); if (t && engage(G, u, t, true)) return;
     moveTo(G, u, o.x, o.y); if (arrived(u) || Math.hypot(u.x - o.x, u.y - o.y) < .8) { u.dest = null; [o.x, o.ax] = [o.ax, o.x]; [o.y, o.ay] = [o.ay, o.y]; } },
   hold(G, u) { stopMove(u); const t = autoTarget(G, u); if (t) engage(G, u, t, false); },
-  attack(G, u, o) { const t = G.byId[o.target]; if (!t || t.dead || t.downUntil > G.tick) { stopMove(u); nextOrder(G, u); return; } engage(G, u, t, true); },
+  attack(G, u, o) { const t = G.byId[o.target]; if (!t || t.dead || t.downUntil > G.tick || !RTS.seen(G, u.team, t)) { stopMove(u); nextOrder(G, u); return; } engage(G, u, t, true); },
   cast(G, u, o) { const ab = RTS.defs.abilities[o.ability];
     if (Math.hypot(u.x - o.x, u.y - o.y) > ab.range) { moveTo(G, u, o.x, o.y); return; }
     stopMove(u); if (RTS.abilityReady(G, u, ab)) RTS.useAbility(G, u, ab, o); nextOrder(G, u); },
@@ -1037,8 +1040,8 @@ function pathFor(G, u) {
 function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
-    if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
+    if (u.dead || defOf(u).kind !== 'unit' || u.inside) continue;
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing || u.burrowed || u.leaping) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
@@ -1113,7 +1116,7 @@ RTS.systems.push(
       if (d.site) continue; // 거점 상태는 market 시스템이 관리한다
       if (d.kind === 'building') { runBuilding(G, e); continue; }
       if (e.cd > 0) e.cd--;
-      if (e.stunned > G.tick) continue;
+      if (e.stunned > G.tick || e.inside) continue; // 수송기 안의 유닛은 아무것도 하지 않는다(super.js)
       if (e.morphing) { if (G.tick >= e.morphing.until) RTS.morphDone(G, e); continue; } // 변신 중: 아무것도 하지 않는다
       if (d.regen && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + d.regen);
       if (e.order) RTS.orders[e.order.type](G, e, e.order);
@@ -1397,6 +1400,100 @@ RTS.orders.demolish = function (G, u, o) { const b = G.byId[o.target];
   if (b.demo >= RTS.demoTicks(RTS.defOf(b))) { RTS.kill(G, b, null, true); RTS.emit(G, 'death', { e: b }); RTS.say(G, u.team, `${RTS.defOf(b).name} 철거 완료`, 'ok'); RTS.issue(G, u, null); RTS.backToWork(G, u); } };
 // 일을 마친 사람 쪽 일꾼은 가까운 광맥으로 돌아간다(AI 일꾼은 AI가 다시 배치)
 RTS.backToWork = function (G, u) { if (u.order || !RTS.defOf(u).gather || G.teams[u.team].ai) return; const n = RTS.nearestNode(G, u.x, u.y, 'ore', 16); if (n) u.order = { type: 'gather', node: n.id }; };
+
+// super.js — ★ 강화 시간, 처치 수, 히든 슈퍼 합체, 숨기(은신·잠복)와 탐지, 도약, 수호 오라, 수송(2026-11). DOM 없음, 시드 난수만 쓴다(두 기기 동일).
+// ── ★ 강화 시간 ── 비용은 시작할 때 내고, time초 뒤 ★가 오른다. 그동안 유닛은 평소처럼 움직이고 싸운다. 죽으면 강화도 사라진다.
+//    시간 = 유닛 생산 시간 × time[★-1] (최소 timeMin초). 묶음 생산 유닛(갈퀴충 등)은 묶음 시간 기준.
+RTS.RANK.time = [.5, .75]; RTS.RANK.timeMin = [6, 9];
+RTS.rankTime = (d, r) => Math.max(RTS.RANK.timeMin[r - 1], Math.round((d.time || 20) * RTS.RANK.time[r - 1]));
+(function () {
+  const block0 = RTS.rankBlock;
+  RTS.rankBlock = function (G, u) { if (u.ranking) return '★ 강화 중입니다'; return block0(G, u); };
+  RTS.commands.rankup = function (G, team, c) {
+    const t = G.teams[team]; let n = 0, why = '', sec = 0;
+    for (const id of c.ids || []) { const u = G.byId[id]; if (!u || u.dead || u.team !== team) continue;
+      const no = RTS.rankBlock(G, u); if (no) { why = why || no; continue; }
+      const d = RTS.defOf(u), r = (u.rank || 0) + 1, cost = RTS.rankCost(d, r); if (RTS.lack(G, team, t, cost)) { why = ''; break; }
+      RTS.pay(t, cost); sec = RTS.rankTime(d, r); u.ranking = { r, at: G.tick, until: G.tick + sec * RTS.HZ }; n++; RTS.emit(G, 'rankStart', { e: u, r }); }
+    if (n) RTS.say(G, team, `★ 강화 시작 ${n}기 · ${sec}초`, 'ok'); else if (why) RTS.say(G, team, why, 'warn');
+  };
+})();
+RTS.rankDone = function (G, u) { const k = u.ranking; u.ranking = null; if (!k || u.dead) return; const old = RTS.stat(G, u, 'hp'); u.rank = k.r; u.hp = Math.min(RTS.stat(G, u, 'hp'), u.hp * RTS.stat(G, u, 'hp') / old); RTS.emit(G, 'ranked', { e: u }); };
+
+// ── 처치 수 · 히든 슈퍼 합체 ── 유닛이 적 유닛·건물을 쓰러뜨리면 kills가 오른다(합체 유닛은 정보 창에 보인다).
+//    merges에 kills가 있는 조리법은 숨은 합체다: 재료가 모두 그 처치 수 이상일 때만 메뉴에 나오고 고를 수 있다(작은 합체 10, 큰 합체 20).
+//    처음으로 처치 수를 채운 합체 유닛은 대사를 외친다(힌트, 'superHint' 사건).
+RTS.SUPER = { small: 10, big: 20,
+  lines: { small: ['더 강해질 수 있어… 나와 같은 전우가 곁에 있다면!', '힘이 차오른다! 같은 동료와 하나가 될 수 있을 것 같다!'], big: ['이 힘이 넘쳐흐른다… 또 하나의 거인과 합친다면!', '나와 같은 거인을 불러라! 하나가 될 때가 왔다!'] } };
+RTS.superRecipe = id => Object.values(RTS.defs.merges).find(m => m.kills && m.parts[id]) || null;
+(function () {
+  const kill0 = RTS.kill;
+  RTS.kill = function (G, e, src, silent) { const was = e.dead; kill0(G, e, src, silent); if (was || !e.dead) return;
+    if (e.load && e.load.length) RTS.unloadAll(G, e, true); // 수송기가 쓰러지면 탄 유닛을 내보낸다(피해를 입고)
+    if (!src || silent || src.dead || src.team < 0 || src.team === e.team || e.team === -1) return; const sd = src.def && RTS.defs.entities[src.def]; if (!sd || sd.kind !== 'unit') return;
+    src.kills = (src.kills || 0) + 1; const base = sd.formOf || src.def, m = RTS.superRecipe(base);
+    if (m && !src.superHint && src.kills >= m.kills) { src.superHint = 1; const L = RTS.SUPER.lines[m.kills >= RTS.SUPER.big ? 'big' : 'small']; RTS.emit(G, 'superHint', { e: src, text: L[Math.floor(RTS.rand(G) * L.length)] }); } };
+  const mergesOf0 = RTS.mergesOf;
+  RTS.mergesOf = (G, team, defId, u) => mergesOf0(G, team, defId).filter(m => !m.kills || (u && (u.kills || 0) >= m.kills));
+  const pick0 = RTS.mergePick;
+  RTS.mergePick = function (G, u, m) { if (!m.kills) return pick0(G, u, m);
+    const need = Object.assign({}, m.parts), pick = [u]; need[u.def]--;
+    const cand = G.ents.filter(o => o !== u && !o.dead && o.team === u.team && need[o.def] > 0 && !o.merging && !o.morphing && (o.kills || 0) >= m.kills && Math.hypot(o.x - u.x, o.y - u.y) <= RTS.MERGE.range).sort((a, b) => Math.hypot(a.x - u.x, a.y - u.y) - Math.hypot(b.x - u.x, b.y - u.y) || a.id - b.id);
+    for (const o of cand) if (need[o.def] > 0) { need[o.def]--; pick.push(o); }
+    return { pick, miss: Object.keys(need).filter(k => need[k] > 0).map(k => [k, need[k]]) }; };
+  const merge0 = RTS.commands.merge;
+  RTS.commands.merge = function (G, team, c) { const u = G.byId[c.unit], m = RTS.defs.merges[c.recipe]; if (m && m.kills && (!u || (u.kills || 0) < m.kills)) return; merge0(G, team, c); };
+  const block0 = RTS.mergeBlock;
+  RTS.mergeBlock = function (G, u, m) { if (m.kills && (u.morphing || u.ranking)) return u.morphing ? '변신 중입니다' : '★ 강화 중입니다'; if (m.kills && (u.load || []).length) return '먼저 탄 유닛을 내려야 합니다'; return block0(G, u, m); };
+  const morph0 = RTS.morphBlock;
+  RTS.morphBlock = function (G, u) { if ((u.load || []).length) return '먼저 탄 유닛을 내려야 합니다'; if (u.burrowed) return '땅속에서는 변신할 수 없습니다'; return morph0(G, u); };
+})();
+
+// ── 숨기와 탐지 ── 은신(cloakUntil까지)·잠복(burrowed) 유닛은 상대 팀의 탐지 유닛 범위 안에서만 보이고 겨눌 수 있다(RTS.seen, sim.js).
+//    탐지 유닛: 치료 능력(heal)이 있고 ★ detectRank 이상인 유닛. 범위 = 그 유닛 시야.
+RTS.DETECT = { rank: 1 };
+RTS.detector = (G, e) => { const d = RTS.defOf(e); return !!d.heal && (e.rank || 0) >= RTS.DETECT.rank && !e.inside; };
+// ── 도약(돌격대장) · 잠복(독충왕) · 수호 오라(큰 슈퍼 합체 기본 형태) · 수송(큰 슈퍼 합체 변신 형태)
+RTS.LEAP = { time: .7, dmg: 30, splash: 1.6, stun: 1 };
+RTS.AURA = { r: 6, taken: .75, regen: 3 };
+RTS.TRANSPORT = { reach: 1.8, maxR: .8, hurt: .25, drop: 3 };
+(function () { const dmg0 = RTS.damage; RTS.damage = function (G, t, dmg, src) { if ((t.auraUntil || 0) > G.tick) dmg *= RTS.AURA.taken; if (t.inside) return; dmg0(G, t, dmg, src); }; })();
+RTS.leap = function (G, u, x, y) { const p = RTS.walkable(G, Math.floor(x), Math.floor(y)) ? { x, y } : RTS.nearestFree(G, x, y, 3); if (!p) return false;
+  const n = Math.round(RTS.LEAP.time * RTS.HZ); u.leaping = { sx: u.x, sy: u.y, tx: p.x, ty: p.y, at: G.tick, until: G.tick + n }; u.path = null; u.needPath = false; u.stunned = G.tick + n; RTS.emit(G, 'leapStart', { e: u }); return true; };
+RTS.canBoard = (G, u, car) => { const d = RTS.defOf(u), cd = RTS.defOf(car); return !!cd.transport && u !== car && u.team === car.team && d.kind === 'unit' && !d.air && (d.r || .5) <= RTS.TRANSPORT.maxR && !u.inside && !u.merging && !u.morphing && !d.uncontrollable && (car.load || []).length < cd.transport; };
+RTS.board = function (G, u, car) { if (!RTS.canBoard(G, u, car)) return false; (car.load = car.load || []).push(u.id); u.inside = car.id; u.x = car.x; u.y = car.y; u.path = null; u.needPath = false; u.order = null; u.queue = []; u.tgt = 0; u.burrowed = false; RTS.emit(G, 'boarded', { e: u, car }); return true; };
+// 내리기: 탄 유닛을 수송기 둘레의 갈 수 있는 땅에 놓는다. hurt면(수송기가 쓰러짐) 체력 일부를 잃는다. 땅이 없으면 false
+RTS.unloadAll = function (G, car, hurt) { const ids = car.load || []; if (!ids.length) return true; const spot = RTS.walkable(G, Math.floor(car.x), Math.floor(car.y)) ? { x: car.x, y: car.y } : RTS.nearestFree(G, car.x, car.y, hurt ? 12 : RTS.TRANSPORT.drop);
+  if (!spot) return false; let i = 0; for (const id of ids) { const u = G.byId[id]; if (!u || u.dead) continue; const a = i * 2.39996, rr = .6 + .35 * Math.sqrt(i); let px = spot.x + Math.cos(a) * rr, py = spot.y + Math.sin(a) * rr;
+      if (!RTS.walkable(G, Math.floor(px), Math.floor(py))) { px = spot.x; py = spot.y; } u.inside = 0; u.x = px; u.y = py; u.px = px; u.py = py; i++; if (hurt) { u.hp -= RTS.stat(G, u, 'hp') * RTS.TRANSPORT.hurt; if (u.hp <= 0) RTS.kill(G, u, null); } }
+  car.load = []; RTS.emit(G, 'unloaded', { car }); return true; };
+RTS.commands.board = function (G, team, c) { const car = G.byId[c.target]; if (!car || car.dead || car.team !== team || !RTS.defOf(car).transport) return; let n = 0;
+  for (const id of c.ids || []) { const u = G.byId[id]; if (!u || u.dead || u.team !== team || u === car) continue; if (!RTS.canBoard(G, u, car) && (car.load || []).length + n >= RTS.defOf(car).transport) break; if (RTS.defOf(u).air || (RTS.defOf(u).r || .5) > RTS.TRANSPORT.maxR) continue; RTS.issue(G, u, { type: 'board', target: car.id }); n++; }
+  if (!n) RTS.say(G, team, '탈 수 있는 유닛이 없습니다(지상 소형·중형 유닛, 자리 ' + RTS.defOf(car).transport + ')', 'warn'); };
+RTS.orders.board = function (G, u, o) { const car = G.byId[o.target]; if (!car || car.dead || !RTS.defOf(car).transport || (car.load || []).length >= RTS.defOf(car).transport) { RTS.issue(G, u, null); return; }
+  if (Math.hypot(u.x - car.x, u.y - car.y) <= RTS.TRANSPORT.reach + (RTS.defOf(car).r || 1)) { RTS.board(G, u, car); return; }
+  if (!u.path && !u.needPath || (G.tick + u.id) % 20 === 0) RTS.goTo(G, u, car); };
+
+RTS.addSystem({ id: 'super', run(G) {
+  const det = [];
+  for (const e of G.ents) { if (e.dead) continue;
+    if (e.ranking && G.tick >= e.ranking.until) RTS.rankDone(G, e);
+    if (e.inside) { const car = G.byId[e.inside]; if (!car || car.dead) { e.inside = 0; } else { e.x = car.x; e.y = car.y; } continue; }
+    if (e.leaping && G.tick >= e.leaping.until) { const L = e.leaping, P = RTS.LEAP; e.leaping = null; e.x = L.tx; e.y = L.ty; e.px = e.x; e.py = e.y; e.stunned = 0;
+      RTS.query(G, e.x, e.y, P.splash + 1, o => { if (o.dead || !RTS.foe(G, e.team, o.team) || RTS.defOf(o).air || Math.hypot(o.x - e.x, o.y - e.y) > P.splash) return; RTS.damage(G, o, P.dmg, e); if (RTS.defOf(o).kind === 'unit') o.stunned = Math.max(o.stunned || 0, G.tick + P.stun * RTS.HZ); });
+      RTS.emit(G, 'impact', { x: e.x, y: e.y, w: { splash: P.splash }, team: e.team }); }
+    else if (e.leaping) { const L = e.leaping, k = (G.tick - L.at) / (L.until - L.at); e.x = L.sx + (L.tx - L.sx) * k; e.y = L.sy + (L.ty - L.sy) * k; }
+    if (e.burrowed && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + (RTS.defs.abilities.burrow.regen || 4));
+    const d = RTS.defOf(e);
+    if (d.aura && !e.morphing) { if (G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + RTS.AURA.regen);
+      if (G.tick % 5 === 0) RTS.query(G, e.x, e.y, RTS.AURA.r, o => { if (!o.dead && (o.team === e.team || (RTS.ally && RTS.ally(G, o.team, e.team))) && Math.hypot(o.x - e.x, o.y - e.y) <= RTS.AURA.r) o.auraUntil = G.tick + 6; }); }
+    if (RTS.detector(G, e)) det.push(e);
+    if (e.det && e.det.length && !RTS.stealthed(G, e)) e.det = null; }
+  // 탐지: 숨은 유닛마다 어느 팀의 탐지 유닛 범위 안인지 기록(4틱마다)
+  if (G.tick % 4 === 0) for (const e of G.ents) { if (e.dead || e.inside || !RTS.stealthed(G, e)) continue; const list = [];
+    for (const q of det) { if (q.team === e.team || list.includes(q.team)) continue; const r = RTS.stat(G, q, 'sight') || RTS.defOf(q).sight || 7; if (Math.hypot(q.x - e.x, q.y - e.y) <= r) list.push(q.team); }
+    e.det = list.length ? list : null; }
+} }, { after: 'merge' });
 
 // market.js — 공유 주식시장. 회사 4곳, 총 100주씩, 나와 AI가 같은 물량을 두고 경쟁한다.
 // 주가: 평균회귀 + 무작위 변동 + 매매 충격. 배당: 30초마다 실적에 비례. 51주 이상이면 경영권.
@@ -2118,6 +2215,9 @@ RTS.aiAdvance = function (G, t, diff, plan, builds, army, workers, sec, cmd) {
   if (S.techNeed) return;
   // 2) ★ 강화: 비싼 유닛부터 한 번에 두 기까지
   if (G.tick - (S.rankAt || -1e9) >= T.rankEvery * RTS.HZ) { S.rankAt = G.tick; let n = 0;
+    // 상대에게 숨는 유닛(은신·잠복)이 있으면 치료 유닛 ★1(탐지)을 먼저 한다
+    const sneaky = G.ents.some(o => !o.dead && o.team >= 0 && RTS.foe(G, t.id, o.team) && (D[o.def].abilities || []).some(a => a === 'cloak' || a === 'burrow'));
+    if (sneaky) { const h = G.ents.find(o => !o.dead && o.team === t.id && D[o.def].heal && !(o.rank || 0) && !RTS.rankBlock(G, o)); if (h && spare(RTS.rankCost(D[h.def], 1))) { cmd({ type: 'rankup', ids: [h.id] }); n++; } }
     for (const u of army.filter(u => !RTS.rankBlock(G, u)).sort((a, b) => ((D[b.def].cost.ore || 0) + (D[b.def].cost.gas || 0) * 1.5) - ((D[a.def].cost.ore || 0) + (D[a.def].cost.gas || 0) * 1.5) || a.id - b.id)) {
       const c = RTS.rankCost(D[u.def], (u.rank || 0) + 1); if (!spare(c)) break; cmd({ type: 'rankup', ids: [u.id] }); if (++n >= 2) break; } }
   // 3) 합체: 집결 중(공격·방어 아님)일 때만. 일꾼이 드는 합체는 일꾼을 먼저 불러온다
@@ -2528,7 +2628,7 @@ RTS.mod({
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
       weapon: { damage: 14, range: 5.5, cooldown: 1.6, splash: 1, air: false, speed: 11, art: 'shell' }, desc: '범위 피해. 지상만 공격' },
     p_medic:   { kind: 'unit', name: '의무병', abbr: '의', key: 'E', art: 'trooper', tint: 2, r: .38, hp: 55, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 40 }, time: 16, tags: ['bio'], requires: ['p_lab'], passive: false,
-      heal: { amount: 6, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 보병을 자동 치료' },
+      heal: { amount: 6, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 보병을 자동 치료. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     p_tank:    { kind: 'unit', name: '포격전차', abbr: '포', key: 'T', art: 'tank', r: .72, hp: 170, armor: 1, speed: 2.3, sight: 10, supply: 3, cost: { ore: 150, gas: 100 }, time: 28, tags: ['mech'], abilities: ['siege'],
       weapon: { damage: 20, range: 7, cooldown: 1.4, air: false, speed: 20, art: 'shell' }, siegeWeapon: { damage: 42, range: 11, cooldown: 2.6, splash: 1.3, air: false, speed: 18, art: 'shell' }, desc: '포격 모드로 원거리 범위 공격' },
     p_gunship: { kind: 'unit', name: '강습기', abbr: '강', key: 'F', art: 'flyer', air: true, r: .6, hp: 130, speed: 3.8, sight: 10, supply: 3, cost: { ore: 125, gas: 75 }, time: 24, tags: ['mech'],
@@ -2550,7 +2650,7 @@ RTS.mod({
     i_striker: { kind: 'unit', name: '사수봇', abbr: '사', key: 'R', art: 'bot', tint: 1, r: .44, hp: 80, speed: 2.7, sight: 8, supply: 2, cost: { ore: 100, gas: 25 }, time: 20, tags: ['mech'],
       weapon: { damage: 11, range: 6, cooldown: 1.1, speed: 22, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
     i_mender:  { kind: 'unit', name: '정비봇', abbr: '정', key: 'E', art: 'bot', tint: 2, r: .4, hp: 60, speed: 3, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 18, tags: ['mech'], requires: ['i_core'], passive: false,
-      heal: { amount: 7, range: 3.5, cooldown: .9, tag: 'mech' }, desc: '주변 기계를 자동 수리' },
+      heal: { amount: 7, range: 3.5, cooldown: .9, tag: 'mech' }, desc: '주변 기계를 자동 수리. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     i_colossus:{ kind: 'unit', name: '중장봇', abbr: '중', key: 'T', art: 'walker', r: .85, hp: 300, armor: 2, speed: 1.9, sight: 10, supply: 4, cost: { ore: 250, gas: 125 }, time: 36, tags: ['mech'], abilities: ['shock'],
       weapon: { damage: 26, range: 6, cooldown: 1.7, splash: .9, air: false, speed: 14, art: 'shell' }, desc: '고체력 범위 화력, 충격파' },
     i_wasp:    { kind: 'unit', name: '말벌기', abbr: '말', key: 'F', art: 'flyer', tint: 1, air: true, r: .5, hp: 95, speed: 4.3, sight: 9, supply: 2, cost: { ore: 100, gas: 75 }, time: 20, tags: ['mech'],
@@ -2572,7 +2672,7 @@ RTS.mod({
     s_spitter: { kind: 'unit', name: '산탄충', abbr: '산', key: 'R', art: 'spitter', r: .42, hp: 80, speed: 2.7, sight: 8, supply: 1, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], abilities: ['acid'],
       weapon: { damage: 10, range: 5.5, cooldown: 1, speed: 18, art: 'shell' }, desc: '지상·공중 원거리 사격, 산성 분사' },
     s_nurse:   { kind: 'unit', name: '양육충', abbr: '양', key: 'E', art: 'nurse', r: .4, hp: 60, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 16, tags: ['bio'], requires: ['s_den'], passive: false,
-      heal: { amount: 5, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 생체 유닛을 자동 치료' },
+      heal: { amount: 5, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 생체 유닛을 자동 치료. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     s_brute:   { kind: 'unit', name: '거대충', abbr: '거', key: 'T', art: 'brute', r: .85, hp: 340, armor: 2, speed: 2.2, sight: 9, supply: 4, cost: { ore: 250, gas: 150 }, time: 36, tags: ['bio'], abilities: ['frenzy'],
       weapon: { damage: 24, range: .6, cooldown: 1.4, splash: .9, air: false }, desc: '고체력 근접 범위 공격, 광분' },
     s_drake:   { kind: 'unit', name: '독침비행체', abbr: '독', key: 'F', art: 'drake', air: true, r: .55, hp: 110, speed: 4, sight: 9, supply: 2, cost: { ore: 100, gas: 100 }, time: 22, tags: ['bio'],
@@ -2792,6 +2892,49 @@ RTS.mod({ entities: {
   s_behemoth_f:   RTS.formDef('s_behemoth',   { name: '갑각 거수', art: 'shellbeast', ai: 'combat', hp: 1.4, armor: 3, speed: .55, damage: .9, txt: '두꺼운 갑각. 체력 ×1.4, 방어 +3, 속도 ×0.55, 공격력 ×0.9', desc: '포자거수가 갑각을 두른 모습. 매우 단단하지만 느리다' }),
 } });
 
+
+// ── 히든 슈퍼 합체(2026-11, super.js) ─────────────────────
+// 같은 합체 유닛 2기가 모두 처치 kills 이상이면(작은 합체 10, 큰 합체 20) 그 유닛을 길게 눌러 '합체'에 나온다. 그 전에는 메뉴에 없다.
+// 작은 슈퍼: 개척단 도약, 철갑회 은신, 포자군락 잠복. 큰 슈퍼: 기본 형태는 수호 오라(주변 아군 받는 피해 -25%, 스스로 초당 3 회복), 변신하면 하늘을 나는 수송선(8자리).
+RTS.mod({ abilities: {
+  leap: { short: '도약', name: '도약', key: 'E', target: 'point', range: 8, cooldown: 14, desc: '점프 장치로 8칸 안의 지점에 뛰어내린다. 착지 반경 1.6에 피해 30, 1초 기절',
+    use(G, u, c) { return RTS.leap(G, u, c.x, c.y); },
+    ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 8); if (t && Math.hypot(t.x - u.x, t.y - u.y) > 3.5) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'leap', x: t.x, y: t.y, one: true }); } },
+  cloak: { short: '은신', name: '은신', key: 'E', target: 'self', cooldown: 30, desc: '12초 동안 모습을 감춘다. 상대의 탐지 유닛(★1 치료 유닛) 시야 안에서만 보이고 공격받는다. 은신 중에도 공격할 수 있다',
+    use(G, u) { u.cloakUntil = G.tick + 12 * RTS.HZ; RTS.emit(G, 'cloak', { e: u }); },
+    ai(G, u) { if (u.hp < RTS.stat(G, u, 'hp') * .6 && RTS.scan(G, u, RTS.weapon(u), 7)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'cloak' }); } },
+  burrow: { short: '잠복', name: '잠복', key: 'E', target: 'self', cooldown: 1.5, regen: 4, desc: '땅속에 숨는다(다시 누르면 나온다). 숨은 동안 움직이거나 공격하지 못하고 초당 4 회복. 상대의 탐지 유닛(★1 치료 유닛) 시야 안에서만 보인다',
+    use(G, u) { u.burrowed = !u.burrowed; u.path = null; u.needPath = false; RTS.issue(G, u, null); RTS.emit(G, 'burrow', { e: u, on: u.burrowed }); },
+    ai(G, u) { const m = RTS.stat(G, u, 'hp'); if (!u.burrowed && u.hp < m * .35) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'burrow' }); else if (u.burrowed && u.hp > m * .9) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'burrow' }); } },
+  loadnear: { short: '태우기', name: '주변 태우기', key: 'E', target: 'self', cooldown: 1, desc: '3칸 안의 내 지상 소형·중형 유닛을 자리만큼 태운다. 유닛을 고른 채 수송선을 우클릭(터치는 탭)해도 걸어와서 탄다',
+    use(G, u) { const cap = RTS.defOf(u).transport, list = []; RTS.query(G, u.x, u.y, 4, o => { if (!o.dead && Math.hypot(o.x - u.x, o.y - u.y) <= 3 && RTS.canBoard(G, o, u)) list.push(o); }); list.sort((a, b) => a.id - b.id);
+      let n = 0; for (const o of list) if ((u.load || []).length < cap && RTS.board(G, o, u)) n++; RTS.say(G, u.team, n ? `${n}기 탑승 (${(u.load || []).length}/${cap})` : '3칸 안에 탈 유닛이 없습니다', n ? 'ok' : 'warn'); } },
+  unload: { short: '내리기', name: '모두 내리기', key: 'R', target: 'self', cooldown: 1, desc: '탄 유닛을 모두 둘레의 땅에 내린다(3칸 안에 땅이 있어야 한다)',
+    use(G, u) { if (!(u.load || []).length) return false; if (!RTS.unloadAll(G, u, false)) { RTS.say(G, u.team, '근처에 내릴 땅이 없습니다', 'warn'); return false; } } },
+} });
+// 슈퍼 합체는 재료 2기를 그냥 더한 것보다 강하다: 체력 ×1.3, 공격력 ×1.35, 방어 +1
+const SUP = d => { d.hp = Math.round(d.hp * 1.3); if (d.weapon) d.weapon.damage = Math.round(d.weapon.damage * 13.5) / 10; d.armor = (d.armor || 0) + 1; return d; };
+RTS.mod({ entities: {
+  p_supcmd:   SUP(RTS.fuseDef({ p_commando: 2 }, { name: '강철 돌격대장', abbr: '돌', art: 'super_commando', r: .55, abilities: ['stim', 'leap'], superOf: 'p_commando', desc: '특공대 2기(각 10킬)의 슈퍼 합체. 점프 장치로 도약해 착지 지점을 강타한다' })),
+  i_supduel:  SUP(RTS.fuseDef({ i_duelist: 2 }, { name: '그림자 기사', abbr: '그', art: 'super_duelist', r: .65, abilities: ['cloak'], superOf: 'i_duelist', desc: '쌍날기사 2기(각 10킬)의 슈퍼 합체. 은신 장치로 모습을 감춘다' })),
+  s_supvenom: SUP(RTS.fuseDef({ s_venom: 2 }, { name: '땅굴 독충왕', abbr: '왕', art: 'super_venom', r: .6, abilities: ['acid', 'burrow'], superOf: 's_venom', desc: '맹독충 2기(각 10킬)의 슈퍼 합체. 땅속에 숨어 회복한다' })),
+  p_supertitan:  SUP(RTS.fuseDef({ p_titan: 2 }, { name: '수호 거신왕', abbr: '왕', art: 'super_titan', r: 1.45, abilities: ['shock', 'morph'], aura: true, superOf: 'p_titan', desc: '거대로봇 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+  i_superjug:    SUP(RTS.fuseDef({ i_juggernaut: 2 }, { name: '철벽 거신왕', abbr: '왕', art: 'super_juggernaut', r: 1.5, abilities: ['shock', 'morph'], aura: true, superOf: 'i_juggernaut', desc: '철갑거신 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+  s_superbeh:    SUP(RTS.fuseDef({ s_behemoth: 2 }, { name: '태고의 거수', abbr: '태', art: 'super_behemoth', r: 1.5, abilities: ['frenzy', 'morph'], aura: true, superOf: 's_behemoth', desc: '포자거수 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+}, merges: {
+  superCommando: { faction: 'pioneers', at: 'p_barracks', parts: { p_commando: 2 }, into: 'p_supcmd', kills: 10 },
+  superDuelist:  { faction: 'ironclad', at: 'i_forge', parts: { i_duelist: 2 }, into: 'i_supduel', kills: 10 },
+  superVenom:    { faction: 'swarm', at: 's_pool', parts: { s_venom: 2 }, into: 's_supvenom', kills: 10 },
+  superTitan:    { faction: 'pioneers', at: 'p_factory', parts: { p_titan: 2 }, into: 'p_supertitan', kills: 20 },
+  superJug:      { faction: 'ironclad', at: 'i_foundry', parts: { i_juggernaut: 2 }, into: 'i_superjug', kills: 20 },
+  superBeh:      { faction: 'swarm', at: 's_nest', parts: { s_behemoth: 2 }, into: 's_superbeh', kills: 20 },
+} });
+(function () { const D = RTS.defs.entities, tr = (base, o) => { const d = RTS.formDef(base, Object.assign({ ai: 'travel', air: true, hitAir: true }, o)); delete d.aura; d.transport = 8; d.abilities = d.abilities.filter(a => a !== 'shock' && a !== 'frenzy').concat(['loadnear', 'unload']); return d; };
+  RTS.mod({ entities: {
+    p_supertitan_f: tr('p_supertitan', { name: '거신 수송선', art: 'super_skyship', speed: 1.4, hp: .85, armor: -2, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.4, 체력 ×0.85, 공격력 ×0.55', desc: '수호 거신왕이 변신한 수송선' }),
+    i_superjug_f:   tr('i_superjug',   { name: '철벽 수송선', art: 'super_airship', speed: 1.35, hp: .85, armor: -2, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.35, 체력 ×0.85, 공격력 ×0.55', desc: '철벽 거신왕이 변신한 수송선' }),
+    s_superbeh_f:   tr('s_superbeh',   { name: '포자 수송선', art: 'super_sporeship', speed: 1.45, hp: .8, armor: -1, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.45, 체력 ×0.8, 공격력 ×0.55', desc: '태고의 거수가 날개를 펴 변신한 수송선' }),
+  } }); })();
 
 // settings.js — 설정 항목 정의. 항목을 추가하면 설정 메뉴에 자동으로 나타난다.
 // 코드에서는 RTS.cfg(G).키 로 읽는다. startOnly는 새 게임부터, client는 이 브라우저 전용(시뮬레이션과 무관).
@@ -3866,6 +4009,12 @@ RTS.Renderer = function (canvas, app) {
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
     RTS.on(G, 'morphStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: RTS.defOf(e).r * 1.5 }); });
     RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
+    RTS.on(G, 'superHint', ({ e, text }) => { if (e.team !== app.team) return; R.say(e.id, text, G.teams[e.team].faction); if (R.onScreen(e.x, e.y)) { fx({ k: 'ring', x: e.x, y: e.y, life: 30, s: 2.6 }); sparks(e.x, e.y, 16, '#ffd27a'); } app.sfx && app.sfx('merge', e); }); // 히든 슈퍼 합체 힌트: 유닛이 외친다
+    RTS.on(G, 'cloak', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: 1.4 }); });
+    RTS.on(G, 'burrow', ({ e }) => { if (R.onScreen(e.x, e.y)) { fx({ k: 'dust', x: e.x, y: e.y, s: 26, life: 30 }); fx({ k: 'smoke', x: e.x, y: e.y, s: 7, vx: 0, life: 22 }); } });
+    RTS.on(G, 'leapStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'dust', x: e.x, y: e.y, s: 22, life: 22 }); });
+    RTS.on(G, 'boarded', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 10, s: .8 }); });
+    RTS.on(G, 'rankStart', ({ e }) => { if (R.onScreen(e.x, e.y)) sparks(e.x, e.y, 5, '#ffd24a'); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
@@ -4161,7 +4310,7 @@ RTS.Renderer = function (canvas, app) {
     R.tracks = R.tracks.filter(k => { k.life--; if (!R.onScreen(k.x, k.y)) return k.life > 0; const a = Math.min(1, k.life / 60) * .3; c.save(); c.translate(k.x * TS, k.y * TS); c.rotate(k.a); // 바퀴·궤도 자국
       c.fillStyle = `rgba(0,0,0,${a})`; c.fillRect(-3, -k.w, 6, 2.4); c.fillRect(-3, k.w - 2.4, 6, 2.4); c.restore(); return k.life > 0; });
     if (R.tracks.length > 500) R.tracks.splice(0, R.tracks.length - 500);
-    const sel = new Set(app.sel), vis = e => e.team === me || me < 0 || (e.team < 0 ? RTS.branchKnown(G, me, e) : RTS.visibleTo(G, me, e.x, e.y));
+    const sel = new Set(app.sel), vis = e => !e.inside && (e.team === me || me < 0 || (e.team < 0 ? RTS.branchKnown(G, me, e) : RTS.visibleTo(G, me, e.x, e.y) && (!RTS.seen || RTS.seen(G, me, e)))); // 수송선 안·탐지 안 된 숨은 유닛은 그리지 않는다
     // 기억된 적 건물
     if (me >= 0 && !G.nofog) { for (const e of G.ents) if (e.team >= 0 && e.team !== me && RTS.defOf(e).size && vis(e)) R.ghosts[e.id] = { def: e.def, team: e.team, x: e.x, y: e.y, built: e.built, buildT: e.buildT };
       for (const id of Object.keys(R.ghosts)) { const g = R.ghosts[id]; if (RTS.visibleTo(G, me, g.x, g.y)) { if (!G.byId[id]) delete R.ghosts[id]; } else if (R.onScreen(g.x, g.y) && G.teams[me].seen[(g.y | 0) * G.w + (g.x | 0)]) drawBuilding(c, G, g, RTS.defs.entities[g.def], alpha, true); } }
@@ -4180,7 +4329,11 @@ RTS.Renderer = function (canvas, app) {
       c.fillStyle = d.air ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.32)'; c.beginPath(); c.ellipse(x + 3 + lift * .6, y + 4 + lift * .4, d.r * TS * (d.air ? .8 : 1), d.r * TS * .72, 0, 0, TAU); c.fill();
       if (sel.has(e.id)) { c.strokeStyle = ringCol(e); c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
     // 그리기 순서: 건물(바닥판 아래 끝)과 지상 유닛을 위에서 아래로 섞어 그린다(3/4 시점에서 앞에 있는 것이 뒤를 가린다). 나는 유닛은 맨 나중
-    const drawU = e => { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
+    const drawU = e => { const d = RTS.defOf(e), [x, y] = pos(e), lp = e.leaping ? Math.min(1, (G.tick - e.leaping.at) / (e.leaping.until - e.leaping.at)) : 0, lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : e.leaping ? Math.sin(Math.PI * lp) * 42 : 0;
+      // 숨은 유닛: 내 것은 반투명, 탐지된 상대는 흐릿하게. 잠복은 흙더미만 보인다. 도약 중에는 높이 떠서 바닥에 그림자
+      const hid = RTS.stealthed && RTS.stealthed(G, e), a0 = c.globalAlpha; if (hid) { if (e.burrowed) { c.fillStyle = 'rgba(70,46,30,.75)'; c.beginPath(); c.ellipse(x, y + 2, d.r * TS * 1.1, d.r * TS * .6, 0, 0, TAU); c.fill(); c.fillStyle = 'rgba(120,86,60,.7)'; for (let i = 0; i < 4; i++) { c.beginPath(); c.arc(x + Math.cos(i * 1.7 + e.id) * d.r * TS * .7, y + 2 + Math.sin(i * 1.7 + e.id) * d.r * TS * .35, 2, 0, TAU); c.fill(); } }
+        c.globalAlpha = a0 * (e.team === me ? (e.burrowed ? .3 : .45) : .55); }
+      if (e.leaping) { c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(x + lift * .3, y + 3, d.r * TS * (1 - lp * .3 * (1 - lp) * 2), d.r * TS * .5, 0, 0, TAU); c.fill(); }
       const fn = RTS.art.units[d.art] || RTS.art.units.trooper, hit = e.hitAt && G.tick - e.hitAt < 2;
       if (e.path && !d.air && rich() && (t + e.id) % 9 === 0) { const bio = (d.tags || []).includes('bio');
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
@@ -4195,6 +4348,10 @@ RTS.Renderer = function (canvas, app) {
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
+      if (e.ranking) { const f = Math.min(1, (G.tick - e.ranking.at) / (e.ranking.until - e.ranking.at)), rr = d.r * TS + 5; c.lineWidth = 2.5; c.strokeStyle = 'rgba(20,14,4,.7)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd24a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); } // ★ 강화 진행
+      if (RTS.defOf(e).transport && (e.load || []).length) { c.fillStyle = 'rgba(10,14,22,.8)'; c.fillRect(x - 12, y - lift + d.r * TS + 10, 24, 11); c.fillStyle = '#9fe0ff'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center'; c.fillText(`${e.load.length}/${RTS.defOf(e).transport}`, x, y - lift + d.r * TS + 19); c.textAlign = 'left'; } // 탑승 수
+      if (d.aura && !e.morphing && (t + e.id) % 3 === 0) { c.strokeStyle = 'rgba(255,220,120,.18)'; c.lineWidth = 2; c.beginPath(); c.ellipse(x, y, 6 * TS, 6 * TS * .78, 0, 0, TAU); c.stroke(); } // 수호 오라 범위
+      c.globalAlpha = a0;
       if (e.merging) { const j = RTS.mergeJob(G, e);
         if (j && j.at) { if (e.id === j.host) { const f = Math.min(1, (G.tick - j.at) / j.total), rr = d.r * TS + 9; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd25a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); }
           else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }
@@ -4551,6 +4708,27 @@ RTS.Renderer = function (canvas, app) {
     for (let i = 0; i < 4; i++) poly(c, [-22 + i * 8, -16, -19 + i * 8, -26, -16 + i * 8, -16], FG[1]);
     ell(c, 18, 0, 10, 11, '#4a566c', OUT, 1.6); dot(c, 22, -4, 2, '#ff6a4a'); dot(c, 22, 4, 2, '#ff6a4a'); ell(c, 15, 0, 3, 7, p.main, null);
     for (const b of [-1, 1]) { c.beginPath(); c.moveTo(22, 6 * b); c.quadraticCurveTo(42, 18 * b, 43, 3 * b); c.lineTo(27, 2 * b); c.closePath(); c.fillStyle = FG[0]; c.fill(); c.strokeStyle = OUT; c.lineWidth = 1.3; c.stroke(); } };
+})();
+
+// superart.js — 히든 슈퍼 합체 유닛 그림(화면 전용). 원래 합체 유닛 그림을 크게 그리고 금빛 장식(왕관 뿔·고리·문양)을 더한다.
+(function () {
+  const U = RTS.art.units, TAU = Math.PI * 2, GOLD = '#ffd24a', GOLD2 = '#a8761a';
+  const wrap = (base, sc, deco) => function (c, P, s) { const f = U[base] || U.trooper; c.save(); c.scale(sc, sc); f(c, P, s); c.restore(); deco(c, P, s); };
+  const ring = (c, r, w = 2) => { c.strokeStyle = GOLD2; c.lineWidth = w + 1.5; c.beginPath(); c.arc(0, 0, r, 0, TAU); c.stroke(); c.strokeStyle = GOLD; c.lineWidth = w; c.stroke(); };
+  const horns = (c, r, n, len) => { for (let i = 0; i < n; i++) { const a = -Math.PI / 2 + (i - (n - 1) / 2) * .45; c.fillStyle = GOLD; c.beginPath(); c.moveTo(Math.cos(a - .12) * r, Math.sin(a - .12) * r); c.lineTo(Math.cos(a) * (r + len), Math.sin(a) * (r + len)); c.lineTo(Math.cos(a + .12) * r, Math.sin(a + .12) * r); c.fill(); c.strokeStyle = GOLD2; c.lineWidth = .8; c.stroke(); } };
+  const gem = (c, x, y, r, col) => { c.fillStyle = col; c.beginPath(); c.moveTo(x, y - r); c.lineTo(x + r * .8, y); c.lineTo(x, y + r); c.lineTo(x - r * .8, y); c.closePath(); c.fill(); c.fillStyle = 'rgba(255,255,255,.7)'; c.fillRect(x - r * .25, y - r * .55, r * .3, r * .3); };
+  // 작은 슈퍼: 돌격대장(등의 점프 장치), 그림자 기사(어두운 망토 무늬), 독충왕(등의 굴착 갑각)
+  U.super_commando = wrap('commando', 1.18, (c, P, s) => { c.fillStyle = '#3a414c'; c.fillRect(-11, -6, 6, 12); c.fillStyle = '#ff9a3a'; c.beginPath(); c.arc(-12, -3, 2, 0, TAU); c.arc(-12, 3, 2, 0, TAU); c.fill(); ring(c, 11, 1.4); horns(c, 11, 3, 4); });
+  U.super_duelist = wrap('duelist', 1.15, (c, P, s) => { c.fillStyle = 'rgba(20,18,30,.55)'; c.beginPath(); c.moveTo(-12, -9); c.quadraticCurveTo(-18, 0, -12, 9); c.lineTo(-4, 4); c.lineTo(-4, -4); c.closePath(); c.fill(); ring(c, 12, 1.4); gem(c, 0, 0, 3.2, '#b48cff'); });
+  U.super_venom = wrap('venom', 1.18, (c, P, s) => { c.fillStyle = '#5a3a22'; for (let i = 0; i < 3; i++) { c.beginPath(); c.ellipse(-6 + i * 4, 0, 3, 7 - i, 0, 0, TAU); c.fill(); } ring(c, 11, 1.4); horns(c, 11, 4, 3.5); gem(c, 6, 0, 2.6, '#b6ff6a'); });
+  // 큰 슈퍼: 거신왕 2종·태고의 거수(왕관과 가슴 보석), 수송선 3종(화물칸)
+  U.super_titan = wrap('titan', 1.12, (c, P, s) => { ring(c, 24, 2.2); horns(c, 24, 5, 7); gem(c, 0, 0, 5, P.light); });
+  U.super_juggernaut = wrap('juggernaut', 1.12, (c, P, s) => { ring(c, 25, 2.2); horns(c, 25, 5, 7); gem(c, 0, 0, 5, '#ff9a3a'); });
+  U.super_behemoth = wrap('behemoth', 1.1, (c, P, s) => { ring(c, 25, 2.2); horns(c, 25, 6, 8); gem(c, 0, 0, 5, '#b6ff6a'); });
+  const pods = (c, n, x0, gap) => { for (let i = 0; i < n; i++) { const x = x0 + i * gap; c.fillStyle = '#2a303a'; c.fillRect(x - 4, -16, 8, 6); c.fillRect(x - 4, 10, 8, 6); c.fillStyle = GOLD; c.fillRect(x - 3, -15, 6, 1.5); c.fillRect(x - 3, 14.5, 6, 1.5); } };
+  U.super_skyship = wrap('skyship', 1.15, (c, P, s) => { pods(c, 3, -10, 10); ring(c, 26, 1.6); });
+  U.super_airship = wrap('airship', 1.15, (c, P, s) => { pods(c, 3, -10, 10); ring(c, 26, 1.6); });
+  U.super_sporeship = wrap('wingvenom', 1.7, (c, P, s) => { for (let i = 0; i < 3; i++) { c.fillStyle = 'rgba(180,255,110,.55)'; c.beginPath(); c.ellipse(-8 + i * 8, 0, 4, 6, 0, 0, TAU); c.fill(); } ring(c, 22, 1.6); });
 })();
 
 // buildart.js — 진영 건물 그림(화면 전용). render.js의 기본 그림을 같은 이름으로 덮어쓴다.
@@ -5580,8 +5758,8 @@ RTS.mount = function (root, opts = {}) {
     if (d.kind !== 'unit' || d.uncontrollable) return out;
     const r = (L.rank || 0) + 1;
     if (RTS.producerOf(L.def) && r <= RTS.RANK.max) { const group = (ids || [L.id]).map(i => G.byId[i]).filter(u => u && !u.dead && u.team === app.team && u.def === L.def && (u.rank || 0) === (L.rank || 0)), n = group.length || 1, why = RTS.rankBlock(G, L), fx = `체력 +${pct(RTS.RANK.hp)}% · 공격 +${pct(RTS.RANK.dmg)}%`;
-      out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, 즉시 적용` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
-    if (!d.gather) RTS.mergesOf(G, app.team, L.def).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
+      out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, ${RTS.rankTime ? RTS.rankTime(d, r) + '초 걸림(그동안도 싸울 수 있음)' : '즉시 적용'}` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
+    if (!d.gather) RTS.mergesOf(G, app.team, L.def, L).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
       let why = RTS.mergeBlock(G, L, m); if (!why) { const miss = RTS.mergePick(G, L, m).miss; if (miss.length) why = `재료 부족(${RTS.MERGE.range}칸 안): ` + miss.map(([k, c]) => D[k].name + ' ' + c + '기').join(', '); }
       const sec = RTS.mergeTime(m); out.push({ key: 'JK'[i] || '', img: R.icon(m.into, app.team, t.faction), text: '합체', pl: `합체 → ${into.name}`, name: `합체: ${into.name}`, desc: `${parts} → 체력 ${into.hp}, 공격 ${into.weapon.damage}, 사거리 ${into.weapon.range}. 재료가 모인 뒤 ${sec}초 걸립니다(그동안 다른 명령을 주면 취소)`, note: `${parts} · 체력 ${into.hp} · ${sec}초`, ok: !why, why, run: () => send({ type: 'merge', unit: L.id, recipe: m.id }) }); });
     return out; }
@@ -5674,6 +5852,9 @@ RTS.mount = function (root, opts = {}) {
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
       if (e.demoPaid) stats.push(`철거 중 ${Math.floor((e.demo || 0) / RTS.demoTicks(RTS.defOf(e)) * 100)}%`);
       if (e.morphing) { const m = e.morphing; stats.push(`변신 중 → ${RTS.defs.entities[m.to].name} ${Math.floor((G.tick - m.at) / (m.until - m.at) * 100)}% (받는 피해 +${Math.round((RTS.MORPH.dmgTaken - 1) * 100)}%)`); }
+      if (e.ranking) stats.push(`★${e.ranking.r} 강화 중 ${Math.floor((G.tick - e.ranking.at) / (e.ranking.until - e.ranking.at) * 100)}%`);
+      if (d.fused || d.superOf || d.formOf) stats.push(`처치 ${e.kills || 0}`); if (d.transport) stats.push(`탑승 ${(e.load || []).length}/${d.transport}`); if (e.burrowed) stats.push('잠복 중'); if ((e.cloakUntil || 0) > G.tick) stats.push(`은신 ${Math.ceil((e.cloakUntil - G.tick) / RTS.HZ)}초`); if (d.aura && !e.morphing) stats.push('수호 오라');
+      if (d.heal && (e.rank || 0) >= (RTS.DETECT ? RTS.DETECT.rank : 1)) stats.push('탐지');
       if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
@@ -5724,6 +5905,7 @@ RTS.mount = function (root, opts = {}) {
     c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
     const t = G.teams[app.team], fogged = t && !G.nofog;
     for (const e of G.ents) { const d = RTS.defOf(e), x = ox + e.x * sc, y = oy + e.y * sc; if ((e.branch || e.team === RTS.TRIBE) && !RTS.branchKnown(G, app.team, e)) continue;
+      if (e.inside || (e.team >= 0 && e.team !== app.team && RTS.seen && !RTS.seen(G, app.team, e))) continue; // 수송선 안·숨은 유닛
       if (fogged && !d.site && e.team !== app.team && !(e.team < 0 ? t.seen[(e.y | 0) * G.w + (e.x | 0)] : RTS.visibleTo(G, app.team, e.x, e.y))) continue;
       c.fillStyle = e.team === RTS.TRIBE ? RTS.TEAM[RTS.TRIBE].main : d.site && e.team < 0 ? '#eef2f7' : e.team < 0 ? (d.resource === 'ore' ? '#ffc247' : '#ea7be0') : RTS.TEAM[e.team].main; const s = d.site || e.tribeHall ? 5 : d.size && e.team !== -1 ? 4 : 2.4; c.fillRect(x - s / 2, y - s / 2, s, s); }
     const TM = G.tribe && G.tribe.missions[app.team]; if (TM) for (const q of TM) if (q.id === 'scout' && q.done === null) { c.strokeStyle = '#9dffb5'; c.lineWidth = 1.5; c.beginPath(); c.arc(ox + q.x * sc, oy + q.y * sc, 5 * sc + 2, 0, Math.PI * 2); c.stroke(); }
@@ -5749,7 +5931,7 @@ RTS.mount = function (root, opts = {}) {
     drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
-  const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
+  const canSee = e => !e.inside && (e.team === app.team || (RTS.seen ? RTS.seen(app.G, app.team, e) : true)) && (e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y)));
   function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
     for (const e of G.ents) { if (e.dead || e.ext || !canSee(e)) continue; const d = RTS.defOf(e); // 추출기가 선 분출구는 건너뛴다
       if (d.size) { const r = RTS.rectOf(e), top = R.b3Top ? R.b3Top(d) : 0; if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; }
@@ -5774,6 +5956,7 @@ RTS.mount = function (root, opts = {}) {
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
+    if (t && t.team === app.team && RTS.defOf(t).transport && !t.dead) { const riders = units.filter(e => e !== t && !RTS.defOf(e).air && !RTS.defOf(e).transport); if (riders.length) { send({ type: 'board', ids: riders.map(e => e.id), target: t.id }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: color }); return true; } } // 수송선에 태우기(super.js)
     if (t && t.team === RTS.TRIBE && G.tribe) { const T = G.tribe, workers = units.filter(e => RTS.defOf(e).gather);
       if (t.tribeHall && workers.length && !RTS.foe(G, app.team, RTS.TRIBE) && T.rel[app.team] !== 'ally') { // 공병 → 회당: 외교 미션 받기
         const why = RTS.tribeBlock(G, app.team); if (why) { notice(why, 'warn'); return true; }
@@ -5887,6 +6070,7 @@ RTS.mount = function (root, opts = {}) {
     if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
     if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
     const t = pick(wx, wy);
+    if (drag.touch && t && t.team === app.team && RTS.defOf(t).transport && selected().some(s => s.team === app.team && s !== t && RTS.defOf(s).kind === 'unit' && !RTS.defOf(s).air) && context(wx, wy, tq)) return; // 터치: 유닛을 고른 채 내 수송선을 탭하면 태우기
     if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
     if (!t) { app.sel = []; app.menu = 'main'; return; }
     app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;

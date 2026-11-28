@@ -1,6 +1,6 @@
 // 캠페인: 모든 미션 생성(난이도·1인/2인), 전용 맵 연결성, 지점 도달·구조·호위·거점 지키기 목표, 단계 사건 시간, 해금 규칙, 기록, 보류 수입, 결정성·저장 복원
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','engine/campaign','data/content','data/settings','data/campaign']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','engine/campaign','data/content','data/settings','data/campaign']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const run = (G, sec) => { for (let i = 0; i < sec * RTS.HZ && !G.over; i++) RTS.step(G); };
 const D = RTS.defs.entities, C = RTS.camp;
 const mk = (id, level = 'normal', carry, mode) => { const G = RTS.createGame(RTS.campGameOpts(id, level, 5, RTS.defaultSettings(), carry, mode)); G.lines = []; RTS.on(G, 'story', d => G.lines.push(d.who + ': ' + d.text)); return G; };

@@ -264,6 +264,12 @@ RTS.Renderer = function (canvas, app) {
     RTS.on(G, 'leveled', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 22, s: 2.4 }); sparks(e.x, e.y, 10, '#ffd27a'); });
     RTS.on(G, 'morphStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: RTS.defOf(e).r * 1.5 }); });
     RTS.on(G, 'morph', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e); fx({ k: 'ring', x: e.x, y: e.y, life: 18, s: d.r * 2 }); sparks(e.x, e.y, 14, '#ffd27a'); shake(e.x, e.y, 2); });
+    RTS.on(G, 'superHint', ({ e, text }) => { if (e.team !== app.team) return; R.say(e.id, text, G.teams[e.team].faction); if (R.onScreen(e.x, e.y)) { fx({ k: 'ring', x: e.x, y: e.y, life: 30, s: 2.6 }); sparks(e.x, e.y, 16, '#ffd27a'); } app.sfx && app.sfx('merge', e); }); // 히든 슈퍼 합체 힌트: 유닛이 외친다
+    RTS.on(G, 'cloak', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 16, s: 1.4 }); });
+    RTS.on(G, 'burrow', ({ e }) => { if (R.onScreen(e.x, e.y)) { fx({ k: 'dust', x: e.x, y: e.y, s: 26, life: 30 }); fx({ k: 'smoke', x: e.x, y: e.y, s: 7, vx: 0, life: 22 }); } });
+    RTS.on(G, 'leapStart', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'dust', x: e.x, y: e.y, s: 22, life: 22 }); });
+    RTS.on(G, 'boarded', ({ e }) => { if (R.onScreen(e.x, e.y)) fx({ k: 'ring', x: e.x, y: e.y, life: 10, s: .8 }); });
+    RTS.on(G, 'rankStart', ({ e }) => { if (R.onScreen(e.x, e.y)) sparks(e.x, e.y, 5, '#ffd24a'); });
     RTS.on(G, 'ranked', ({ e }) => { if (!R.onScreen(e.x, e.y)) return; fx({ k: 'ring', x: e.x, y: e.y, life: 14, s: 1 }); sparks(e.x, e.y, 5, '#ffd27a'); });
     RTS.on(G, 'shot', ({ e, w }) => { if (!R.onScreen(e.x, e.y)) return; const d = RTS.defOf(e), a = e.facing, rr = (d.r || (d.size ? .9 : .6)) + .2, z = zOf(e), mx = e.x + Math.cos(a) * rr, my = e.y + Math.sin(a) * rr;
       if (!w.speed && (w.range || 0) < 1) fx({ k: 'slash', x: e.x + Math.cos(a) * rr * .7, y: e.y + Math.sin(a) * rr * .7, z, a, life: 7 });
@@ -559,7 +565,7 @@ RTS.Renderer = function (canvas, app) {
     R.tracks = R.tracks.filter(k => { k.life--; if (!R.onScreen(k.x, k.y)) return k.life > 0; const a = Math.min(1, k.life / 60) * .3; c.save(); c.translate(k.x * TS, k.y * TS); c.rotate(k.a); // 바퀴·궤도 자국
       c.fillStyle = `rgba(0,0,0,${a})`; c.fillRect(-3, -k.w, 6, 2.4); c.fillRect(-3, k.w - 2.4, 6, 2.4); c.restore(); return k.life > 0; });
     if (R.tracks.length > 500) R.tracks.splice(0, R.tracks.length - 500);
-    const sel = new Set(app.sel), vis = e => e.team === me || me < 0 || (e.team < 0 ? RTS.branchKnown(G, me, e) : RTS.visibleTo(G, me, e.x, e.y));
+    const sel = new Set(app.sel), vis = e => !e.inside && (e.team === me || me < 0 || (e.team < 0 ? RTS.branchKnown(G, me, e) : RTS.visibleTo(G, me, e.x, e.y) && (!RTS.seen || RTS.seen(G, me, e)))); // 수송선 안·탐지 안 된 숨은 유닛은 그리지 않는다
     // 기억된 적 건물
     if (me >= 0 && !G.nofog) { for (const e of G.ents) if (e.team >= 0 && e.team !== me && RTS.defOf(e).size && vis(e)) R.ghosts[e.id] = { def: e.def, team: e.team, x: e.x, y: e.y, built: e.built, buildT: e.buildT };
       for (const id of Object.keys(R.ghosts)) { const g = R.ghosts[id]; if (RTS.visibleTo(G, me, g.x, g.y)) { if (!G.byId[id]) delete R.ghosts[id]; } else if (R.onScreen(g.x, g.y) && G.teams[me].seen[(g.y | 0) * G.w + (g.x | 0)]) drawBuilding(c, G, g, RTS.defs.entities[g.def], alpha, true); } }
@@ -578,7 +584,11 @@ RTS.Renderer = function (canvas, app) {
       c.fillStyle = d.air ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.32)'; c.beginPath(); c.ellipse(x + 3 + lift * .6, y + 4 + lift * .4, d.r * TS * (d.air ? .8 : 1), d.r * TS * .72, 0, 0, TAU); c.fill();
       if (sel.has(e.id)) { c.strokeStyle = ringCol(e); c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
     // 그리기 순서: 건물(바닥판 아래 끝)과 지상 유닛을 위에서 아래로 섞어 그린다(3/4 시점에서 앞에 있는 것이 뒤를 가린다). 나는 유닛은 맨 나중
-    const drawU = e => { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
+    const drawU = e => { const d = RTS.defOf(e), [x, y] = pos(e), lp = e.leaping ? Math.min(1, (G.tick - e.leaping.at) / (e.leaping.until - e.leaping.at)) : 0, lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : e.leaping ? Math.sin(Math.PI * lp) * 42 : 0;
+      // 숨은 유닛: 내 것은 반투명, 탐지된 상대는 흐릿하게. 잠복은 흙더미만 보인다. 도약 중에는 높이 떠서 바닥에 그림자
+      const hid = RTS.stealthed && RTS.stealthed(G, e), a0 = c.globalAlpha; if (hid) { if (e.burrowed) { c.fillStyle = 'rgba(70,46,30,.75)'; c.beginPath(); c.ellipse(x, y + 2, d.r * TS * 1.1, d.r * TS * .6, 0, 0, TAU); c.fill(); c.fillStyle = 'rgba(120,86,60,.7)'; for (let i = 0; i < 4; i++) { c.beginPath(); c.arc(x + Math.cos(i * 1.7 + e.id) * d.r * TS * .7, y + 2 + Math.sin(i * 1.7 + e.id) * d.r * TS * .35, 2, 0, TAU); c.fill(); } }
+        c.globalAlpha = a0 * (e.team === me ? (e.burrowed ? .3 : .45) : .55); }
+      if (e.leaping) { c.fillStyle = 'rgba(0,0,0,.25)'; c.beginPath(); c.ellipse(x + lift * .3, y + 3, d.r * TS * (1 - lp * .3 * (1 - lp) * 2), d.r * TS * .5, 0, 0, TAU); c.fill(); }
       const fn = RTS.art.units[d.art] || RTS.art.units.trooper, hit = e.hitAt && G.tick - e.hitAt < 2;
       if (e.path && !d.air && rich() && (t + e.id) % 9 === 0) { const bio = (d.tags || []).includes('bio');
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
@@ -593,6 +603,10 @@ RTS.Renderer = function (canvas, app) {
       if (e.stunned > G.tick) { c.fillStyle = '#ffe27a'; c.fillRect(x - 6 + Math.sin(t * .4) * 5, y - d.r * TS - 8, 3, 3); }
       if (e.buffs.length) { c.strokeStyle = '#ff5a3c'; c.lineWidth = 1; c.beginPath(); c.arc(x, y, d.r * TS + 2, 0, TAU); c.stroke(); }
       if (e.rank) stars(c, x, y - lift + d.r * TS + 5, e.rank); // 발밑에 별
+      if (e.ranking) { const f = Math.min(1, (G.tick - e.ranking.at) / (e.ranking.until - e.ranking.at)), rr = d.r * TS + 5; c.lineWidth = 2.5; c.strokeStyle = 'rgba(20,14,4,.7)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd24a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); } // ★ 강화 진행
+      if (RTS.defOf(e).transport && (e.load || []).length) { c.fillStyle = 'rgba(10,14,22,.8)'; c.fillRect(x - 12, y - lift + d.r * TS + 10, 24, 11); c.fillStyle = '#9fe0ff'; c.font = 'bold 9px sans-serif'; c.textAlign = 'center'; c.fillText(`${e.load.length}/${RTS.defOf(e).transport}`, x, y - lift + d.r * TS + 19); c.textAlign = 'left'; } // 탑승 수
+      if (d.aura && !e.morphing && (t + e.id) % 3 === 0) { c.strokeStyle = 'rgba(255,220,120,.18)'; c.lineWidth = 2; c.beginPath(); c.ellipse(x, y, 6 * TS, 6 * TS * .78, 0, 0, TAU); c.stroke(); } // 수호 오라 범위
+      c.globalAlpha = a0;
       if (e.merging) { const j = RTS.mergeJob(G, e);
         if (j && j.at) { if (e.id === j.host) { const f = Math.min(1, (G.tick - j.at) / j.total), rr = d.r * TS + 9; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd25a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); }
           else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }

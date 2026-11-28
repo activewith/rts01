@@ -188,8 +188,8 @@ RTS.mount = function (root, opts = {}) {
     if (d.kind !== 'unit' || d.uncontrollable) return out;
     const r = (L.rank || 0) + 1;
     if (RTS.producerOf(L.def) && r <= RTS.RANK.max) { const group = (ids || [L.id]).map(i => G.byId[i]).filter(u => u && !u.dead && u.team === app.team && u.def === L.def && (u.rank || 0) === (L.rank || 0)), n = group.length || 1, why = RTS.rankBlock(G, L), fx = `체력 +${pct(RTS.RANK.hp)}% · 공격 +${pct(RTS.RANK.dmg)}%`;
-      out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, 즉시 적용` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
-    if (!d.gather) RTS.mergesOf(G, app.team, L.def).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
+      out.push({ key: 'U', text: '★' + r, pl: `강화 ★${r}` + (n > 1 ? ` (${n}기)` : ''), name: `${d.name} 강화 ★${r}` + (n > 1 ? ` · ${n}기` : ''), desc: `${fx}, ${RTS.rankTime ? RTS.rankTime(d, r) + '초 걸림(그동안도 싸울 수 있음)' : '즉시 적용'}` + (n > 1 ? ' · 비용은 한 기 기준' : ''), note: fx + (n > 1 ? ' · 비용은 한 기 기준' : ''), cost: RTS.rankCost(d, r), ok: !why, why, run: () => send({ type: 'rankup', ids: (group.length ? group : [L]).map(u => u.id) }) }); }
+    if (!d.gather) RTS.mergesOf(G, app.team, L.def, L).forEach((m, i) => { const into = D[m.into], parts = Object.keys(m.parts).map(k => `${D[k].name} ${m.parts[k]}`).join(' + ');
       let why = RTS.mergeBlock(G, L, m); if (!why) { const miss = RTS.mergePick(G, L, m).miss; if (miss.length) why = `재료 부족(${RTS.MERGE.range}칸 안): ` + miss.map(([k, c]) => D[k].name + ' ' + c + '기').join(', '); }
       const sec = RTS.mergeTime(m); out.push({ key: 'JK'[i] || '', img: R.icon(m.into, app.team, t.faction), text: '합체', pl: `합체 → ${into.name}`, name: `합체: ${into.name}`, desc: `${parts} → 체력 ${into.hp}, 공격 ${into.weapon.damage}, 사거리 ${into.weapon.range}. 재료가 모인 뒤 ${sec}초 걸립니다(그동안 다른 명령을 주면 취소)`, note: `${parts} · 체력 ${into.hp} · ${sec}초`, ok: !why, why, run: () => send({ type: 'merge', unit: L.id, recipe: m.id }) }); });
     return out; }
@@ -282,6 +282,9 @@ RTS.mount = function (root, opts = {}) {
       if (e.team >= 0) stats.push(`방어 ${Math.round(RTS.stat(G, e, 'armor'))}`); if (e.cargo) stats.push(`운반 ${e.cargo}`);
       if (e.demoPaid) stats.push(`철거 중 ${Math.floor((e.demo || 0) / RTS.demoTicks(RTS.defOf(e)) * 100)}%`);
       if (e.morphing) { const m = e.morphing; stats.push(`변신 중 → ${RTS.defs.entities[m.to].name} ${Math.floor((G.tick - m.at) / (m.until - m.at) * 100)}% (받는 피해 +${Math.round((RTS.MORPH.dmgTaken - 1) * 100)}%)`); }
+      if (e.ranking) stats.push(`★${e.ranking.r} 강화 중 ${Math.floor((G.tick - e.ranking.at) / (e.ranking.until - e.ranking.at) * 100)}%`);
+      if (d.fused || d.superOf || d.formOf) stats.push(`처치 ${e.kills || 0}`); if (d.transport) stats.push(`탑승 ${(e.load || []).length}/${d.transport}`); if (e.burrowed) stats.push('잠복 중'); if ((e.cloakUntil || 0) > G.tick) stats.push(`은신 ${Math.ceil((e.cloakUntil - G.tick) / RTS.HZ)}초`); if (d.aura && !e.morphing) stats.push('수호 오라');
+      if (d.heal && (e.rank || 0) >= (RTS.DETECT ? RTS.DETECT.rank : 1)) stats.push('탐지');
       if (e.merging) { const j = RTS.mergeJob(G, e); stats.push(j && j.at ? `합체 중 ${Math.floor((G.tick - j.at) / j.total * 100)}%` : '합체 재료 모으는 중'); } let prod = ''; if (e.prod && e.prod.length) { const p = e.prod[0], u = p.kind === 'unit' ? RTS.defs.entities[p.id] : p.kind === 'level' ? { name: `강화 ${p.lv}단계` } : RTS.defs.upgrades[p.id]; prod = `<div class="k-prod"><span>${u.name}${!p.started ? ' · 보급 부족' : ''}</span><i><s style="width:${Math.round(p.t / p.total * 100)}%"></s></i><span>대기 ${e.prod.length}/5</span></div>`; }
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
@@ -332,6 +335,7 @@ RTS.mount = function (root, opts = {}) {
     c.fillStyle = '#0a0f18'; c.fillRect(0, 0, W, H); const b = R.terrain(); if (b) c.drawImage(b, ox, oy, G.w * sc, G.h * sc);
     const t = G.teams[app.team], fogged = t && !G.nofog;
     for (const e of G.ents) { const d = RTS.defOf(e), x = ox + e.x * sc, y = oy + e.y * sc; if ((e.branch || e.team === RTS.TRIBE) && !RTS.branchKnown(G, app.team, e)) continue;
+      if (e.inside || (e.team >= 0 && e.team !== app.team && RTS.seen && !RTS.seen(G, app.team, e))) continue; // 수송선 안·숨은 유닛
       if (fogged && !d.site && e.team !== app.team && !(e.team < 0 ? t.seen[(e.y | 0) * G.w + (e.x | 0)] : RTS.visibleTo(G, app.team, e.x, e.y))) continue;
       c.fillStyle = e.team === RTS.TRIBE ? RTS.TEAM[RTS.TRIBE].main : d.site && e.team < 0 ? '#eef2f7' : e.team < 0 ? (d.resource === 'ore' ? '#ffc247' : '#ea7be0') : RTS.TEAM[e.team].main; const s = d.site || e.tribeHall ? 5 : d.size && e.team !== -1 ? 4 : 2.4; c.fillRect(x - s / 2, y - s / 2, s, s); }
     const TM = G.tribe && G.tribe.missions[app.team]; if (TM) for (const q of TM) if (q.id === 'scout' && q.done === null) { c.strokeStyle = '#9dffb5'; c.lineWidth = 1.5; c.beginPath(); c.arc(ox + q.x * sc, oy + q.y * sc, 5 * sc + 2, 0, Math.PI * 2); c.stroke(); }
@@ -357,7 +361,7 @@ RTS.mount = function (root, opts = {}) {
     drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
-  const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
+  const canSee = e => !e.inside && (e.team === app.team || (RTS.seen ? RTS.seen(app.G, app.team, e) : true)) && (e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y)));
   function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
     for (const e of G.ents) { if (e.dead || e.ext || !canSee(e)) continue; const d = RTS.defOf(e); // 추출기가 선 분출구는 건너뛴다
       if (d.size) { const r = RTS.rectOf(e), top = R.b3Top ? R.b3Top(d) : 0; if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; }
@@ -382,6 +386,7 @@ RTS.mount = function (root, opts = {}) {
     const units = list.filter(e => RTS.defOf(e).kind === 'unit'), blds = list.filter(e => RTS.defOf(e).kind === 'building'), t = pick(wx, wy), ids = units.map(e => e.id); let color = '#7dffa8';
     if (blds.length && !units.length) { const res = t && (RTS.defOf(t).resource === 'ore' || (t.team === app.team && RTS.defOf(t).placeOn)); send({ type: 'rally', ids: blds.map(e => e.id), x: wx, y: wy, ent: res ? t.id : 0 }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
     if (!units.length) return false;
+    if (t && t.team === app.team && RTS.defOf(t).transport && !t.dead) { const riders = units.filter(e => e !== t && !RTS.defOf(e).air && !RTS.defOf(e).transport); if (riders.length) { send({ type: 'board', ids: riders.map(e => e.id), target: t.id }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: color }); return true; } } // 수송선에 태우기(super.js)
     if (t && t.team === RTS.TRIBE && G.tribe) { const T = G.tribe, workers = units.filter(e => RTS.defOf(e).gather);
       if (t.tribeHall && workers.length && !RTS.foe(G, app.team, RTS.TRIBE) && T.rel[app.team] !== 'ally') { // 공병 → 회당: 외교 미션 받기
         const why = RTS.tribeBlock(G, app.team); if (why) { notice(why, 'warn'); return true; }
@@ -495,6 +500,7 @@ RTS.mount = function (root, opts = {}) {
     if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
     if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
     const t = pick(wx, wy);
+    if (drag.touch && t && t.team === app.team && RTS.defOf(t).transport && selected().some(s => s.team === app.team && s !== t && RTS.defOf(s).kind === 'unit' && !RTS.defOf(s).air) && context(wx, wy, tq)) return; // 터치: 유닛을 고른 채 내 수송선을 탭하면 태우기
     if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
     if (!t) { app.sel = []; app.menu = 'main'; return; }
     app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;

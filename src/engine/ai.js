@@ -241,6 +241,9 @@ RTS.aiAdvance = function (G, t, diff, plan, builds, army, workers, sec, cmd) {
   if (S.techNeed) return;
   // 2) ★ 강화: 비싼 유닛부터 한 번에 두 기까지
   if (G.tick - (S.rankAt || -1e9) >= T.rankEvery * RTS.HZ) { S.rankAt = G.tick; let n = 0;
+    // 상대에게 숨는 유닛(은신·잠복)이 있으면 치료 유닛 ★1(탐지)을 먼저 한다
+    const sneaky = G.ents.some(o => !o.dead && o.team >= 0 && RTS.foe(G, t.id, o.team) && (D[o.def].abilities || []).some(a => a === 'cloak' || a === 'burrow'));
+    if (sneaky) { const h = G.ents.find(o => !o.dead && o.team === t.id && D[o.def].heal && !(o.rank || 0) && !RTS.rankBlock(G, o)); if (h && spare(RTS.rankCost(D[h.def], 1))) { cmd({ type: 'rankup', ids: [h.id] }); n++; } }
     for (const u of army.filter(u => !RTS.rankBlock(G, u)).sort((a, b) => ((D[b.def].cost.ore || 0) + (D[b.def].cost.gas || 0) * 1.5) - ((D[a.def].cost.ore || 0) + (D[a.def].cost.gas || 0) * 1.5) || a.id - b.id)) {
       const c = RTS.rankCost(D[u.def], (u.rank || 0) + 1); if (!spare(c)) break; cmd({ type: 'rankup', ids: [u.id] }); if (++n >= 2) break; } }
   // 3) 합체: 집결 중(공격·방어 아님)일 때만. 일꾼이 드는 합체는 일꾼을 먼저 불러온다
