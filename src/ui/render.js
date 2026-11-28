@@ -5,6 +5,13 @@ RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff
 RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1], swarm: RTS.TEAM[3] };
 // 협동: 진영이 같아도 나·동료·중립세력이 구분되도록 팀 슬롯 색을 쓴다(파랑·보라·주황)
 RTS.COOP_COLOR = [RTS.TEAM[0], RTS.TEAM[3], RTS.TEAM[1]];
+// 같은 진영이 둘 이상이면 뒤 팀은 아직 안 쓴 색으로 바꾼다(노랑 → 청록 → 연두). 팀 번호 순서라 두 기기에서 같다. 캠페인은 미션이 정한 대로 둔다
+RTS.ALT_COLOR = [{ main: '#ffd23f', dark: '#7a5c08', light: '#fff3c2' }, { main: '#3ce0c8', dark: '#10645a', light: '#c9fff6' }, RTS.TEAM[2]];
+RTS.teamPalette = function (G) { const used = new Set(), all = [...RTS.ALT_COLOR, ...Object.values(RTS.FACTION_COLOR)];
+  return G.teams.map((t, i) => { let c = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction];
+    if (!G.camp && (!c || used.has(c))) c = all.find(x => !used.has(x)) || c; used.add(c); return c; }); };
+// 건물 움직임: cycle 프레임마다 되풀이(buildart.js가 속도를 맞춘다). 건물 그림 저장소는 step 프레임마다 한 장씩 그려 둔다
+RTS.BANIM = { cycle: 240, step: 8 };
 RTS.TEAM[RTS.TRIBE] = { main: '#7bd65a', dark: '#2f5e22', light: '#d9f7c6' }; // 잿빛 부족
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
@@ -328,21 +335,23 @@ RTS.Renderer = function (canvas, app) {
   }
 
   // ── 입체감용 작업 캔버스. 확대율에 맞춰 그려 흐려지지 않게 한다. ──
-  const S = {}; for (const n of ['roof', 'sil', 'unit']) { S[n] = document.createElement('canvas'); S[n].width = S[n].height = 8; }
+  const S = {}; for (const n of ['roof', 'sil', 'unit', 'fin']) { S[n] = document.createElement('canvas'); S[n].width = S[n].height = 8; }
   function fit(cv, W, H) { if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); } const x = cv.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.clearRect(0, 0, cv.width, cv.height); return x; }
   // 벽·그림자는 실루엣에서만 나오므로 (그림, 재질, 높이, 포탑 방향)마다 한 번 만들어 재사용한다. 지붕만 매 프레임 그린다.
   const wallCache = new Map(); let wallK = 0;
-  function sprite(art, w, h, P, st, hz, wall, key) {
-    const k = Math.min(2, R.cam.z), pad = 4, rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), step = 2;
-    const r = fit(S.roof, rw, rh); r.setTransform(k, 0, 0, k, pad * k, pad * k); art(r, w, h, P, st); // 지붕: 왼쪽 위에서 빛
-    r.globalCompositeOperation = 'source-atop'; const g = r.createLinearGradient(0, 0, w, h); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)');
-    r.fillStyle = g; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); if (st.hit) { r.fillStyle = 'rgba(255,255,255,.22)'; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); }
+  const zq = () => Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)); // 그림 배율: 0.25 단위로 끊어 확대·축소 중에 매번 다시 그리지 않게 한다
+  function roofLight(r, w, h, pad, hit) { r.globalCompositeOperation = 'source-atop'; const g = r.createLinearGradient(0, 0, w, h); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)');
+    r.fillStyle = g; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); if (hit) { r.fillStyle = 'rgba(255,255,255,.22)'; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); } r.globalCompositeOperation = 'source-over'; }
+  // roofCv가 있으면(건물 그림 저장소) 지붕은 그대로 쓰고 벽·그림자만 찾는다. 없으면 작업 캔버스에 지붕을 그린다
+  function sprite(art, w, h, P, st, hz, wall, key, roofCv) {
+    const k = zq(), pad = 4, rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), step = 2;
+    let roof = roofCv; if (!roof) { const r = fit(S.roof, rw, rh); r.setTransform(k, 0, 0, k, pad * k, pad * k); art(r, w, h, P, st); roofLight(r, w, h, pad, st.hit); roof = S.roof; } // 지붕: 왼쪽 위에서 빛
     if (k !== wallK) { wallCache.clear(); wallK = k; }
     const ck = key + '|' + hz, bh = Math.ceil((h + pad * 2 + hz) * k), dx = hz * 1.1 + 3, dy = hz * .7 + 4, sw = rw + Math.ceil(dx * k), sh = rh + Math.ceil(dy * k);
     let W = wallCache.get(ck);
-    if (!W) { if (wallCache.size > 60) wallCache.clear();
+    if (!W) { if (wallCache.size > 80) wallCache.clear();
       W = { walls: document.createElement('canvas'), shadow: document.createElement('canvas') };
-      const s = fit(S.sil, rw, rh); s.drawImage(S.roof, 0, 0); s.globalCompositeOperation = 'source-in'; s.fillStyle = wall; s.fillRect(0, 0, rw, rh);
+      const s = fit(S.sil, rw, rh); s.drawImage(roof, 0, 0, rw, rh, 0, 0, rw, rh); s.globalCompositeOperation = 'source-in'; s.fillStyle = wall; s.fillRect(0, 0, rw, rh);
       W.walls.width = rw; W.walls.height = bh; const b = W.walls.getContext('2d'); // 벽: 실루엣을 바닥부터 지붕 아래까지 쌓는다
       for (let z = 0; z < hz; z += step) b.drawImage(S.sil, 0, 0, rw, rh, 0, Math.round((hz - z) * k), rw, rh);
       if (hz > 0) { b.globalCompositeOperation = 'source-atop'; const v = b.createLinearGradient(0, rh * .5, 0, bh); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)'); b.fillStyle = v; b.fillRect(0, 0, rw, bh); }
@@ -350,7 +359,41 @@ RTS.Renderer = function (canvas, app) {
       for (let i = 0; i <= n; i++) sd.drawImage(S.sil, 0, 0, rw, rh, Math.round(dx * k * i / n), Math.round(dy * k * i / n), rw, rh);
       sd.globalCompositeOperation = 'source-in'; sd.fillStyle = '#000'; sd.fillRect(0, 0, sw, sh);
       wallCache.set(ck, W); }
-    return { roof: S.roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
+    return { roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
+  }
+  // ── 건물 그림 저장소: 진영 건물(buildart.js)의 지붕을 (그림, 팀 색, 진영, 생산 중, 피해 단계, 움직임 단계, 포탑 방향, 배율, 입체감)마다
+  //    한 번 그려 두고 매 프레임 복사만 한다. 움직임은 RTS.BANIM.step 프레임 간격으로 끊고, 건물마다 단계를 엇갈리게 해서 한꺼번에 움직이지 않게 한다.
+  //    고급 그래픽 빛(s.glow)과 연기(s.emit)는 그릴 때 받아 적어 두었다가 매 프레임(연기는 단계가 바뀔 때) 다시 낸다.
+  //    저장할 때 마무리: 진영 질감, 가장자리 빛·그늘(모서리가 서 보이게), 어두운 외곽선, 팀 색 테두리(같은 진영끼리도 색으로 구분).
+  const BC = { map: new Map(), px: 0, budget: 1.4e7, hits: 0, miss: 0, last: new Map(), turretDirs: 16, turretStep: 30 };
+  R.bcache = BC;
+  const TURRET = /turret|spine/, TEX = {};
+  function factionTex(f) { if (TEX[f]) return TEX[f]; const cv = document.createElement('canvas'); cv.width = cv.height = 48; const x = cv.getContext('2d'); let q = 7;
+    const r = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296;
+    if (f === 'ironclad') { x.strokeStyle = 'rgba(0,0,0,.5)'; x.lineWidth = 1; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const cx = i * 12 + (j % 2) * 6, cy = j * 12; x.beginPath(); for (let a = 0; a < 6; a++) x.lineTo(cx + Math.cos(a * TAU / 6) * 6, cy + Math.sin(a * TAU / 6) * 6); x.closePath(); x.stroke(); } }
+    else if (f === 'swarm') { for (let i = 0; i < 70; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.55)' : 'rgba(255,190,230,.5)'; x.beginPath(); x.arc(r() * 48, r() * 48, .6 + r() * 1.4, 0, TAU); x.fill(); } }
+    else { for (let i = 0; i < 40; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.5)' : 'rgba(255,255,255,.45)'; x.fillRect(r() * 48, r() * 48, 2 + r() * 9, .7); } } // 개척단: 판금 긁힘
+    return (TEX[f] = cv); }
+  function finishRoof(u, cv, k, P, faction) { const W = cv.width, H = cv.height, sil = fit(S.sil, W, H); sil.drawImage(cv, 0, 0);
+    u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1;
+    const o = Math.max(1, Math.round(1.3 * k)), band = (dx, dy, col, a) => { const b = fit(S.fin, W, H); b.drawImage(sil.canvas, 0, 0); b.globalCompositeOperation = 'destination-out'; b.drawImage(sil.canvas, dx, dy); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
+    band(o, o, '#fff', .3); band(-o, -o, '#000', .38); // 위·왼쪽 모서리 빛, 아래·오른쪽 그늘
+    const ring = (d, col, a) => { const b = fit(S.fin, W, H); for (let i = 0; i < 8; i++) b.drawImage(sil.canvas, Math.round(Math.cos(i * TAU / 8) * d), Math.round(Math.sin(i * TAU / 8) * d)); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalCompositeOperation = 'destination-over'; u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
+    ring(Math.max(1, Math.round(k)), '#06080d', .8); ring(Math.max(2, Math.round(2.4 * k)), P.main, .75); u.globalCompositeOperation = 'source-over'; }
+  function bRoof(name, art, w, h, P, st, lit, tb) {
+    const k = zq(), pad = 4, A = RTS.BANIM, tur = TURRET.test(name), step = tur ? BC.turretStep : A.step, ph = Math.floor(tb / step) % (A.cycle / step), hp = st.hp ?? 1, dmg = hp < .33 ? 2 : hp < .66 ? 1 : 0, slot = dmg ? 1 + (st.id || 0) % 3 : 0;
+    const fb = tur ? ((Math.round((st.facing || 0) / TAU * BC.turretDirs) % BC.turretDirs) + BC.turretDirs) % BC.turretDirs : 0;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.busy ? 1 : 0) + (st.down ? 1 : 0) + '|' + dmg + slot + '|' + ph + '|' + fb + '|' + k + (lit ? 'L' : '');
+    let e = BC.map.get(key);
+    if (e) { BC.hits++; BC.map.delete(key); BC.map.set(key, e); }
+    else { BC.miss++; const rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), cv = document.createElement('canvas'); cv.width = rw; cv.height = rh; const u = cv.getContext('2d'), glows = [], emits = [];
+      const s2 = Object.assign({}, st, { t: ph * step, id: slot, hp: [1, .5, .2][dmg], facing: fb * TAU / BC.turretDirs, low: false, hit: false,
+        glow: (x, y, r, col, i) => { glows.push([x, y, r, col3(col), i]); }, emit: (kk, x, y) => { emits.push([kk, x, y]); } });
+      u.setTransform(k, 0, 0, k, pad * k, pad * k); art(u, w, h, P, s2); finishRoof(u, cv, k, P, st.faction);
+      if (lit) { u.setTransform(k, 0, 0, k, pad * k, pad * k); roofLight(u, w, h, pad, false); }
+      e = { cv, glows, emits, px: rw * rh, ph }; BC.map.set(key, e); BC.px += e.px;
+      for (const [kk, v] of BC.map) { if (BC.px <= (app.settings.lowSpec ? 8e6 : BC.budget)) break; BC.map.delete(kk); BC.px -= v.px; } }
+    return e;
   }
   let unitLight = null;
   // 유닛 그림 저장소: (그림, 팀 색, 진영, 종류, 방향 16칸, 움직임 단계, 상태, 크기, 배율)마다 한 번 그려 두고 매 프레임 복사한다.
@@ -393,12 +436,17 @@ RTS.Renderer = function (canvas, app) {
       if (prog >= 1 && R.onScreen(e.x, e.y)) st.emit = (k, x, y) => { const wx = (ox0 + x) / TS, wy = (oy0 + y) / TS, z = hzUse;
         if (k === 'smoke') fx({ k: 'smoke', x: wx, y: wy, z, s: 5, vx: .004, life: 40 }); else if (k === 'steam') fx({ k: 'steam', x: wx, y: wy, z, s: 6, life: 30 }); else if (k === 'spark' && rich()) sparks(wx, wy, 3, '#ffd27a', undefined, 0, z); }; }
     const art = (cc, ww, hh, PP, ss) => { art0(cc, ww, hh, PP, ss); if (ss.hp < .66 && RTS.artDamage) RTS.artDamage(cc, ww, hh, ss); };
+    // 진영 건물은 그림 저장소에서 꺼낸다(배치 미리보기만 직접 그린다). 맞은 순간은 저장된 그림을 밝게 한 번 더 겹친다
+    const BE = !ghost && e.id && RTS.BANIM.arts && RTS.BANIM.arts.has(d.art) ? bRoof(d.art, art, w, h, P, st, depthOn(), app.frame + e.id * 37) : null;
+    if (BE) { hzUse = depthOn() ? Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1)) : 0; const L = BC.last; if (st.emit && L.get(e.id) !== BE.ph && BE.emits.length) for (const [kk, x, y] of BE.emits) st.emit(kk, x, y); L.set(e.id, BE.ph); if (L.size > 3000) L.clear();
+      if (st.glow) for (const g of BE.glows) light(ox0 + g[0], oy0 + g[1] - hzUse, g[2], g[3], g[4]); }
+    const flash = (cv, x, y, ww, hh) => { if (!BE || !(e.hitAt && G.tick - e.hitAt < 2)) return; const g0 = c.globalCompositeOperation, a0 = c.globalAlpha; c.globalCompositeOperation = 'lighter'; c.globalAlpha = a0 * .28; c.drawImage(cv, 0, 0, cv.width, cv.height, x, y, ww, hh); c.globalCompositeOperation = g0; c.globalAlpha = a0; };
     if (depthOn()) { // 지붕(그림+조명) → 벽(실루엣을 쌓아 올림) → 그림자. 짓는 중이면 높이가 같이 자란다.
       const hz = Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1)); hzUse = hz;
       st.hit = !ghost && e.hitAt && G.tick - e.hitAt < 2;
-      const sp = sprite(art, w, h, P, st, hz, WALL[d.art] || st.m[3], d.art + '|' + st.faction + '|' + (/turret/.test(d.art) ? Math.round((st.facing || 0) * 4) : ''));
+      const sp = sprite(art, w, h, P, st, hz, WALL[d.art] || st.m[3], d.art + '|' + st.faction + '|' + (TURRET.test(d.art) ? Math.round((st.facing || 0) / TAU * BC.turretDirs) % BC.turretDirs : ''), BE && BE.cv);
       c.globalAlpha = base * .34; c.drawImage(sp.shadow, 0, 0, sp.sw, sp.sh, -sp.pad, -sp.pad, sp.sw / sp.k, sp.sh / sp.k);
-      const put = () => { c.drawImage(sp.walls, 0, 0, sp.rw, sp.bh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.bh / sp.k); c.drawImage(sp.roof, 0, 0, sp.rw, sp.rh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); };
+      const put = () => { c.drawImage(sp.walls, 0, 0, sp.rw, sp.bh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.bh / sp.k); c.drawImage(sp.roof, 0, 0, sp.rw, sp.rh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); flash(sp.roof, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); };
       c.globalAlpha = base * (prog < 1 ? .5 : 1); put();
       if (prog < 1) { c.globalAlpha = base; const y0 = -hz + (h + hz) * (1 - prog); c.save(); c.beginPath(); c.rect(-sp.pad, y0, w + sp.pad * 2, h + hz); c.clip(); put(); c.restore();
         if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, -hz);
@@ -406,8 +454,9 @@ RTS.Renderer = function (canvas, app) {
     } else {
       c.fillStyle = 'rgba(0,0,0,.32)'; c.fillRect(4, 8, w, h);
       if (prog < 1) { c.globalAlpha = base * .5; }
-      art(c, w, h, P, st);
-      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); art(c, w, h, P, st); c.restore(); if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, 0);
+      const flat = BE ? () => { c.drawImage(BE.cv, 0, 0, BE.cv.width, BE.cv.height, -4, -4, w + 8, h + 8); flash(BE.cv, -4, -4, w + 8, h + 8); } : () => art(c, w, h, P, st);
+      flat();
+      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); flat(); c.restore(); if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, 0);
         c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]);
         c.fillStyle = '#ffcb5c'; c.fillRect(0, h * (1 - prog) - 1.5, w, 3); }
     }
@@ -609,7 +658,7 @@ RTS.Renderer = function (canvas, app) {
   // 아이콘: 실제 그림 함수를 작은 캔버스에 그린다. 새 유닛도 자동으로 아이콘이 생긴다.
   const icons = {};
   R.icon = function (defId, team, faction) {
-    const k = defId + team + faction; if (icons[k]) return icons[k];
+    const k = defId + team + faction + ((RTS.TEAM[team] || RTS.TEAM[0]).main); if (icons[k]) return icons[k]; // 팀 색이 판마다 바뀔 수 있다(같은 진영·협동)
     const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = matOf(faction);
     if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
     else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }

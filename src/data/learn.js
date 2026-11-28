@@ -1,5 +1,5 @@
 // learn.js — 캠페인 학습 미션 문제 은행. 수학(자동 생성)·국어·통합교과(문항 목록). DOM 없음, 게임 계산과 무관.
-// RTS.learnQuestion(과목, 수준, rnd) → { subject, name, q, passage?, choices: [4개], ans(정답 번호), why }
+// RTS.learnQuestion(과목, 수준, rnd, 단계) → { subject, name, q, passage?, choices: [4개], ans(정답 번호), why }
 //   과목: 'math' | 'ko' | 'life' | 'any'(셋 중 무작위). 수준: 0 = 7세(취학 전), 1 = 1~2학년, 2 = 3~4학년, 3 = 5~6학년. rnd: 0~1 난수 함수(기본 Math.random)
 // 문항 추가: RTS.LEARN_BANK.ko / .life에 { lv: [최저, 최고], q, a(정답), w: [오답들], why(설명), passage(읽기 지문, 선택) }
 RTS.LEARN_SUBJECTS = { math: '수학', ko: '국어', life: '통합교과' };
@@ -141,16 +141,37 @@ RTS.LEARN_MATH = {
     r => { const d = r(2, 6), t = r(2, 5), v = d * 10; return [`한 시간에 ${v}km 가는 차가 ${t}시간 가면 몇 km?`, v * t, `${v} × ${t} = ${v * t}`]; },
   ],
 };
-RTS.learnQuestion = function (subject, level, rnd) {
-  const R = rnd || Math.random, ri = (a, b) => a + Math.floor(R() * (b - a + 1)), lv = Math.max(0, Math.min(3, level | 0));
+// ── 학습 난이도 단계 ── 설정한 학습 수준(학년)은 그대로 두고, 그 안에서 캠페인 진행과 미션 난이도에 따라 어려워진다.
+// 단계 s는 -1(쉽게) ~ 0(기본) ~ 1(어렵게).
+//   수학: 수 범위 안에서 큰 수 쪽으로(s<0이면 작은 수 쪽으로) 치우쳐 고른다. s가 up을 넘으면 한 수준 위 문제가, -down 아래면 한 수준 아래 문제가 섞인다.
+//   국어·통합교과: s>0이면 그 수준에서 새로 나오는 문항(lv[0]이 그 수준), s<0이면 아래 수준부터 이어지는 문항을 더 자주 고른다.
+RTS.LEARN_STEP = {
+  start: -.5, span: 1.3,                         // 캠페인 첫 미션 -0.5 → 마지막 미션 +0.8 (보통 기준)
+  levels: { easy: -.3, normal: 0, hard: .3 },    // 미션 난이도 쉬움·보통·어려움
+  up: .3, down: .3, mix: .5,                     // 위·아래 수준이 섞이는 확률 = (|s| - 문턱) × mix → s = ±1에서 35%
+  names: [[-.5, '쉽게'], [-.15, '조금 쉽게'], [.2, '기본'], [.55, '조금 어렵게'], [9, '어렵게']],
+};
+// 캠페인 미션 M과 난이도(easy·normal·hard)의 학습 단계. 진행 순서: 1인 5장 → 2인 5장 → 히든 미션 → 히든 캠페인 3장
+RTS.learnStep = function (M, level) { const S = RTS.LEARN_STEP; if (!M) return 0;
+  const g = RTS.campGroup(M.group), order = ['solo', 'duo', 'hidden', 'deep'], base = { solo: 0, duo: 5, hidden: 10, deep: 11 }, last = 13;
+  const pos = g ? (base[g.kind] || 0) + Math.max(0, RTS.campIndex(M.id)) : 0, k = order.includes(g && g.kind) ? pos / last : 0;
+  return Math.max(-1, Math.min(1, S.start + S.span * k + (S.levels[level] || 0))); };
+RTS.learnStepName = s => RTS.LEARN_STEP.names.find(x => s < x[0])[1];
+// 단계만큼 치우친 정수 뽑기: s>0이면 범위의 위쪽, s<0이면 아래쪽으로(최대 범위의 절반만큼)
+RTS.learnRi = (R, s) => (a, b) => { let u = R(); const k = Math.max(-1, Math.min(1, s || 0)) * .5; u = k >= 0 ? k + u * (1 - k) : u * (1 + k); return a + Math.min(b - a, Math.floor(u * (b - a + 1))); };
+RTS.learnQuestion = function (subject, level, rnd, step) {
+  const R = rnd || Math.random, ri = (a, b) => a + Math.floor(R() * (b - a + 1)), S = RTS.LEARN_STEP, st = Math.max(-1, Math.min(1, step || 0));
+  let lv = Math.max(0, Math.min(3, level | 0)); // 한 수준 위·아래 문제 섞기
+  if (st > S.up && lv < 3 && R() < (st - S.up) * S.mix) lv++; else if (st < -S.down && lv > 0 && R() < (-st - S.down) * S.mix) lv--;
   const sub = subject === 'any' || !RTS.LEARN_SUBJECTS[subject] ? ['math', 'ko', 'life'][ri(0, 2)] : subject;
   const shuffle = a => { for (let i = a.length - 1; i > 0; i--) { const j = ri(0, i); [a[i], a[j]] = [a[j], a[i]]; } return a; };
-  if (sub === 'math') { const gens = RTS.LEARN_MATH[lv], [q, ans, why, o] = gens[ri(0, gens.length - 1)](ri), fmt = (o && o.fmt) || String, ok = (o && o.ok) || (v => v >= 0);
+  if (sub === 'math') { const gens = RTS.LEARN_MATH[lv], [q, ans, why, o] = gens[ri(0, gens.length - 1)](RTS.learnRi(R, st)), fmt = (o && o.fmt) || String, ok = (o && o.ok) || (v => v >= 0);
     const wrong = new Set(); const near = [1, 2, 10, -1, -2, -10, 3, 5, -3, 20, -4, 4]; for (const d of shuffle(near.slice())) { const v = ans + d; if (ok(v) && v !== ans) wrong.add(v); if (wrong.size >= 3) break; }
     const choices = shuffle([ans, ...wrong].map(fmt)); const a0 = fmt(ans);
     return { subject: sub, name: RTS.LEARN_SUBJECTS[sub], q, choices, ans: choices.indexOf(a0), why }; }
   // 국어·통합교과: 수준에 맞는 문항. 없으면 가까운 수준
   const bank = RTS.LEARN_BANK[sub]; let pool = bank.filter(x => lv >= x.lv[0] && lv <= x.lv[1]); if (!pool.length) pool = bank;
+  if (st && R() < Math.abs(st)) { const part = pool.filter(x => st > 0 ? x.lv[0] >= lv : x.lv[0] < lv); if (part.length) pool = part; } // 단계에 맞춰 새 문항 / 이어지는 문항
   const it = pool[ri(0, pool.length - 1)], choices = shuffle([it.a, ...shuffle(it.w.slice()).slice(0, 3)]);
   return { subject: sub, name: RTS.LEARN_SUBJECTS[sub], q: it.q, passage: it.passage, choices, ans: choices.indexOf(it.a), why: it.why };
 };

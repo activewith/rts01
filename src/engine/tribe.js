@@ -107,7 +107,7 @@ function tribeMissionsFor(G, team) {
   const ids = all.filter(id => { const L = RTS.defs.tribeMissions[id].lv; return !L || (lv >= L[0] && lv <= L[1]); });
   while (pick.length < 2 && pick.length < ids.length) { const id = ids[Math.floor(RTS.rand(G) * ids.length)]; if (!pick.includes(id)) pick.push(id); }
   T.missions[team] = pick.map(id => { const d = RTS.defs.tribeMissions[id], m = { id, until: G.tick + d.time * RTS.HZ, done: null, acc: 0 };
-    if (d.quiz) { const [q, ans] = d.quiz(G, lv, (a, b) => a + Math.floor(RTS.rand(G) * (b - a + 1))); m.q = q; m.ans = ans; m.tries = 0; }
+    if (d.quiz) { const [q, ans] = d.quiz(G, lv, quizRi(G, RTS.tribeQuizStep(G, team))); m.q = q; m.ans = ans; m.tries = 0; }
     if (d.start) d.start(G, t, m); return m; });
   tTell(G, team, '외교 미션: ' + pick.map(id => RTS.defs.tribeMissions[id].name).join(', '), 'ok'); RTS.emit(G, 'tribeMissions', { team }); }
 // 동맹 요청 바꾸기: 동맹 문제 2개를 다시 받는다. 2개 성공하면 요청을 새로 고를 수 있다(실패해도 동맹·현재 요청은 그대로)
@@ -122,6 +122,14 @@ RTS.commands.tribeReq = (G, team, c) => { RTS.tribeChoose(G, team, c.req); };
 // 미션 진행도 [현재, 목표]. 수학 미션은 [성공 1/0, 1]
 RTS.missionProg = (G, team, m) => { const d = RTS.defs.tribeMissions[m.id]; if (d.quiz) return [m.done === true ? 1 : 0, 1]; return [Math.max(0, Math.min(d.need, d.prog(G, G.teams[team], m))), d.need]; };
 // 학습 문제 수준 1~3(설정 mathLevel)
+// 문제 난이도 단계 -1~1: 수준(학년)은 그대로 두고 그 안에서 수를 크게(작게) 고른다. 캠페인은 미션 진행·난이도(RTS.learnStep),
+// 그 밖에는 상대 AI 난이도 + 게임 시간(분당 perMin, 최대 maxTime). 시드 난수만 쓰므로 두 기기에서 같다
+RTS.TRIBE_QUIZ_STEP = { ai: { beginner: -.5, easy: -.25, normal: 0, hard: .3 }, perMin: .02, maxTime: .4 };
+RTS.tribeQuizStep = function (G, team) { const Q = RTS.TRIBE_QUIZ_STEP, cl = v => Math.max(-1, Math.min(1, v));
+  if (G.camp && RTS.learnStep && RTS.campDef) return cl(RTS.learnStep(RTS.campDef(G.camp.id), G.camp.level));
+  const ais = G.teams.filter(t => t.ai && t.id !== team && Q.ai[t.ai] !== undefined && (!RTS.ally || !RTS.ally(G, team, t.id))).map(t => Q.ai[t.ai] + ((t.boost || 1) - 1));
+  return cl((ais.length ? Math.max(...ais) : 0) + Math.min(Q.maxTime, G.tick / RTS.HZ / 60 * Q.perMin)); };
+const quizRi = (G, st) => (a, b) => { let u = RTS.rand(G); const k = st * .5; u = k >= 0 ? k + u * (1 - k) : u * (1 + k); return a + Math.min(b - a, Math.floor(u * (b - a + 1))); };
 RTS.mathLevel = G => Math.max(1, Math.min(3, Math.round(RTS.cfg(G).mathLevel || 1)));
 // 수학 미션 답 보내기: 답과 같으면 그만큼 광석을 내고 성공. 틀리면 광석은 그대로, 많다/적다 힌트. quizTries번 틀리면 실패
 RTS.tribeAnswer = function (G, team, idx, value) { const T = G.tribe, t = G.teams[team]; if (!T || !t) return false;
