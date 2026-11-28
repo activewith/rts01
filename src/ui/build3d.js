@@ -243,6 +243,42 @@
         c.fillStyle = BONE; c.beginPath(); c.moveTo(x + ca * 22 - sa * 3, y - 10 + sa * 20 - ca * 2); c.lineTo(x + ca * 32, y - 8 + sa * 27); c.lineTo(x + ca * 22 + sa * 3, y - 10 + sa * 20 + ca * 2); c.fill(); };
       if (sa < 0) arm(); blob(c, x, y - 4, 10, 8, P.dark); blob(c, x, y - 6, 4, 3, P.main); if (sa >= 0) arm(); GL(s)(x, y, 22, BIO, .25); } };
 
+  // ══ 중립 ══ 회사 거점(광석·에테르), 자유상단 지부, 잿빛 부족 회당·망루. 주인이 있으면 P가 그 팀 색, 없으면 중립 색. s.down이면 가동 중단(불 꺼짐·연기)
+  function roof(c, x, y, w, d, z0, h, col) { shRect(x, y, w, d, z0 + h); const ye = y + d - z0, yr = y + d / 2 - z0 - h, yn = y - z0;
+    if (yn < yr) { c.fillStyle = lit(col, .12); c.beginPath(); c.moveTo(x, yn); c.lineTo(x + w, yn); c.lineTo(x + w, yr); c.lineTo(x, yr); c.closePath(); c.fill(); }
+    const g = c.createLinearGradient(0, yr, 0, ye); g.addColorStop(0, lit(col, .1)); g.addColorStop(1, lit(col, -.35)); c.fillStyle = g; c.beginPath(); c.moveTo(x - 2, ye); c.lineTo(x + w + 2, ye); c.lineTo(x + w, yr); c.lineTo(x, yr); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke(); c.strokeStyle = 'rgba(255,255,255,.3)'; c.beginPath(); c.moveTo(x, yr); c.lineTo(x + w, yr); c.stroke(); return { yr, ye }; }
+  const WOOD = '#7a5434', WOOD2 = '#5a3c24', THATCH = '#a08a52', ORE = '#e3b23c';
+  function crystals(c, x, y, n, col, sc = 1) { for (let i = 0; i < n; i++) { const dx = (i % 3) * 6 * sc - 6 * sc, dy = Math.floor(i / 3) * 4 * sc, hh = (10 + (i * 7) % 8) * sc; c.fillStyle = lit(col, .25); c.beginPath(); c.moveTo(x + dx - 3 * sc, y + dy); c.lineTo(x + dx, y + dy - hh); c.lineTo(x + dx + 3 * sc, y + dy); c.fill(); c.fillStyle = lit(col, -.3); c.beginPath(); c.moveTo(x + dx, y + dy - hh); c.lineTo(x + dx + 3 * sc, y + dy); c.lineTo(x + dx, y + dy); c.fill(); } }
+  A.site_ore = { H: 44, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#5a5650', 4); const B = box(c, 8, 12, 50, 40, 4, 26, '#8a7e6c'); c.fillStyle = P.main; c.fillRect(8, B.fy + 3, 50, 4); c.fillStyle = '#1c1a17'; c.fillRect(20, B.fy + 10, 24, B.h - 10);
+      for (let i = 0; i < 3; i++) win(c, s, 12 + i * 15, B.top + 8, 8, 5, '#ffd27a'); roof(c, 8, 12, 50, 40, 30, 10, '#6a5e4c');
+      box(c, 62, 30, 26, 8, 4, 10, '#4a4640'); pipe(c, [[60, 26 - 14], [88, 18 - 14]], 4, '#8a8478'); crystals(c, 76, 76, 7, ORE, 1.1); crystals(c, 22, 82, 5, ORE, .9); cyl(c, 80, 22, 8, 4, 30, '#7a7468'); },
+    live(c, w, d, P, s) { if (s.down) { smokeAt(s, 33, 0, 10); c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(8, 12 - 30, 50, 66); lamp(c, { t: 0 }, 80, -12, '#ff4a3a', 2, 0); return; }
+      const q = (s.t * .4) % 8; c.fillStyle = '#e3b23c'; for (let x = 64 + q; x < 88; x += 8) c.fillRect(x, 30 - 14 - 2, 4, 3); lamp(c, s, 80, -12, '#ffd27a', 40); GL(s)(33, 0, 30, '#ffd27a', .3); } };
+  A.site_gas = { H: 46, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#4e5258', 4); for (const [x, y, r, h] of [[26, 40, 14, 30], [62, 34, 12, 24], [44, 74, 10, 18]]) { const t = cyl(c, x, y, r, 4, h, '#9aa0a8'); c.fillStyle = P.main; c.fillRect(x - r, t + 6, r * 2, 3); c.fillStyle = '#2a1028'; c.fillRect(x - 4, t + 12, 8, 6); }
+      pipe(c, [[26, 30], [62, 26], [44, 64]], 4, '#7a8088'); const ft = cyl(c, 84, 70, 4, 4, 40, '#6a7078'); c.fillStyle = '#20242a'; c.beginPath(); c.ellipse(84, ft, 3, 1.8, 0, 0, TAU); c.fill(); },
+    live(c, w, d, P, s) { if (s.down) { smokeAt(s, 84, 70 - 44, 8); return; } for (const [x, y, r, h] of [[26, 40, 14, 30], [62, 34, 12, 24], [44, 74, 10, 18]]) { const t = y - 4 - h, k = .5 + .5 * Math.sin(s.t * .08 + x); c.fillStyle = `rgba(240,138,230,${.5 + .5 * k})`; c.fillRect(x - 3, t + 13, 6, 4); GL(s)(x, t + 15, 16, '#f08ae6', .3 + .2 * k); }
+      const f = 4 + Math.sin(s.t * .3) * 2; c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(81, 70 - 44); c.quadraticCurveTo(84, 70 - 44 - f * 2, 87, 70 - 44); c.fill(); glow(c, 84, 70 - 46, 12, '#ff8a2a', .6); GL(s)(84, 24, 30, '#ff8a2a', .5); } };
+  A.site_post = { H: 42, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#6a5a44', 3); const B = box(c, 14, 22, 52, 38, 3, 18, WOOD); c.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < 6; i++) c.fillRect(14 + i * 9, B.fy, 1.2, B.h); c.fillStyle = '#1a120a'; c.fillRect(32, B.fy + 6, 14, B.h - 6);
+      roof(c, 12, 20, 56, 42, 21, 12, '#b04a3a'); for (const [x, y] of [[72, 64], [80, 72], [70, 76]]) box(c, x, y, 9, 8, 3, 7, '#9a7444'); cyl(c, 80, 40, 6, 3, 10, '#7a5434'); c.fillStyle = '#f0d070'; c.fillRect(20, B.fy + 2, 10, 2); },
+    live(c, w, d, P, s) { const fx = 8, fy = 14 - 3 - 18 - 12 - 12, f = Math.sin(s.t * .12) * 2; c.fillStyle = '#2a1f14'; c.fillRect(fx - 1, fy, 2, 30); c.fillStyle = P.main === '#9aa0aa' ? '#f0d070' : P.main; c.beginPath(); c.moveTo(fx, fy); c.quadraticCurveTo(fx + 6, fy + f, fx + 12, fy + 1 + f); c.lineTo(fx + 12, fy + 7 + f); c.quadraticCurveTo(fx + 6, fy + 6 + f, fx, fy + 6); c.fill();
+      lamp(c, s, 30, 60 - 3 - 18 + 2, '#ffcf7a', 60); } };
+  A.t_hall = { H: 46, tex: false,
+    base(c, w, d, P, s) { c.fillStyle = 'rgba(60,40,24,.45)'; c.beginPath(); c.ellipse(64, 56, 66, 40, 0, 0, TAU); c.fill(); const B = box(c, 18, 18, 92, 46, 0, 20, WOOD2); c.fillStyle = 'rgba(0,0,0,.3)'; for (let i = 0; i < 10; i++) c.fillRect(18 + i * 9.5, B.fy, 1.4, B.h);
+      c.fillStyle = '#140c06'; c.beginPath(); c.moveTo(56, B.bot); c.lineTo(56, B.fy + 7); c.quadraticCurveTo(64, B.fy + 2, 72, B.fy + 7); c.lineTo(72, B.bot); c.fill(); roof(c, 14, 14, 100, 54, 20, 18, THATCH);
+      for (const x of [8, 120]) { box(c, x - 3, 70, 6, 6, 0, 26, WOOD); c.fillStyle = P.main; c.fillRect(x - 3, 76 - 26 - 2, 6, 4); c.fillStyle = BONE; c.beginPath(); c.arc(x, 76 - 30, 4, 0, TAU); c.fill(); }
+      for (let i = 0; i < 8; i++) { const a = i * TAU / 8; c.fillStyle = '#6a6460'; c.beginPath(); c.ellipse(64 + Math.cos(a) * 8, 86 + Math.sin(a) * 4, 2.6, 1.8, 0, 0, TAU); c.fill(); } },
+    live(c, w, d, P, s) { const f = .6 + .4 * Math.sin(s.t * .3) * Math.sin(s.t * .17); c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(60, 86); c.quadraticCurveTo(62 - f, 78 - f * 6, 64, 74 - f * 4); c.quadraticCurveTo(66 + f, 78 - f * 5, 68, 86); c.fill(); c.fillStyle = '#ffe9a0'; c.beginPath(); c.ellipse(64, 84, 2, 3 + f * 2, 0, 0, TAU); c.fill();
+      glow(c, 64, 82, 26, '#ff8a2a', .5 + .2 * f); GL(s)(64, 82, 60, '#ff8a2a', .6 + .2 * f); if (s.t % 16 === 0) EM(s)('smoke', 64, 72); } };
+  A.t_tower = { H: 52, tex: false,
+    base(c, w, d, P, s) { c.fillStyle = 'rgba(60,40,24,.4)'; c.beginPath(); c.ellipse(32, 40, 28, 18, 0, 0, TAU); c.fill(); for (const [x, y] of [[16, 22], [46, 22], [16, 48], [46, 48]]) box(c, x - 2, y - 2, 4, 4, 0, 30, WOOD2);
+      c.strokeStyle = WOOD2; c.lineWidth = 2; c.beginPath(); c.moveTo(16, 48 - 6); c.lineTo(46, 48 - 22); c.moveTo(46, 48 - 6); c.lineTo(16, 48 - 22); c.stroke(); box(c, 10, 16, 44, 36, 30, 4, WOOD);
+      c.fillStyle = P.main; c.fillRect(10, 52 - 34 + 1, 44, 2); roof(c, 8, 14, 48, 40, 42, 10, THATCH); },
+    live(c, w, d, P, s) { const f = Math.sin(s.t * .35) * 1.5; c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(48, 52 - 34 - 6); c.quadraticCurveTo(50 + f, 52 - 34 - 13, 51, 52 - 34 - 6); c.fill(); glow(c, 50, 52 - 34 - 8, 12, '#ff8a2a', .6); GL(s)(50, 10, 26, '#ff8a2a', .5); } };
+
   RTS.BUILD3D = A;
   // base를 그릴 때 그림자를 shCtx(검정)에 함께 그린다
   RTS.b3dBase = function (art, c, shCtx, w, d, P, s) { SH = shCtx; if (SH) SH.fillStyle = '#000'; try { art.base(c, w, d, P, s); } finally { SH = null; } };

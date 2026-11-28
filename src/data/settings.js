@@ -76,6 +76,7 @@ RTS.SETTINGS = [
     { id: 'exitGuard', label: '나가기 확인', desc: '게임 중 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)나 탭 닫기를 하면 먼저 확인합니다. PC 전체화면에서는 Esc를 길게 눌러야 풀립니다', type: 'toggle', def: true, client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
     { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },
+    { id: 'touchBar', label: '터치 보조 버튼', desc: '터치 기기에서 게임 중 오른쪽에 더하기·예약·전체 병력·본진·부대 1~4 버튼을 보입니다', type: 'toggle', def: true, client: true },
     { id: 'fps', label: '프레임 수 표시', desc: '화면 왼쪽 아래에 초당 프레임 수를 보입니다', type: 'toggle', def: false, client: true },
     { id: 'gl', label: '고급 그래픽', desc: 'WebGL 조명·불빛·빛 번짐·부드러운 안개. 지원하지 않는 기기에서는 자동으로 꺼집니다', type: 'toggle', def: true, client: true },
     { id: 'clouds', label: '구름 그림자', desc: '고급 그래픽에서 구름 그림자가 지나갑니다', type: 'toggle', def: true, client: true },

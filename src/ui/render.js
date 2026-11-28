@@ -237,7 +237,7 @@ RTS.Renderer = function (canvas, app) {
   const rich = () => app.settings.fxRich !== false && !app.settings.lowSpec, depthOn = () => app.settings.depth !== false, rnd = (a, b) => a + Math.random() * (b - a);
   const fx = o => { o.max = o.life; R.fx.push(o); return o; };
   const shake = (x, y, amt) => { if (app.settings.shake === false || !R.onScreen(x, y)) return; R.shake = Math.min(14, Math.max(R.shake || 0, amt)); };
-  const zOf = e => { const d = RTS.defOf(e); return d.air ? 20 : d.size && depthOn() ? heightOf(d) : 0; };
+  const zOf = e => { const d = RTS.defOf(e); return d.air ? 20 : d.size && (art3d(d) || depthOn()) ? heightOf(d) : 0; };
   function sparks(x, y, n, col, a0, spread, z = 0) { for (let i = 0; i < n; i++) { const a = a0 === undefined ? rnd(0, TAU) : a0 + rnd(-spread, spread), v = rnd(.05, .14); fx({ k: 'spark', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(6, 11) | 0, c: col }); } }
   function debris(x, y, n, cols, pow, z = 0) { if (!rich()) n = Math.ceil(n / 3); for (let i = 0; i < n; i++) { const a = rnd(0, TAU), v = rnd(.02, .07) * pow; fx({ k: 'debris', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rnd(2, 5) * Math.sqrt(pow), rot: rnd(0, TAU), vr: rnd(-.4, .4), sz: rnd(2, 4.5) * Math.min(1.6, pow), life: rnd(28, 46) | 0, c: cols[i % cols.length] }); } }
   function embers(x, y, n, pow, z = 0) { if (!rich()) return; for (let i = 0; i < n; i++) { const a = rnd(0, TAU), v = rnd(.03, .1) * pow; fx({ k: 'ember', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rnd(1.5, 4.5), life: rnd(18, 34) | 0 }); } }
@@ -380,7 +380,7 @@ RTS.Renderer = function (canvas, app) {
     else { for (let i = 0; i < 40; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.5)' : 'rgba(255,255,255,.45)'; x.fillRect(r() * 48, r() * 48, 2 + r() * 9, .7); } } // 개척단: 판금 긁힘
     return (TEX[f] = cv); }
   function finishRoof(u, cv, k, P, faction, noBevel) { const W = cv.width, H = cv.height, sil = fit(S.sil, W, H); sil.drawImage(cv, 0, 0);
-    u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1;
+    u.setTransform(1, 0, 0, 1, 0, 0); if (faction) { u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1; }
     const o = Math.max(1, Math.round(1.3 * k)), band = (dx, dy, col, a) => { const b = fit(S.fin, W, H); b.drawImage(sil.canvas, 0, 0); b.globalCompositeOperation = 'destination-out'; b.drawImage(sil.canvas, dx, dy); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
     if (!noBevel) { band(o, o, '#fff', .3); band(-o, -o, '#000', .38); } // 위·왼쪽 모서리 빛, 아래·오른쪽 그늘
     const ring = (d, col, a) => { const b = fit(S.fin, W, H); for (let i = 0; i < 8; i++) b.drawImage(sil.canvas, Math.round(Math.cos(i * TAU / 8) * d), Math.round(Math.sin(i * TAU / 8) * d)); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalCompositeOperation = 'destination-over'; u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
@@ -417,7 +417,7 @@ RTS.Renderer = function (canvas, app) {
     u.setTransform(k, 0, 0, k, pad * k, (pad + H) * k); g.setTransform(k, 0, 0, k, pad * k, pad * k);
     RTS.b3dBase(art, u, g, w, d, P, s2);
     if (dmg && RTS.artDamage) { u.save(); u.globalCompositeOperation = 'source-atop'; u.translate(0, -H); RTS.artDamage(u, w, d + H, s2); u.restore(); }
-    finishRoof(u, cv, k, P, st.faction, true);
+    finishRoof(u, cv, k, P, art.tex === false ? null : st.faction, true);
     e = { cv, scv, glows, k, pad, H, px: cw * ch + sw * sh }; B3.map.set(key, e); B3.px += e.px;
     const lim = app.settings.lowSpec ? 4e6 : 8e6; for (const [kk, v] of B3.map) { if (B3.px <= lim) break; B3.map.delete(kk); B3.px -= v.px; }
     return e; }
@@ -432,9 +432,9 @@ RTS.Renderer = function (canvas, app) {
   const UCACHE = { map: new Map(), px: 0, budget: 7e6, dirs: 16, phases: 6, hits: 0, miss: 0 };
   R.ucache = UCACHE;
   function unitSpriteCached(name, fn, P, st, facing, size) {
-    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = app.settings.lowSpec ? 8 : UCACHE.dirs, /* 저사양은 8방향(사이 각도는 돌려서) */ fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
+    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = UCACHE.dirs, /* 3/4 시점 입체 그림은 방향마다 따로 저장하고 돌리지 않는다(16방향) */ fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
     const ph = Math.floor(st.t / 3) % UCACHE.phases; st.t = ph * 3 + (st.moving ? 0 : 0);
-    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '/' + N + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '/' + N + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + (depthOn() ? 'D' : '') + '|' + Math.round(size) + '|' + k;
     let e = UCACHE.map.get(key);
     if (e) { UCACHE.hits++; UCACHE.map.delete(key); UCACHE.map.set(key, e); }
     else { UCACHE.miss++; const L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), cv = document.createElement('canvas'); cv.width = cv.height = px; const u = cv.getContext('2d');
@@ -442,9 +442,15 @@ RTS.Renderer = function (canvas, app) {
       u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); const sc = Math.max(.8, size / 13); u.scale(sc, sc); u.globalCompositeOperation = 'source-atop';
       if (!unitLight) { unitLight = u.createRadialGradient(-5, -6, 1, -5, -6, 19); unitLight.addColorStop(0, 'rgba(255,255,255,.34)'); unitLight.addColorStop(.42, 'rgba(255,255,255,0)'); unitLight.addColorStop(.68, 'rgba(0,0,0,0)'); unitLight.addColorStop(1, 'rgba(0,0,0,.42)'); }
       u.fillStyle = unitLight; u.fillRect(-L, -L, L * 2, L * 2);
+      // ── 3/4 시점: 위에서 본 그림을 세로로 살짝 눌러(보는 각도) 윗면으로 쓰고, 그 아래에 어둡게 칠한 같은 모양을 높이 H만큼 쌓아 옆면을 만든다
+      //    (스프라이트 쌓기). 방향마다 한 번만 만들고 돌리지 않으므로 옆면은 늘 아래(남쪽)로 보인다. 높이: 작은 보병 3px ~ 큰 유닛 7px
+      if (depthOn()) { const H = Math.round(Math.min(7, 2 + size * .3)), SQ = .84, top = fit(S.sil, px, px); top.drawImage(cv, 0, 0); const dk = fit(S.fin, px, px); dk.drawImage(cv, 0, 0); dk.globalCompositeOperation = 'source-atop'; dk.fillStyle = 'rgba(8,10,16,.62)'; dk.fillRect(0, 0, px, px); dk.globalCompositeOperation = 'source-over';
+        u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-over'; u.clearRect(0, 0, px, px); const oy = px * (1 - SQ) / 2, hk = H * k;
+        for (let z = 0; z < hk; z += Math.max(1, k * .9)) u.drawImage(S.fin, 0, 0, px, px, 0, oy - z, px, px * SQ);
+        u.drawImage(S.sil, 0, 0, px, px, 0, oy - hk, px, px * SQ); }
       e = { cv, L, px }; UCACHE.map.set(key, e); UCACHE.px += px * px;
       for (const [kk, v] of UCACHE.map) { if (UCACHE.px <= UCACHE.budget) break; UCACHE.map.delete(kk); UCACHE.px -= v.px * v.px; } }
-    return { cv: e.cv, L: e.L, rot: facing - fq };
+    return { cv: e.cv, L: e.L, rot: depthOn() ? 0 : facing - fq };
   }
   function unitSprite(fn, P, st, facing, size, hit) { // 유닛: 몸체를 그린 뒤 고정된 방향의 빛을 입혀 둥글게 보이게 한다
     const k = Math.min(2, R.cam.z), L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), u = fit(S.unit, px, px); // 큰 합체 유닛은 그림 판을 키운다
@@ -601,7 +607,9 @@ RTS.Renderer = function (canvas, app) {
         if (x > r.x0 * TS - 4 && x < (r.x0 + r.w) * TS + 4 && y > r.y0 * TS - a3.H - 6) { const fn = RTS.art.units[d.art] || RTS.art.units.trooper, sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS);
           c.save(); c.globalAlpha = .5; c.translate(x, y); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(x, y, d.r * TS + 2, (d.r * TS + 2) * .78, 0, 0, TAU); c.stroke(); break; } } }
     // 투사체
-    for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
+    // 쏜 곳의 높이(포탑 머리·비행체)에서 출발해 과녁에 가까울수록 바닥으로 내려온다
+    const pz = p => { const s0 = G.byId[p.src], z0 = s0 && !s0.dead ? zOf(s0) : 0; if (!z0) return 0; const dn = Math.hypot(p.x - p.sx, p.y - p.sy), al = dn + Math.hypot(p.tx - p.x, p.ty - p.y); return z0 * (1 - (al ? dn / al : 1)); };
+    for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS - pz(p), P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기
         const done = Math.hypot(p.x - p.sx, p.y - p.sy), all = done + Math.hypot(p.tx - p.x, p.ty - p.y), hz = Math.sin(Math.PI * (all ? done / all : 1)) * Math.min(46, all * TS * .2);
         c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(X + 2, Y + 2, 4, 2.6, 0, 0, TAU); c.fill();

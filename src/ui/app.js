@@ -9,7 +9,7 @@ const HTML = `
       <button id="k-exbtn" class="k-ex-open" title="거래소 (M)">거래소</button>
       <button id="k-dipbtn" class="k-ex-open" title="자유상단 (N)">상단</button>
       <button id="k-idle" title="쉬는 일꾼 선택 (.)">쉬는 일꾼 <b id="k-idlen">0</b></button>
-      <button id="k-boxbtn" class="k-touch" title="터치 범위 선택">범위 선택</button>
+      <button id="k-boxbtn" class="k-touch" title="터치 범위 선택(두 손가락을 0.3초 대고 있다가 벌려도 됩니다)">범위 선택</button>
       <button id="k-chatbtn" hidden title="채팅 (Enter)">채팅</button><button id="k-voicebtn" hidden title="음성 채팅: 내 마이크 켜고 끄기">음성 켜기</button><button id="k-speed" title="게임 속도">1배속</button>
       <button id="k-pause" title="일시정지 (F2)">정지</button>
       <button id="k-mute" title="소리">소리 끔</button>
@@ -17,7 +17,7 @@ const HTML = `
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-obj" id="k-obj" hidden aria-label="미션 목표"></aside><div class="k-story" id="k-story" hidden aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-away" id="k-away" hidden role="alert"></div><div class="k-away" id="k-exitask" hidden role="alertdialog" aria-label="게임 나가기 확인"></div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-tbar" id="k-tbar" hidden aria-label="터치 보조"><button id="tb-add" title="켜면 탭·범위 선택이 지금 선택에 더해집니다(Shift)">더하기</button><button id="tb-queue" title="켜면 명령이 차례로 예약됩니다(Shift)">예약</button><button id="tb-army" title="일꾼을 뺀 내 병력 모두 선택">전체 병력</button><button id="tb-home" title="사령부로 화면 이동(누를 때마다 다음 사령부)">본진</button><div class="tb-grp"><button data-g="1">1</button><button data-g="2">2</button><button data-g="3">3</button><button data-g="4">4</button></div></div><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-obj" id="k-obj" hidden aria-label="미션 목표"></aside><div class="k-story" id="k-story" hidden aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-away" id="k-away" hidden role="alert"></div><div class="k-away" id="k-exitask" hidden role="alertdialog" aria-label="게임 나가기 확인"></div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
@@ -286,7 +286,14 @@ RTS.mount = function (root, opts = {}) {
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
     } else { const sum = {}; h = '<div class="k-many">' + list.slice(0, 32).map(u => { const k = Math.max(0, u.hp / RTS.stat(G, u, 'hp')); return `<button data-id="${u.id}" title="${RTS.defOf(u).name}"><img src="${R.icon(u.def, u.team, f)}" alt=""><i style="width:${Math.round(k * 100)}%;background:${k > .55 ? 'var(--ok)' : k > .28 ? 'var(--warn)' : 'var(--bad)'}"></i></button>`; }).join('') + '</div>'; }
-    if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(b => { b.onclick = () => { app.sel = [+b.dataset.id]; }; }); } }
+    if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(manyBtn); } }
+  // 여러 기 선택 창의 아이콘: 탭 = 그 유닛만, 두 번 탭(또는 Ctrl) = 같은 종류만 남김, 길게 누르기(또는 Shift) = 선택에서 뺌
+  let manyT = null, manyLong = false, manyLast = { id: 0, t: 0 };
+  function manyBtn(b) { const id = +b.dataset.id;
+    b.onpointerdown = () => { manyLong = false; clearTimeout(manyT); manyT = setTimeout(() => { manyLong = true; app.sel = app.sel.filter(i => i !== id); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} }, 500); };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(manyT);
+    b.onclick = e => { if (manyLong) { manyLong = false; return; } const u = app.G.byId[id]; if (!u) return; const now = performance.now(), dbl = manyLast.id === id && now - manyLast.t < 350; manyLast = { id, t: now };
+      if (e.shiftKey) app.sel = app.sel.filter(i => i !== id); else if (dbl || e.ctrlKey || e.metaKey) app.sel = app.sel.filter(i => app.G.byId[i] && app.G.byId[i].def === u.def); else app.sel = [id]; }; }
   function renderHud() { const G = app.G, t = G.teams[app.team]; if (!t) return; if (app.exOpen) updateExchange(); if (app.dipOpen) updateDip();
     $('k-ore').textContent = Math.floor(t.res.ore); $('k-gas').textContent = Math.floor(t.res.gas); $('k-sup').textContent = Math.ceil(t.sup) + '/' + t.cap; $('k-sup').parentNode.classList.toggle('full', t.sup >= t.cap);
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
@@ -342,7 +349,11 @@ RTS.mount = function (root, opts = {}) {
   const touches = new Map(), pinch = { on: false, lock: false };
   const ptAt = e => { const r = view.getBoundingClientRect(), k = view.width / r.width; return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k }; };
   function pinchState() { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
-  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
+  // 두 손가락을 0.3초 가만히 대고 있으면 '범위 선택': 두 손가락이 상자의 두 모서리. 그 전에 움직이면 확대·축소(예전과 같음)
+  const SPAN_MS = 300, SPAN_PX = 10;
+  function spanBox() { const [a, b] = [...touches.values()]; app.box = { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; }
+  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); clearTimeout(pinch.spanT); pinch.p0 = [...touches.values()].map(q => ({ ...q })); pinch.moved = false; pinch.span = false;
+    pinch.spanT = setTimeout(() => { if (touches.size === 2 && !pinch.moved && app.G && !app.demo) { pinch.span = true; pinch.on = false; spanBox(); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} } }, SPAN_MS); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
     drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
@@ -472,18 +483,19 @@ RTS.mount = function (root, opts = {}) {
     hideHover(); closePop(); htip.long = false; if (!app.mode && e.button === 0) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved && !app.box) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t && popItems(t).length) { openPop(t, sx, sy); htip.long = true; } else if (t && touch) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
-  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.on && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
+  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.span && touches.size >= 2) { spanBox(); return; } if (!pinch.moved && pinch.p0 && [...touches.values()].some((q, i) => pinch.p0[i] && Math.hypot(q.x - pinch.p0[i].x, q.y - pinch.p0[i].y) > SPAN_PX)) pinch.moved = true; if (pinch.on && pinch.moved && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
     setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  const touchEnd = e => { if (e.pointerType !== 'touch') return false; touches.delete(e.pointerId); if (!pinch.lock) return false;
+  const touchEnd = e => { if (e.pointerType !== 'touch') return false; if (pinch.span && touches.size === 2 && app.box) { selectBox(app.box, !!app.touchAdd); app.box = null; pinch.span = false; } touches.delete(e.pointerId); clearTimeout(pinch.spanT); if (!pinch.lock) return false;
     if (touches.size < 2) pinch.on = false; if (touches.size === 2) pinchStart(); if (!touches.size) pinch.lock = false; return true; };
   view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
   view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
-    if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
+    if (app.box) { selectBox(app.box, drag.shift || (drag.touch && !!app.touchAdd)); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
-    if (app.mode) { execMode(wx, wy, drag.shift); return; }
+    if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
+    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
     const t = pick(wx, wy);
-    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, false)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
+    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
     if (!t) { app.sel = []; app.menu = 'main'; return; }
     app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
@@ -1046,6 +1058,20 @@ RTS.mount = function (root, opts = {}) {
   // ① 전체화면: 브라우저는 탭(사용자 동작) 없이는 전체화면을 허락하지 않는다. 그래서 게임 중 화면을 누르거나 시작 버튼을 누를 때 들어간다(설정 '게임 중 전체화면')
   // ② 뒤로가기: 게임 중 첫 탭에 기록 한 칸을 넣어 두고, 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)가 오면 '나가기 확인' 창을 띄운다(설정 '나가기 확인')
   // ③ 닫기·새로고침: 확인 창(PC에서 주로 뜬다). ④ PC 전체화면에서 Esc는 길게 눌러야 풀린다(Keyboard Lock, 크롬·엣지)
+  // ── 터치 보조 줄(2026-11): 터치 기기에서 게임 중 오른쪽에 뜬다(설정 '터치 보조 버튼'). 마우스·키보드에만 있던 조작을 버튼으로
+  //   더하기(Shift 선택) · 예약(Shift 명령) 켜고 끄기, 전체 병력, 본진(사령부 차례로), 부대 1~4(길게 = 지금 선택을 저장, 탭 = 불러오기, 두 번 탭 = 그 부대로 화면 이동)
+  let tbTouch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches); addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && !tbTouch) { tbTouch = true; tbShow(); } }, { capture: true, passive: true });
+  function tbShow() { const el = $('k-tbar'); if (!el) return; el.hidden = !(tbTouch && app.settings.touchBar !== false && app.G && !app.demo && !app.G.over); $('tb-add').classList.toggle('on', !!app.touchAdd); $('tb-queue').classList.toggle('on', !!app.touchQueue); }
+  app.tbShow = tbShow; setInterval(tbShow, 700);
+  $('tb-add').onclick = () => { app.touchAdd = !app.touchAdd; tbShow(); };
+  $('tb-queue').onclick = () => { app.touchQueue = !app.touchQueue; tbShow(); };
+  $('tb-army').onclick = () => { if (!app.G) return; app.sel = app.G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).heal && !RTS.defOf(e).cart).map(e => e.id); app.menu = 'main'; };
+  let homeI = 0; $('tb-home').onclick = () => { if (!app.G) return; const hs = app.G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).dropoff && RTS.complete(e)); if (!hs.length) return; const h = hs[homeI++ % hs.length]; centerOn(h.x, h.y); };
+  document.querySelectorAll('#k-tbar [data-g]').forEach(b => { const k = b.dataset.g; let t = null, long = false, last = 0;
+    b.onpointerdown = () => { long = false; clearTimeout(t); t = setTimeout(() => { long = true; const list = selected().filter(u => u.team === app.team).map(u => u.id); if (!list.length) return; app.groups[k] = list; notice(`${k}번 부대 지정`, 'ok'); try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} }, 550); };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(t);
+    b.onclick = () => { if (long) { long = false; return; } const g = (app.groups[k] || []).filter(i => app.G && app.G.byId[i]); if (!g.length) { notice(`${k}번 부대가 없습니다. 유닛을 고르고 이 버튼을 길게 누르세요`); return; } const now = performance.now();
+      app.sel = g; app.menu = 'main'; if (now - last < 350) { const u = app.G.byId[g[0]]; centerOn(u.x, u.y); } last = now; }; });
   // ── 기기 옮기기(2026-11) ── 계정·서버 없이 둘이 하기와 같은 직접 연결(PeerJS)로 이 기기의 기록을 다른 기기에 보낸다.
   //   보내는 기기: 4자리 번호를 띄우고 기다린다 → 받는 기기가 번호를 넣으면 버전을 확인하고 기록을 3만 자씩 나눠 보낸다 → 받았다는 답이 오면 이 기기의 '이어하기' 저장을 지운다(두 기기에서 같은 판이 갈라지지 않게).
   //   받는 기기: 기록을 덮어쓰고(이 기기 전용 설정은 그대로), 하던 게임이 있으면 바로 이어 한다.

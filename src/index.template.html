@@ -43,6 +43,10 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tools button.on{background:var(--brass);color:#16110a}
 .k-touch{display:none}
 @media (pointer:coarse){.k-touch{display:inline-block}}
+.k-tbar{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:5px;z-index:4;pointer-events:auto}
+.k-tbar button{min-width:58px;min-height:38px;padding:4px 6px;font-size:13px;background:rgba(16,22,34,.82);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:6px}
+.k-tbar button.on{background:rgba(70,196,255,.35);border-color:#46c4ff;color:#fff}
+.k-tbar .tb-grp{display:grid;grid-template-columns:1fr 1fr;gap:4px}.k-tbar .tb-grp button{min-width:27px}
 .k-stage{position:relative;min-height:0;background:#0a0f18}
 #k-view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 .k-msgs{z-index:5;position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;width:min(90%,420px)}
