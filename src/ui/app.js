@@ -349,7 +349,8 @@ RTS.mount = function (root, opts = {}) {
   const canSee = e => e.team === app.team || (e.team < 0 ? RTS.branchKnown(app.G, app.team, e) : RTS.visibleTo(app.G, app.team, e.x, e.y));
   function pick(wx, wy) { const G = app.G; let best = null, bd = 1e9;
     for (const e of G.ents) { if (e.dead || e.ext || !canSee(e)) continue; const d = RTS.defOf(e); // 추출기가 선 분출구는 건너뛴다
-      if (d.size) { const r = RTS.rectOf(e); if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; } }
+      if (d.size) { const r = RTS.rectOf(e), top = R.b3Top ? R.b3Top(d) : 0; if (wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 && wy <= r.y0 + r.h && bd > 1) { bd = 1; best = e; }
+        else if (top && wx >= r.x0 && wx <= r.x0 + r.w && wy >= r.y0 - top && wy < r.y0 && bd > 1.2) { bd = 1.2; best = e; } } // 3/4 시점 건물의 솟은 부분도 누르면 고른다(유닛이 우선)
       else { const y = d.air ? wy + .6 : wy, q = Math.hypot(e.x - wx, e.y - y); if (q < d.r + .28 && q < bd) { bd = q; best = e; } } }
     return best; }
   function selectBox(b, add) { const G = app.G, [x0, y0] = toWorld(Math.min(b.x0, b.x1), Math.min(b.y0, b.y1)), [x1, y1] = toWorld(Math.max(b.x0, b.x1), Math.max(b.y0, b.y1));
