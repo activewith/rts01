@@ -1,6 +1,6 @@
 // node test/starts.js — 시작 위치: 맵마다 후보 4곳 이상, 후보 자원, 무작위 선택(거리 조건), 경로 연결, 고정 설정, 셋이 대전, 결정성
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const mk = (map, seed, n = 2, settings) => RTS.createGame({ map, seed, settings, players: [{ faction: 'pioneers' }, { faction: 'ironclad', ai: 'normal' }, { faction: 'swarm', ai: 'normal' }].slice(0, n) });
 const hqs = G => G.ents.filter(e => RTS.defOf(e).dropoff).sort((a, b) => a.team - b.team);

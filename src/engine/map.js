@@ -100,7 +100,7 @@ RTS.findPath = function (G, sx, sy, goal) {
 // 공간 해시 — 매 틱 재구성. 저장되지 않는다.
 RTS.rebuildGrid = function (G) {
   for (const c of G._grid) c.length = 0;
-  for (const e of G.ents) { if (e.dead || e.team === -1) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
+  for (const e of G.ents) { if (e.dead || e.team === -1 || e.inside) continue; G._grid[(Math.min(G._rows - 1, e.y >> 2)) * G._cols + Math.min(G._cols - 1, e.x >> 2)].push(e); }
 };
 RTS.query = function (G, x, y, r, fn) {
   const pad = r + 3, x0 = Math.max(0, (x - pad) >> 2), x1 = Math.min(G._cols - 1, (x + pad) >> 2), y0 = Math.max(0, (y - pad) >> 2), y1 = Math.min(G._rows - 1, (y + pad) >> 2);

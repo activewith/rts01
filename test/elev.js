@@ -1,6 +1,6 @@
 // 높낮이 맵 검사: node test/elev.js — 연결성, 절벽·경사로, 고지대 시야·피해, 저장 복원, AI 확장·작전
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fail++; };
 const D = RTS.defs.entities;
 for (const map of ['highland', 'terrace']) {

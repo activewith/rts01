@@ -1,6 +1,6 @@
 // 1:1 대전(duel): 중립세력 없이 두 사람만, 시작 위치·승패·두 기기 동일
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 const opts = o => JSON.parse(JSON.stringify(RTS.netGameOpts(Object.assign({ map: 'ridge', seed: 7, settings: RTS.defaultSettings(), factions: ['pioneers', 'swarm'], names: ['a', 'b'], hc: ['none', 'none'], duel: true }, o))));
 for (const map of Object.keys(RTS.defs.maps).filter(k => !RTS.defs.maps[k].camp)) { const G = RTS.createGame(opts({ map }));
   assert.equal(G.teams.length, 2, map + ' 두 팀'); assert(!G.coop && G.teams.every(t => !t.ai), map + ' AI 없음');

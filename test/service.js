@@ -1,6 +1,6 @@
 // node test/service.js — 치료 비용, 치료 유닛 수 제한, 공병 수리, 철거
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const run = (G, n) => { for (let i = 0; i < n; i++) RTS.step(G); };
 const mk = (f0, f1, ai1 = 'normal') => { const G = RTS.createGame({ map: 'ridge', seed: 3, players: [{ faction: f0 }, { faction: f1, ai: ai1 }] }); G.teams[1].aiState.plan = 'timing'; return G; };

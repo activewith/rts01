@@ -52,6 +52,9 @@ RTS.edgeDist = function (a, b) { // a 중심에서 b 가장자리까지
 // 적대 판정. 같은 팀과 -1(자원·거점)은 적이 아니다. 잿빛 부족(RTS.TRIBE)은 플레이어마다 관계가 다르다(tribe.js)
 RTS.foe = (G, a, b) => { if (a === b || a === -1 || b === -1) return false; if (G.coop && RTS.ally(G, a, b)) return false; if (a === RTS.TRIBE || b === RTS.TRIBE) return !!(G.tribe && RTS.tribeFoe && RTS.tribeFoe(G, a === RTS.TRIBE ? b : a)); return true; };
 RTS.canHit = (w, t) => { const air = !!defOf(t).air; return air ? w.air !== false : w.ground !== false; };
+// 숨은 유닛(은신·잠복, super.js): 그 팀의 탐지 유닛(★1 이상 치료 유닛) 범위 안이거나 같은 편일 때만 보이고 겨눌 수 있다. t.det = 이번 틱에 탐지한 팀 목록
+RTS.stealthed = (G, t) => !!(t.burrowed || (t.cloakUntil || 0) > G.tick);
+RTS.seen = (G, team, t) => !RTS.stealthed(G, t) || team === t.team || (RTS.ally && RTS.ally(G, team, t.team)) || !!(t.det && t.det.includes(team));
 
 // ── 명령 ───────────────────────────────────────────────────
 RTS.issue = function (G, u, order, queue) {
@@ -81,7 +84,7 @@ RTS.orders.escort = function (G, u, o) { const t = G.byId[o.target], E = RTS.ESC
   if (!t || t.dead || t === u || !(t.team === u.team || RTS.ally(G, u.team, t.team))) { nextOrder(G, u); return; }
   const w = RTS.weapon(u), dt = Math.hypot(u.x - t.x, u.y - t.y);
   if (w && dt < E.leash) { let best = null, bd = 1e9;
-    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
+    if ((G.tick + u.id) % 4 === 0 || !u.tgt) { RTS.query(G, t.x, t.y, E.guard, f => { if (f.dead || !RTS.foe(G, u.team, f.team) || f.downUntil > G.tick || !RTS.canHit(w, f) || !RTS.seen(G, u.team, f)) return; const d = Math.hypot(f.x - t.x, f.y - t.y); if (d < E.guard && d < bd) { bd = d; best = f; } });
       if (!best) best = RTS.scan(G, u, w, RTS.wStat(G, u, w, 'range')); u.tgt = best ? best.id : 0; }
     else { const c = G.byId[u.tgt]; if (c && !c.dead && Math.hypot(c.x - t.x, c.y - t.y) < E.guard + 2) best = c; }
     if (best && engage(G, u, best, true)) return; }
@@ -217,7 +220,7 @@ RTS.kill = function (G, e, src, silent) {
 RTS.scan = function (G, u, w, r) {
   let best = null, bs = -1e9;
   RTS.query(G, u.x, u.y, r, t => {
-    if (t.dead || !RTS.foe(G, u.team, t.team) || t.downUntil > G.tick || !RTS.canHit(w, t)) return;
+    if (t.dead || !RTS.foe(G, u.team, t.team) || t.downUntil > G.tick || !RTS.canHit(w, t) || !RTS.seen(G, u.team, t)) return;
     const d = RTS.edgeDist(u, t); if (d > r) return;
     const td = defOf(t), s = (td.weapon ? (td.kind === 'unit' ? 3 : 2.4) : td.kind === 'unit' ? 2 : 1) * 100 - d * 8;
     if (s > bs) { bs = s; best = t; }
@@ -225,7 +228,7 @@ RTS.scan = function (G, u, w, r) {
   return best;
 };
 function engage(G, u, t, chase) {
-  const w = RTS.weapon(u); if (!w || !RTS.canHit(w, t)) return false;
+  const w = RTS.weapon(u); if (!w || !RTS.canHit(w, t) || u.burrowed || !RTS.seen(G, u.team, t)) return false;
   const rng = RTS.wStat(G, u, w, 'range');
   if (RTS.edgeDist(u, t) <= rng + .05) {
     stopMove(u); u.facing = Math.atan2(t.y - u.y, t.x - u.x);
@@ -238,7 +241,7 @@ function engage(G, u, t, chase) {
 function autoTarget(G, u) {
   const w = RTS.weapon(u); if (!w) return null;
   const cur = u.tgt && G.byId[u.tgt];
-  if (cur && !cur.dead && RTS.edgeDist(u, cur) <= (defOf(u).aggro || 8) + 2 && (G.tick + u.id) % 12) return cur;
+  if (cur && !cur.dead && RTS.seen(G, u.team, cur) && RTS.edgeDist(u, cur) <= (defOf(u).aggro || 8) + 2 && (G.tick + u.id) % 12) return cur;
   if ((G.tick + u.id) % 6 && !cur) return null;
   const t = RTS.scan(G, u, w, Math.max(defOf(u).aggro || 8, RTS.wStat(G, u, w, 'range')));
   u.tgt = t ? t.id : 0; return t;
@@ -270,7 +273,7 @@ Object.assign(RTS.orders, {
   patrol(G, u, o) { const t = autoTarget(G, u); if (t && engage(G, u, t, true)) return;
     moveTo(G, u, o.x, o.y); if (arrived(u) || Math.hypot(u.x - o.x, u.y - o.y) < .8) { u.dest = null; [o.x, o.ax] = [o.ax, o.x]; [o.y, o.ay] = [o.ay, o.y]; } },
   hold(G, u) { stopMove(u); const t = autoTarget(G, u); if (t) engage(G, u, t, false); },
-  attack(G, u, o) { const t = G.byId[o.target]; if (!t || t.dead || t.downUntil > G.tick) { stopMove(u); nextOrder(G, u); return; } engage(G, u, t, true); },
+  attack(G, u, o) { const t = G.byId[o.target]; if (!t || t.dead || t.downUntil > G.tick || !RTS.seen(G, u.team, t)) { stopMove(u); nextOrder(G, u); return; } engage(G, u, t, true); },
   cast(G, u, o) { const ab = RTS.defs.abilities[o.ability];
     if (Math.hypot(u.x - o.x, u.y - o.y) > ab.range) { moveTo(G, u, o.x, o.y); return; }
     stopMove(u); if (RTS.abilityReady(G, u, ab)) RTS.useAbility(G, u, ab, o); nextOrder(G, u); },
@@ -395,8 +398,8 @@ function pathFor(G, u) {
 function moveUnits(G) {
   let budget = 30;
   for (const u of G.ents) {
-    if (u.dead || defOf(u).kind !== 'unit') continue;
-    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
+    if (u.dead || defOf(u).kind !== 'unit' || u.inside) continue;
+    u.px = u.x; u.py = u.y; if (defOf(u).immobile || u.morphing || u.burrowed || u.leaping) { u.path = null; u.needPath = false; continue; } // 고정 유닛(변신한 포격 요새 등)은 움직이지 않는다
     if (u.needPath && budget > 0) { budget--; pathFor(G, u); }
     if (!u.path || u.stunned > G.tick) continue;
     const wp = u.path[u.pathI], dx = wp[0] - u.x, dy = wp[1] - u.y, d = Math.hypot(dx, dy), step = RTS.stat(G, u, 'speed') / RTS.HZ;
@@ -471,7 +474,7 @@ RTS.systems.push(
       if (d.site) continue; // 거점 상태는 market 시스템이 관리한다
       if (d.kind === 'building') { runBuilding(G, e); continue; }
       if (e.cd > 0) e.cd--;
-      if (e.stunned > G.tick) continue;
+      if (e.stunned > G.tick || e.inside) continue; // 수송기 안의 유닛은 아무것도 하지 않는다(super.js)
       if (e.morphing) { if (G.tick >= e.morphing.until) RTS.morphDone(G, e); continue; } // 변신 중: 아무것도 하지 않는다
       if (d.regen && G.tick % RTS.HZ === 0) e.hp = Math.min(RTS.stat(G, e, 'hp'), e.hp + d.regen);
       if (e.order) RTS.orders[e.order.type](G, e, e.order);

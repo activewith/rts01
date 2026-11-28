@@ -1,6 +1,6 @@
 // node test/upgrade.js — 건물 강화, 유닛 강화 ★, 합체 규칙 검사
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let fail = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) fail++; };
 const D = RTS.defs.entities;
 
@@ -46,10 +46,12 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
 { const G = setup(), b = building(G, 'p_barracks'), h = hq0(G), u = unit(G, 'p_rifle', h.x + 3, h.y + 6), t = G.teams[0];
   cmd(G, { type: 'rankup', ids: [u.id] }); ok(!u.rank && G._msgs.includes('병영 강화 1단계가 필요합니다'), '병영 강화 전에는 ★ 불가');
   b.lv = 1; RTS.census(G); const ore0 = t.res.ore, hp0 = RTS.stat(G, u, 'hp'), dm0 = RTS.wStat(G, u, D.p_rifle.weapon, 'damage');
-  cmd(G, { type: 'rankup', ids: [u.id] });
-  ok(u.rank === 1 && t.res.ore === ore0 - RTS.rankCost(D.p_rifle, 1).ore && RTS.stat(G, u, 'hp') === hp0 * 1.2 && Math.abs(RTS.wStat(G, u, D.p_rifle.weapon, 'damage') - dm0 * 1.15) < 1e-9, `★1: 비용 ${JSON.stringify(RTS.rankCost(D.p_rifle, 1))}, 체력 ${hp0}→${RTS.stat(G, u, 'hp')}, 공격 ${dm0}→${RTS.wStat(G, u, D.p_rifle.weapon, 'damage').toFixed(2)}`);
+  cmd(G, { type: 'rankup', ids: [u.id] }); const sec1 = RTS.rankTime(D.p_rifle, 1);
+  ok(!u.rank && u.ranking && t.res.ore === ore0 - RTS.rankCost(D.p_rifle, 1).ore, `★1 강화 시작: 비용은 바로, ★는 ${sec1}초 뒤`); cmd(G, { type: 'rankup', ids: [u.id] }); ok(G._msgs.includes('★ 강화 중입니다'), '강화 중에는 다시 신청 불가');
+  run(G, sec1 * 20);
+  ok(u.rank === 1 && RTS.stat(G, u, 'hp') === hp0 * 1.2 && Math.abs(RTS.wStat(G, u, D.p_rifle.weapon, 'damage') - dm0 * 1.15) < 1e-9, `★1: 비용 ${JSON.stringify(RTS.rankCost(D.p_rifle, 1))}, 체력 ${hp0}→${RTS.stat(G, u, 'hp')}, 공격 ${dm0}→${RTS.wStat(G, u, D.p_rifle.weapon, 'damage').toFixed(2)}`);
   cmd(G, { type: 'rankup', ids: [u.id] }); ok(u.rank === 1, '★2는 병영 2단계가 필요');
-  b.lv = 2; RTS.census(G); cmd(G, { type: 'rankup', ids: [u.id] }); ok(u.rank === 2 && RTS.stat(G, u, 'hp') === hp0 * 1.4, `★2 체력 ${RTS.stat(G, u, 'hp')}`);
+  b.lv = 2; RTS.census(G); cmd(G, { type: 'rankup', ids: [u.id] }); run(G, RTS.rankTime(D.p_rifle, 2) * 20); ok(u.rank === 2 && RTS.stat(G, u, 'hp') === hp0 * 1.4, `★2 체력 ${RTS.stat(G, u, 'hp')}`);
   cmd(G, { type: 'rankup', ids: [u.id] }); ok(u.rank === 2, '★3은 없다');
   const merc = unit(G, 'n_merc', h.x + 4, h.y + 6); ok(!!RTS.rankBlock(G, merc), '생산 건물이 없는 유닛(용병)은 강화 불가'); }
 // 4) 합체: 특공대
@@ -89,7 +91,7 @@ function unit(G, id, x, y) { return RTS.spawn(G, id, 0, x, y); }
 // 6) 세 진영 레시피 모두 실제로 합체되는지
 for (const m of Object.values(RTS.defs.merges)) {
   const G = setup(m.faction, 21), h = hq0(G); building(G, m.at, 6, 4).lv = 2; RTS.census(G);
-  const list = []; let k = 0; for (const id of Object.keys(m.parts)) for (let i = 0; i < m.parts[id]; i++) { list.push(unit(G, id, h.x + 3 + (k % 3) * 1.6, h.y + 8 + Math.floor(k / 3) * 1.6)); k++; }
+  const list = []; let k = 0; for (const id of Object.keys(m.parts)) for (let i = 0; i < m.parts[id]; i++) { const e = unit(G, id, h.x + 3 + (k % 3) * 1.6, h.y + 8 + Math.floor(k / 3) * 2.2); if (m.kills) e.kills = m.kills; list.push(e); k++; } // 슈퍼 합체 재료는 처치 수를 채워 둔다
   cmd(G, { type: 'merge', unit: list[0].id, recipe: m.id }); run(G, 400 + RTS.mergeTime(m) * 20);
   const r = G.ents.find(e => e.def === m.into); ok(!!r && list.every(e => e.dead), `${RTS.defs.factions[m.faction].name} ${D[m.into].name}: 합체 ${RTS.mergeTime(m)}초, 체력 ${D[m.into].hp}, 공격 ${D[m.into].weapon.damage}/${D[m.into].weapon.cooldown}s, 사거리 ${D[m.into].weapon.range}`);
 }

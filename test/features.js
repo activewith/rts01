@@ -1,6 +1,6 @@
 // node test/features.js — 호위, 개척단 공병 건물 수리, 합체 유닛 ★2 변신(다른 유닛으로: 비행·고정·능력치·그림)
 const fs = require('fs'), path = require('path');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if (!c) bad++; };
 const run = (G, n) => { for (let i = 0; i < n; i++) RTS.step(G); };
 const D = RTS.defs.entities;

@@ -1,6 +1,6 @@
 // 학습 미션: 과목·수준별 문제 생성(보기 4개, 정답 1개, 겹침 없음), 문항 은행 형식, 관문 위치
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','engine/campaign','data/content','data/settings','data/campaign','data/learn']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','engine/campaign','data/content','data/settings','data/campaign','data/learn']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 let seed = 3; const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
 const seen = {};
 for (const sub of ['math', 'ko', 'life']) for (let lv = 0; lv <= 3; lv++) for (let i = 0; i < 300; i++) { const Q = RTS.learnQuestion(sub, lv, rnd);

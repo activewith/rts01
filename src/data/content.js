@@ -73,7 +73,7 @@ RTS.mod({
     p_gren:    { kind: 'unit', name: '척탄병', abbr: '척', key: 'G', art: 'trooper', tint: 1, r: .42, hp: 80, armor: 1, speed: 2.5, sight: 8, supply: 2, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], requires: ['p_lab'],
       weapon: { damage: 14, range: 5.5, cooldown: 1.6, splash: 1, air: false, speed: 11, art: 'shell' }, desc: '범위 피해. 지상만 공격' },
     p_medic:   { kind: 'unit', name: '의무병', abbr: '의', key: 'E', art: 'trooper', tint: 2, r: .38, hp: 55, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 40 }, time: 16, tags: ['bio'], requires: ['p_lab'], passive: false,
-      heal: { amount: 6, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 보병을 자동 치료' },
+      heal: { amount: 6, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 보병을 자동 치료. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     p_tank:    { kind: 'unit', name: '포격전차', abbr: '포', key: 'T', art: 'tank', r: .72, hp: 170, armor: 1, speed: 2.3, sight: 10, supply: 3, cost: { ore: 150, gas: 100 }, time: 28, tags: ['mech'], abilities: ['siege'],
       weapon: { damage: 20, range: 7, cooldown: 1.4, air: false, speed: 20, art: 'shell' }, siegeWeapon: { damage: 42, range: 11, cooldown: 2.6, splash: 1.3, air: false, speed: 18, art: 'shell' }, desc: '포격 모드로 원거리 범위 공격' },
     p_gunship: { kind: 'unit', name: '강습기', abbr: '강', key: 'F', art: 'flyer', air: true, r: .6, hp: 130, speed: 3.8, sight: 10, supply: 3, cost: { ore: 125, gas: 75 }, time: 24, tags: ['mech'],
@@ -95,7 +95,7 @@ RTS.mod({
     i_striker: { kind: 'unit', name: '사수봇', abbr: '사', key: 'R', art: 'bot', tint: 1, r: .44, hp: 80, speed: 2.7, sight: 8, supply: 2, cost: { ore: 100, gas: 25 }, time: 20, tags: ['mech'],
       weapon: { damage: 11, range: 6, cooldown: 1.1, speed: 22, art: 'tracer' }, desc: '지상·공중 원거리 사격' },
     i_mender:  { kind: 'unit', name: '정비봇', abbr: '정', key: 'E', art: 'bot', tint: 2, r: .4, hp: 60, speed: 3, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 18, tags: ['mech'], requires: ['i_core'], passive: false,
-      heal: { amount: 7, range: 3.5, cooldown: .9, tag: 'mech' }, desc: '주변 기계를 자동 수리' },
+      heal: { amount: 7, range: 3.5, cooldown: .9, tag: 'mech' }, desc: '주변 기계를 자동 수리. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     i_colossus:{ kind: 'unit', name: '중장봇', abbr: '중', key: 'T', art: 'walker', r: .85, hp: 300, armor: 2, speed: 1.9, sight: 10, supply: 4, cost: { ore: 250, gas: 125 }, time: 36, tags: ['mech'], abilities: ['shock'],
       weapon: { damage: 26, range: 6, cooldown: 1.7, splash: .9, air: false, speed: 14, art: 'shell' }, desc: '고체력 범위 화력, 충격파' },
     i_wasp:    { kind: 'unit', name: '말벌기', abbr: '말', key: 'F', art: 'flyer', tint: 1, air: true, r: .5, hp: 95, speed: 4.3, sight: 9, supply: 2, cost: { ore: 100, gas: 75 }, time: 20, tags: ['mech'],
@@ -117,7 +117,7 @@ RTS.mod({
     s_spitter: { kind: 'unit', name: '산탄충', abbr: '산', key: 'R', art: 'spitter', r: .42, hp: 80, speed: 2.7, sight: 8, supply: 1, cost: { ore: 75, gas: 25 }, time: 18, tags: ['bio'], abilities: ['acid'],
       weapon: { damage: 10, range: 5.5, cooldown: 1, speed: 18, art: 'shell' }, desc: '지상·공중 원거리 사격, 산성 분사' },
     s_nurse:   { kind: 'unit', name: '양육충', abbr: '양', key: 'E', art: 'nurse', r: .4, hp: 60, speed: 2.8, sight: 9, supply: 1, cost: { ore: 50, gas: 50 }, time: 16, tags: ['bio'], requires: ['s_den'], passive: false,
-      heal: { amount: 5, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 생체 유닛을 자동 치료' },
+      heal: { amount: 5, range: 3.5, cooldown: .8, tag: 'bio' }, desc: '주변 생체 유닛을 자동 치료. ★1 강화하면 시야 안의 숨은 유닛(은신·잠복)을 드러낸다' },
     s_brute:   { kind: 'unit', name: '거대충', abbr: '거', key: 'T', art: 'brute', r: .85, hp: 340, armor: 2, speed: 2.2, sight: 9, supply: 4, cost: { ore: 250, gas: 150 }, time: 36, tags: ['bio'], abilities: ['frenzy'],
       weapon: { damage: 24, range: .6, cooldown: 1.4, splash: .9, air: false }, desc: '고체력 근접 범위 공격, 광분' },
     s_drake:   { kind: 'unit', name: '독침비행체', abbr: '독', key: 'F', art: 'drake', air: true, r: .55, hp: 110, speed: 4, sight: 9, supply: 2, cost: { ore: 100, gas: 100 }, time: 22, tags: ['bio'],
@@ -337,3 +337,46 @@ RTS.mod({ entities: {
   s_behemoth_f:   RTS.formDef('s_behemoth',   { name: '갑각 거수', art: 'shellbeast', ai: 'combat', hp: 1.4, armor: 3, speed: .55, damage: .9, txt: '두꺼운 갑각. 체력 ×1.4, 방어 +3, 속도 ×0.55, 공격력 ×0.9', desc: '포자거수가 갑각을 두른 모습. 매우 단단하지만 느리다' }),
 } });
 
+
+// ── 히든 슈퍼 합체(2026-11, super.js) ─────────────────────
+// 같은 합체 유닛 2기가 모두 처치 kills 이상이면(작은 합체 10, 큰 합체 20) 그 유닛을 길게 눌러 '합체'에 나온다. 그 전에는 메뉴에 없다.
+// 작은 슈퍼: 개척단 도약, 철갑회 은신, 포자군락 잠복. 큰 슈퍼: 기본 형태는 수호 오라(주변 아군 받는 피해 -25%, 스스로 초당 3 회복), 변신하면 하늘을 나는 수송선(8자리).
+RTS.mod({ abilities: {
+  leap: { short: '도약', name: '도약', key: 'E', target: 'point', range: 8, cooldown: 14, desc: '점프 장치로 8칸 안의 지점에 뛰어내린다. 착지 반경 1.6에 피해 30, 1초 기절',
+    use(G, u, c) { return RTS.leap(G, u, c.x, c.y); },
+    ai(G, u) { const t = RTS.scan(G, u, RTS.weapon(u), 8); if (t && Math.hypot(t.x - u.x, t.y - u.y) > 3.5) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'leap', x: t.x, y: t.y, one: true }); } },
+  cloak: { short: '은신', name: '은신', key: 'E', target: 'self', cooldown: 30, desc: '12초 동안 모습을 감춘다. 상대의 탐지 유닛(★1 치료 유닛) 시야 안에서만 보이고 공격받는다. 은신 중에도 공격할 수 있다',
+    use(G, u) { u.cloakUntil = G.tick + 12 * RTS.HZ; RTS.emit(G, 'cloak', { e: u }); },
+    ai(G, u) { if (u.hp < RTS.stat(G, u, 'hp') * .6 && RTS.scan(G, u, RTS.weapon(u), 7)) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'cloak' }); } },
+  burrow: { short: '잠복', name: '잠복', key: 'E', target: 'self', cooldown: 1.5, regen: 4, desc: '땅속에 숨는다(다시 누르면 나온다). 숨은 동안 움직이거나 공격하지 못하고 초당 4 회복. 상대의 탐지 유닛(★1 치료 유닛) 시야 안에서만 보인다',
+    use(G, u) { u.burrowed = !u.burrowed; u.path = null; u.needPath = false; RTS.issue(G, u, null); RTS.emit(G, 'burrow', { e: u, on: u.burrowed }); },
+    ai(G, u) { const m = RTS.stat(G, u, 'hp'); if (!u.burrowed && u.hp < m * .35) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'burrow' }); else if (u.burrowed && u.hp > m * .9) RTS.commands.ability(G, u.team, { ids: [u.id], ability: 'burrow' }); } },
+  loadnear: { short: '태우기', name: '주변 태우기', key: 'E', target: 'self', cooldown: 1, desc: '3칸 안의 내 지상 소형·중형 유닛을 자리만큼 태운다. 유닛을 고른 채 수송선을 우클릭(터치는 탭)해도 걸어와서 탄다',
+    use(G, u) { const cap = RTS.defOf(u).transport, list = []; RTS.query(G, u.x, u.y, 4, o => { if (!o.dead && Math.hypot(o.x - u.x, o.y - u.y) <= 3 && RTS.canBoard(G, o, u)) list.push(o); }); list.sort((a, b) => a.id - b.id);
+      let n = 0; for (const o of list) if ((u.load || []).length < cap && RTS.board(G, o, u)) n++; RTS.say(G, u.team, n ? `${n}기 탑승 (${(u.load || []).length}/${cap})` : '3칸 안에 탈 유닛이 없습니다', n ? 'ok' : 'warn'); } },
+  unload: { short: '내리기', name: '모두 내리기', key: 'R', target: 'self', cooldown: 1, desc: '탄 유닛을 모두 둘레의 땅에 내린다(3칸 안에 땅이 있어야 한다)',
+    use(G, u) { if (!(u.load || []).length) return false; if (!RTS.unloadAll(G, u, false)) { RTS.say(G, u.team, '근처에 내릴 땅이 없습니다', 'warn'); return false; } } },
+} });
+// 슈퍼 합체는 재료 2기를 그냥 더한 것보다 강하다: 체력 ×1.3, 공격력 ×1.35, 방어 +1
+const SUP = d => { d.hp = Math.round(d.hp * 1.3); if (d.weapon) d.weapon.damage = Math.round(d.weapon.damage * 13.5) / 10; d.armor = (d.armor || 0) + 1; return d; };
+RTS.mod({ entities: {
+  p_supcmd:   SUP(RTS.fuseDef({ p_commando: 2 }, { name: '강철 돌격대장', abbr: '돌', art: 'super_commando', r: .55, abilities: ['stim', 'leap'], superOf: 'p_commando', desc: '특공대 2기(각 10킬)의 슈퍼 합체. 점프 장치로 도약해 착지 지점을 강타한다' })),
+  i_supduel:  SUP(RTS.fuseDef({ i_duelist: 2 }, { name: '그림자 기사', abbr: '그', art: 'super_duelist', r: .65, abilities: ['cloak'], superOf: 'i_duelist', desc: '쌍날기사 2기(각 10킬)의 슈퍼 합체. 은신 장치로 모습을 감춘다' })),
+  s_supvenom: SUP(RTS.fuseDef({ s_venom: 2 }, { name: '땅굴 독충왕', abbr: '왕', art: 'super_venom', r: .6, abilities: ['acid', 'burrow'], superOf: 's_venom', desc: '맹독충 2기(각 10킬)의 슈퍼 합체. 땅속에 숨어 회복한다' })),
+  p_supertitan:  SUP(RTS.fuseDef({ p_titan: 2 }, { name: '수호 거신왕', abbr: '왕', art: 'super_titan', r: 1.45, abilities: ['shock', 'morph'], aura: true, superOf: 'p_titan', desc: '거대로봇 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+  i_superjug:    SUP(RTS.fuseDef({ i_juggernaut: 2 }, { name: '철벽 거신왕', abbr: '왕', art: 'super_juggernaut', r: 1.5, abilities: ['shock', 'morph'], aura: true, superOf: 'i_juggernaut', desc: '철갑거신 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+  s_superbeh:    SUP(RTS.fuseDef({ s_behemoth: 2 }, { name: '태고의 거수', abbr: '태', art: 'super_behemoth', r: 1.5, abilities: ['frenzy', 'morph'], aura: true, superOf: 's_behemoth', desc: '포자거수 2기(각 20킬)의 슈퍼 합체. 수호 오라: 6칸 안 아군이 받는 피해 -25%, 스스로 초당 3 회복. ★2면 수송선으로 변신' })),
+}, merges: {
+  superCommando: { faction: 'pioneers', at: 'p_barracks', parts: { p_commando: 2 }, into: 'p_supcmd', kills: 10 },
+  superDuelist:  { faction: 'ironclad', at: 'i_forge', parts: { i_duelist: 2 }, into: 'i_supduel', kills: 10 },
+  superVenom:    { faction: 'swarm', at: 's_pool', parts: { s_venom: 2 }, into: 's_supvenom', kills: 10 },
+  superTitan:    { faction: 'pioneers', at: 'p_factory', parts: { p_titan: 2 }, into: 'p_supertitan', kills: 20 },
+  superJug:      { faction: 'ironclad', at: 'i_foundry', parts: { i_juggernaut: 2 }, into: 'i_superjug', kills: 20 },
+  superBeh:      { faction: 'swarm', at: 's_nest', parts: { s_behemoth: 2 }, into: 's_superbeh', kills: 20 },
+} });
+(function () { const D = RTS.defs.entities, tr = (base, o) => { const d = RTS.formDef(base, Object.assign({ ai: 'travel', air: true, hitAir: true }, o)); delete d.aura; d.transport = 8; d.abilities = d.abilities.filter(a => a !== 'shock' && a !== 'frenzy').concat(['loadnear', 'unload']); return d; };
+  RTS.mod({ entities: {
+    p_supertitan_f: tr('p_supertitan', { name: '거신 수송선', art: 'super_skyship', speed: 1.4, hp: .85, armor: -2, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.4, 체력 ×0.85, 공격력 ×0.55', desc: '수호 거신왕이 변신한 수송선' }),
+    i_superjug_f:   tr('i_superjug',   { name: '철벽 수송선', art: 'super_airship', speed: 1.35, hp: .85, armor: -2, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.35, 체력 ×0.85, 공격력 ×0.55', desc: '철벽 거신왕이 변신한 수송선' }),
+    s_superbeh_f:   tr('s_superbeh',   { name: '포자 수송선', art: 'super_sporeship', speed: 1.45, hp: .8, armor: -1, damage: .55, txt: '하늘을 나는 수송선. 지상 소형·중형 유닛 8기를 태운다(태우기 E, 내리기 R). 속도 ×1.45, 체력 ×0.8, 공격력 ×0.55', desc: '태고의 거수가 날개를 펴 변신한 수송선' }),
+  } }); })();

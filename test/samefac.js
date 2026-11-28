@@ -1,6 +1,6 @@
 // 같은 진영끼리: 혼자 하기(상대 AI 같은 진영), 둘이 하기 1:1·서로 대전·협동에서 두 사람이 같은 진영. 진행·승패·결정성, 색 구분
 const fs = require('fs'), path = require('path'), assert = require('assert');
-for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
+for (const f of ['engine/core','engine/map','engine/sim','engine/upgrade', 'engine/super','engine/market','engine/war','engine/diplomacy','engine/tribe','engine/ai','engine/net','data/content','data/settings']) (0, eval)(fs.readFileSync(path.join(__dirname, '../src', f + '.js'), 'utf8'));
 // 색 표(render.js 맨 위의 색 정의만 읽는다. 나머지는 화면이 있어야 한다)
 { const src = fs.readFileSync(path.join(__dirname, '../src/ui/render.js'), 'utf8'), top = src.slice(src.indexOf('RTS.TEAM = '), src.indexOf('RTS.TEAM[RTS.TRIBE]')); (0, eval)(top); }
 const F = Object.keys(RTS.defs.factions);
