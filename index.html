@@ -48,6 +48,10 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tools button.on{background:var(--brass);color:#16110a}
 .k-touch{display:none}
 @media (pointer:coarse){.k-touch{display:inline-block}}
+.k-tbar{position:absolute;right:6px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;gap:5px;z-index:4;pointer-events:auto}
+.k-tbar button{min-width:58px;min-height:38px;padding:4px 6px;font-size:13px;background:rgba(16,22,34,.82);color:var(--text);border:1px solid rgba(255,255,255,.18);border-radius:6px}
+.k-tbar button.on{background:rgba(70,196,255,.35);border-color:#46c4ff;color:#fff}
+.k-tbar .tb-grp{display:grid;grid-template-columns:1fr 1fr;gap:4px}.k-tbar .tb-grp button{min-width:27px}
 .k-stage{position:relative;min-height:0;background:#0a0f18}
 #k-view{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:none;outline:none}
 .k-msgs{z-index:5;position:absolute;top:10px;left:50%;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:4px;pointer-events:none;width:min(90%,420px)}
@@ -231,7 +235,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = 'bf258f4';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '0ed4a36';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -2867,6 +2871,7 @@ RTS.SETTINGS = [
     { id: 'exitGuard', label: '나가기 확인', desc: '게임 중 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)나 탭 닫기를 하면 먼저 확인합니다. PC 전체화면에서는 Esc를 길게 눌러야 풀립니다', type: 'toggle', def: true, client: true },
     { id: 'edgeScroll', label: '화면 가장자리 스크롤', type: 'toggle', def: true, client: true },
     { id: 'lowSpec', label: '저사양 모드', desc: '느린 태블릿용. 고급 그래픽·화려한 효과·날씨를 끄고 지형과 건물을 가볍게 그립니다. 처음 실행할 때와 첫 게임에서 느리면 자동으로 켜집니다', type: 'toggle', def: false, client: true },
+    { id: 'touchBar', label: '터치 보조 버튼', desc: '터치 기기에서 게임 중 오른쪽에 더하기·예약·전체 병력·본진·부대 1~4 버튼을 보입니다', type: 'toggle', def: true, client: true },
     { id: 'fps', label: '프레임 수 표시', desc: '화면 왼쪽 아래에 초당 프레임 수를 보입니다', type: 'toggle', def: false, client: true },
     { id: 'gl', label: '고급 그래픽', desc: 'WebGL 조명·불빛·빛 번짐·부드러운 안개. 지원하지 않는 기기에서는 자동으로 꺼집니다', type: 'toggle', def: true, client: true },
     { id: 'clouds', label: '구름 그림자', desc: '고급 그래픽에서 구름 그림자가 지나갑니다', type: 'toggle', def: true, client: true },
@@ -3538,12 +3543,15 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
     const wA = ss(.3, .7, a), wB = ss(.45, .7, b) * .6, wD = ss(.6, .78, b * .6 + a * .4) * .55, wL = ss(.62, .82, 1 - b) * .35, wS1 = ss(.3, .7, b), wS2 = ss(.55, .8, a) * .5, wR1 = ss(.35, .75, b), wR2 = ss(.5, .8, a) * .4;
     const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? cov[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
     const ev = elv ? elv[i] : 0, cl = cliffV ? Math.min(1, cliffV[i] * 1.5) : 0, slope = elv ? Math.min(1, Math.max(0, Math.hypot(gx, gy) / SC - .9) * .8) * (1 - ro) : 0; // 고지대 경사면
+    // 고지대 절벽 방향: 북쪽이 높으면(남향 절벽) 3/4 시점에서 벽면이 보이므로 세로 결(wstr)과 윗단 밝음(wtop), 남쪽이 높으면(북향) 그늘진 가장자리
+    const egy = elv && y > 1 && y < H - 2 ? elv[i + 2 * W] - elv[i - 2 * W] : 0, wall = cl > .05 ? (egy < -.08 ? 1 : egy > .08 ? -1 : 0) : 0;
+    const wstr = .35 + .2 * Math.sin(x * SC * .9 + b * 9) + .12 * (a - .5), wtop = wall > 0 ? Math.max(0, Math.min(1, (elv[i] - Math.floor(elv[i])) * 2.2)) : 0;
     const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a) * (.92 + ev * .11);
     for (let ch = 0; ch < 3; ch++) { let v = gP[1][ch] + (gP[2][ch] - gP[1][ch]) * wA; v += (gP[0][ch] - v) * wB; v += (dry[ch] - v) * wD; v += (lush[ch] - v) * wL;
       let sv = sP[1][ch] + (sP[2][ch] - sP[1][ch]) * wS1; sv += (sP[0][ch] - sv) * wS2; v += (sv - v) * sa;
       let rv = rP[1][ch] + (rP[2][ch] - rP[1][ch]) * wR1; rv += (rP[0][ch] - rv) * wR2; v += (rv - v) * tp;
       if (face > 0) v += ((rP[0][ch] + (rP[1][ch] - rP[0][ch]) * rfk) * fmul - v) * wF;
-      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * rfk) * .92 - v) * Math.min(.85, Math.max(slope, cl * .7));
+      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * (wall > 0 ? wstr : rfk)) * (wall > 0 ? .7 + .45 * wtop : wall < 0 ? .62 : .92) - v) * Math.min(.9, Math.max(slope, cl * (wall ? .95 : .7)));
       D[i * 4 + ch] = v * k > 255 ? 255 : v * k; }
     D[i * 4 + 3] = 255; }
   const lo = document.createElement('canvas'); lo.width = W; lo.height = H; lo.getContext('2d').putImageData(img, 0, 0);
@@ -3831,7 +3839,7 @@ RTS.Renderer = function (canvas, app) {
   const rich = () => app.settings.fxRich !== false && !app.settings.lowSpec, depthOn = () => app.settings.depth !== false, rnd = (a, b) => a + Math.random() * (b - a);
   const fx = o => { o.max = o.life; R.fx.push(o); return o; };
   const shake = (x, y, amt) => { if (app.settings.shake === false || !R.onScreen(x, y)) return; R.shake = Math.min(14, Math.max(R.shake || 0, amt)); };
-  const zOf = e => { const d = RTS.defOf(e); return d.air ? 20 : d.size && depthOn() ? heightOf(d) : 0; };
+  const zOf = e => { const d = RTS.defOf(e); return d.air ? 20 : d.size && (art3d(d) || depthOn()) ? heightOf(d) : 0; };
   function sparks(x, y, n, col, a0, spread, z = 0) { for (let i = 0; i < n; i++) { const a = a0 === undefined ? rnd(0, TAU) : a0 + rnd(-spread, spread), v = rnd(.05, .14); fx({ k: 'spark', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, life: rnd(6, 11) | 0, c: col }); } }
   function debris(x, y, n, cols, pow, z = 0) { if (!rich()) n = Math.ceil(n / 3); for (let i = 0; i < n; i++) { const a = rnd(0, TAU), v = rnd(.02, .07) * pow; fx({ k: 'debris', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rnd(2, 5) * Math.sqrt(pow), rot: rnd(0, TAU), vr: rnd(-.4, .4), sz: rnd(2, 4.5) * Math.min(1.6, pow), life: rnd(28, 46) | 0, c: cols[i % cols.length] }); } }
   function embers(x, y, n, pow, z = 0) { if (!rich()) return; for (let i = 0; i < n; i++) { const a = rnd(0, TAU), v = rnd(.03, .1) * pow; fx({ k: 'ember', x, y, z, vx: Math.cos(a) * v, vy: Math.sin(a) * v, vz: rnd(1.5, 4.5), life: rnd(18, 34) | 0 }); } }
@@ -3974,7 +3982,7 @@ RTS.Renderer = function (canvas, app) {
     else { for (let i = 0; i < 40; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.5)' : 'rgba(255,255,255,.45)'; x.fillRect(r() * 48, r() * 48, 2 + r() * 9, .7); } } // 개척단: 판금 긁힘
     return (TEX[f] = cv); }
   function finishRoof(u, cv, k, P, faction, noBevel) { const W = cv.width, H = cv.height, sil = fit(S.sil, W, H); sil.drawImage(cv, 0, 0);
-    u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1;
+    u.setTransform(1, 0, 0, 1, 0, 0); if (faction) { u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1; }
     const o = Math.max(1, Math.round(1.3 * k)), band = (dx, dy, col, a) => { const b = fit(S.fin, W, H); b.drawImage(sil.canvas, 0, 0); b.globalCompositeOperation = 'destination-out'; b.drawImage(sil.canvas, dx, dy); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
     if (!noBevel) { band(o, o, '#fff', .3); band(-o, -o, '#000', .38); } // 위·왼쪽 모서리 빛, 아래·오른쪽 그늘
     const ring = (d, col, a) => { const b = fit(S.fin, W, H); for (let i = 0; i < 8; i++) b.drawImage(sil.canvas, Math.round(Math.cos(i * TAU / 8) * d), Math.round(Math.sin(i * TAU / 8) * d)); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalCompositeOperation = 'destination-over'; u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
@@ -4011,7 +4019,7 @@ RTS.Renderer = function (canvas, app) {
     u.setTransform(k, 0, 0, k, pad * k, (pad + H) * k); g.setTransform(k, 0, 0, k, pad * k, pad * k);
     RTS.b3dBase(art, u, g, w, d, P, s2);
     if (dmg && RTS.artDamage) { u.save(); u.globalCompositeOperation = 'source-atop'; u.translate(0, -H); RTS.artDamage(u, w, d + H, s2); u.restore(); }
-    finishRoof(u, cv, k, P, st.faction, true);
+    finishRoof(u, cv, k, P, art.tex === false ? null : st.faction, true);
     e = { cv, scv, glows, k, pad, H, px: cw * ch + sw * sh }; B3.map.set(key, e); B3.px += e.px;
     const lim = app.settings.lowSpec ? 4e6 : 8e6; for (const [kk, v] of B3.map) { if (B3.px <= lim) break; B3.map.delete(kk); B3.px -= v.px; }
     return e; }
@@ -4026,9 +4034,9 @@ RTS.Renderer = function (canvas, app) {
   const UCACHE = { map: new Map(), px: 0, budget: 7e6, dirs: 16, phases: 6, hits: 0, miss: 0 };
   R.ucache = UCACHE;
   function unitSpriteCached(name, fn, P, st, facing, size) {
-    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = app.settings.lowSpec ? 8 : UCACHE.dirs, /* 저사양은 8방향(사이 각도는 돌려서) */ fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
+    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = UCACHE.dirs, /* 3/4 시점 입체 그림은 방향마다 따로 저장하고 돌리지 않는다(16방향) */ fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
     const ph = Math.floor(st.t / 3) % UCACHE.phases; st.t = ph * 3 + (st.moving ? 0 : 0);
-    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '/' + N + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '/' + N + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + (depthOn() ? 'D' : '') + '|' + Math.round(size) + '|' + k;
     let e = UCACHE.map.get(key);
     if (e) { UCACHE.hits++; UCACHE.map.delete(key); UCACHE.map.set(key, e); }
     else { UCACHE.miss++; const L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), cv = document.createElement('canvas'); cv.width = cv.height = px; const u = cv.getContext('2d');
@@ -4036,9 +4044,15 @@ RTS.Renderer = function (canvas, app) {
       u.setTransform(k, 0, 0, k, L / 2 * k, L / 2 * k); const sc = Math.max(.8, size / 13); u.scale(sc, sc); u.globalCompositeOperation = 'source-atop';
       if (!unitLight) { unitLight = u.createRadialGradient(-5, -6, 1, -5, -6, 19); unitLight.addColorStop(0, 'rgba(255,255,255,.34)'); unitLight.addColorStop(.42, 'rgba(255,255,255,0)'); unitLight.addColorStop(.68, 'rgba(0,0,0,0)'); unitLight.addColorStop(1, 'rgba(0,0,0,.42)'); }
       u.fillStyle = unitLight; u.fillRect(-L, -L, L * 2, L * 2);
+      // ── 3/4 시점: 위에서 본 그림을 세로로 살짝 눌러(보는 각도) 윗면으로 쓰고, 그 아래에 어둡게 칠한 같은 모양을 높이 H만큼 쌓아 옆면을 만든다
+      //    (스프라이트 쌓기). 방향마다 한 번만 만들고 돌리지 않으므로 옆면은 늘 아래(남쪽)로 보인다. 높이: 작은 보병 3px ~ 큰 유닛 7px
+      if (depthOn()) { const H = Math.round(Math.min(7, 2 + size * .3)), SQ = .84, top = fit(S.sil, px, px); top.drawImage(cv, 0, 0); const dk = fit(S.fin, px, px); dk.drawImage(cv, 0, 0); dk.globalCompositeOperation = 'source-atop'; dk.fillStyle = 'rgba(8,10,16,.62)'; dk.fillRect(0, 0, px, px); dk.globalCompositeOperation = 'source-over';
+        u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-over'; u.clearRect(0, 0, px, px); const oy = px * (1 - SQ) / 2, hk = H * k;
+        for (let z = 0; z < hk; z += Math.max(1, k * .9)) u.drawImage(S.fin, 0, 0, px, px, 0, oy - z, px, px * SQ);
+        u.drawImage(S.sil, 0, 0, px, px, 0, oy - hk, px, px * SQ); }
       e = { cv, L, px }; UCACHE.map.set(key, e); UCACHE.px += px * px;
       for (const [kk, v] of UCACHE.map) { if (UCACHE.px <= UCACHE.budget) break; UCACHE.map.delete(kk); UCACHE.px -= v.px * v.px; } }
-    return { cv: e.cv, L: e.L, rot: facing - fq };
+    return { cv: e.cv, L: e.L, rot: depthOn() ? 0 : facing - fq };
   }
   function unitSprite(fn, P, st, facing, size, hit) { // 유닛: 몸체를 그린 뒤 고정된 방향의 빛을 입혀 둥글게 보이게 한다
     const k = Math.min(2, R.cam.z), L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), u = fit(S.unit, px, px); // 큰 합체 유닛은 그림 판을 키운다
@@ -4195,7 +4209,9 @@ RTS.Renderer = function (canvas, app) {
         if (x > r.x0 * TS - 4 && x < (r.x0 + r.w) * TS + 4 && y > r.y0 * TS - a3.H - 6) { const fn = RTS.art.units[d.art] || RTS.art.units.trooper, sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS);
           c.save(); c.globalAlpha = .5; c.translate(x, y); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(x, y, d.r * TS + 2, (d.r * TS + 2) * .78, 0, 0, TAU); c.stroke(); break; } } }
     // 투사체
-    for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
+    // 쏜 곳의 높이(포탑 머리·비행체)에서 출발해 과녁에 가까울수록 바닥으로 내려온다
+    const pz = p => { const s0 = G.byId[p.src], z0 = s0 && !s0.dead ? zOf(s0) : 0; if (!z0) return 0; const dn = Math.hypot(p.x - p.sx, p.y - p.sy), al = dn + Math.hypot(p.tx - p.x, p.ty - p.y); return z0 * (1 - (al ? dn / al : 1)); };
+    for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS - pz(p), P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기
         const done = Math.hypot(p.x - p.sx, p.y - p.sy), all = done + Math.hypot(p.tx - p.x, p.ty - p.y), hz = Math.sin(Math.PI * (all ? done / all : 1)) * Math.min(46, all * TS * .2);
         c.fillStyle = 'rgba(0,0,0,.28)'; c.beginPath(); c.ellipse(X + 2, Y + 2, 4, 2.6, 0, 0, TAU); c.fill();
@@ -4960,6 +4976,42 @@ RTS.Renderer = function (canvas, app) {
         c.fillStyle = BONE; c.beginPath(); c.moveTo(x + ca * 22 - sa * 3, y - 10 + sa * 20 - ca * 2); c.lineTo(x + ca * 32, y - 8 + sa * 27); c.lineTo(x + ca * 22 + sa * 3, y - 10 + sa * 20 + ca * 2); c.fill(); };
       if (sa < 0) arm(); blob(c, x, y - 4, 10, 8, P.dark); blob(c, x, y - 6, 4, 3, P.main); if (sa >= 0) arm(); GL(s)(x, y, 22, BIO, .25); } };
 
+  // ══ 중립 ══ 회사 거점(광석·에테르), 자유상단 지부, 잿빛 부족 회당·망루. 주인이 있으면 P가 그 팀 색, 없으면 중립 색. s.down이면 가동 중단(불 꺼짐·연기)
+  function roof(c, x, y, w, d, z0, h, col) { shRect(x, y, w, d, z0 + h); const ye = y + d - z0, yr = y + d / 2 - z0 - h, yn = y - z0;
+    if (yn < yr) { c.fillStyle = lit(col, .12); c.beginPath(); c.moveTo(x, yn); c.lineTo(x + w, yn); c.lineTo(x + w, yr); c.lineTo(x, yr); c.closePath(); c.fill(); }
+    const g = c.createLinearGradient(0, yr, 0, ye); g.addColorStop(0, lit(col, .1)); g.addColorStop(1, lit(col, -.35)); c.fillStyle = g; c.beginPath(); c.moveTo(x - 2, ye); c.lineTo(x + w + 2, ye); c.lineTo(x + w, yr); c.lineTo(x, yr); c.closePath(); c.fill();
+    c.strokeStyle = 'rgba(0,0,0,.55)'; c.lineWidth = 1; c.stroke(); c.strokeStyle = 'rgba(255,255,255,.3)'; c.beginPath(); c.moveTo(x, yr); c.lineTo(x + w, yr); c.stroke(); return { yr, ye }; }
+  const WOOD = '#7a5434', WOOD2 = '#5a3c24', THATCH = '#a08a52', ORE = '#e3b23c';
+  function crystals(c, x, y, n, col, sc = 1) { for (let i = 0; i < n; i++) { const dx = (i % 3) * 6 * sc - 6 * sc, dy = Math.floor(i / 3) * 4 * sc, hh = (10 + (i * 7) % 8) * sc; c.fillStyle = lit(col, .25); c.beginPath(); c.moveTo(x + dx - 3 * sc, y + dy); c.lineTo(x + dx, y + dy - hh); c.lineTo(x + dx + 3 * sc, y + dy); c.fill(); c.fillStyle = lit(col, -.3); c.beginPath(); c.moveTo(x + dx, y + dy - hh); c.lineTo(x + dx + 3 * sc, y + dy); c.lineTo(x + dx, y + dy); c.fill(); } }
+  A.site_ore = { H: 44, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#5a5650', 4); const B = box(c, 8, 12, 50, 40, 4, 26, '#8a7e6c'); c.fillStyle = P.main; c.fillRect(8, B.fy + 3, 50, 4); c.fillStyle = '#1c1a17'; c.fillRect(20, B.fy + 10, 24, B.h - 10);
+      for (let i = 0; i < 3; i++) win(c, s, 12 + i * 15, B.top + 8, 8, 5, '#ffd27a'); roof(c, 8, 12, 50, 40, 30, 10, '#6a5e4c');
+      box(c, 62, 30, 26, 8, 4, 10, '#4a4640'); pipe(c, [[60, 26 - 14], [88, 18 - 14]], 4, '#8a8478'); crystals(c, 76, 76, 7, ORE, 1.1); crystals(c, 22, 82, 5, ORE, .9); cyl(c, 80, 22, 8, 4, 30, '#7a7468'); },
+    live(c, w, d, P, s) { if (s.down) { smokeAt(s, 33, 0, 10); c.fillStyle = 'rgba(0,0,0,.45)'; c.fillRect(8, 12 - 30, 50, 66); lamp(c, { t: 0 }, 80, -12, '#ff4a3a', 2, 0); return; }
+      const q = (s.t * .4) % 8; c.fillStyle = '#e3b23c'; for (let x = 64 + q; x < 88; x += 8) c.fillRect(x, 30 - 14 - 2, 4, 3); lamp(c, s, 80, -12, '#ffd27a', 40); GL(s)(33, 0, 30, '#ffd27a', .3); } };
+  A.site_gas = { H: 46, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#4e5258', 4); for (const [x, y, r, h] of [[26, 40, 14, 30], [62, 34, 12, 24], [44, 74, 10, 18]]) { const t = cyl(c, x, y, r, 4, h, '#9aa0a8'); c.fillStyle = P.main; c.fillRect(x - r, t + 6, r * 2, 3); c.fillStyle = '#2a1028'; c.fillRect(x - 4, t + 12, 8, 6); }
+      pipe(c, [[26, 30], [62, 26], [44, 64]], 4, '#7a8088'); const ft = cyl(c, 84, 70, 4, 4, 40, '#6a7078'); c.fillStyle = '#20242a'; c.beginPath(); c.ellipse(84, ft, 3, 1.8, 0, 0, TAU); c.fill(); },
+    live(c, w, d, P, s) { if (s.down) { smokeAt(s, 84, 70 - 44, 8); return; } for (const [x, y, r, h] of [[26, 40, 14, 30], [62, 34, 12, 24], [44, 74, 10, 18]]) { const t = y - 4 - h, k = .5 + .5 * Math.sin(s.t * .08 + x); c.fillStyle = `rgba(240,138,230,${.5 + .5 * k})`; c.fillRect(x - 3, t + 13, 6, 4); GL(s)(x, t + 15, 16, '#f08ae6', .3 + .2 * k); }
+      const f = 4 + Math.sin(s.t * .3) * 2; c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(81, 70 - 44); c.quadraticCurveTo(84, 70 - 44 - f * 2, 87, 70 - 44); c.fill(); glow(c, 84, 70 - 46, 12, '#ff8a2a', .6); GL(s)(84, 24, 30, '#ff8a2a', .5); } };
+  A.site_post = { H: 42, tex: false,
+    base(c, w, d, P, s) { slab(c, w, d, '#6a5a44', 3); const B = box(c, 14, 22, 52, 38, 3, 18, WOOD); c.fillStyle = 'rgba(0,0,0,.25)'; for (let i = 0; i < 6; i++) c.fillRect(14 + i * 9, B.fy, 1.2, B.h); c.fillStyle = '#1a120a'; c.fillRect(32, B.fy + 6, 14, B.h - 6);
+      roof(c, 12, 20, 56, 42, 21, 12, '#b04a3a'); for (const [x, y] of [[72, 64], [80, 72], [70, 76]]) box(c, x, y, 9, 8, 3, 7, '#9a7444'); cyl(c, 80, 40, 6, 3, 10, '#7a5434'); c.fillStyle = '#f0d070'; c.fillRect(20, B.fy + 2, 10, 2); },
+    live(c, w, d, P, s) { const fx = 8, fy = 14 - 3 - 18 - 12 - 12, f = Math.sin(s.t * .12) * 2; c.fillStyle = '#2a1f14'; c.fillRect(fx - 1, fy, 2, 30); c.fillStyle = P.main === '#9aa0aa' ? '#f0d070' : P.main; c.beginPath(); c.moveTo(fx, fy); c.quadraticCurveTo(fx + 6, fy + f, fx + 12, fy + 1 + f); c.lineTo(fx + 12, fy + 7 + f); c.quadraticCurveTo(fx + 6, fy + 6 + f, fx, fy + 6); c.fill();
+      lamp(c, s, 30, 60 - 3 - 18 + 2, '#ffcf7a', 60); } };
+  A.t_hall = { H: 46, tex: false,
+    base(c, w, d, P, s) { c.fillStyle = 'rgba(60,40,24,.45)'; c.beginPath(); c.ellipse(64, 56, 66, 40, 0, 0, TAU); c.fill(); const B = box(c, 18, 18, 92, 46, 0, 20, WOOD2); c.fillStyle = 'rgba(0,0,0,.3)'; for (let i = 0; i < 10; i++) c.fillRect(18 + i * 9.5, B.fy, 1.4, B.h);
+      c.fillStyle = '#140c06'; c.beginPath(); c.moveTo(56, B.bot); c.lineTo(56, B.fy + 7); c.quadraticCurveTo(64, B.fy + 2, 72, B.fy + 7); c.lineTo(72, B.bot); c.fill(); roof(c, 14, 14, 100, 54, 20, 18, THATCH);
+      for (const x of [8, 120]) { box(c, x - 3, 70, 6, 6, 0, 26, WOOD); c.fillStyle = P.main; c.fillRect(x - 3, 76 - 26 - 2, 6, 4); c.fillStyle = BONE; c.beginPath(); c.arc(x, 76 - 30, 4, 0, TAU); c.fill(); }
+      for (let i = 0; i < 8; i++) { const a = i * TAU / 8; c.fillStyle = '#6a6460'; c.beginPath(); c.ellipse(64 + Math.cos(a) * 8, 86 + Math.sin(a) * 4, 2.6, 1.8, 0, 0, TAU); c.fill(); } },
+    live(c, w, d, P, s) { const f = .6 + .4 * Math.sin(s.t * .3) * Math.sin(s.t * .17); c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(60, 86); c.quadraticCurveTo(62 - f, 78 - f * 6, 64, 74 - f * 4); c.quadraticCurveTo(66 + f, 78 - f * 5, 68, 86); c.fill(); c.fillStyle = '#ffe9a0'; c.beginPath(); c.ellipse(64, 84, 2, 3 + f * 2, 0, 0, TAU); c.fill();
+      glow(c, 64, 82, 26, '#ff8a2a', .5 + .2 * f); GL(s)(64, 82, 60, '#ff8a2a', .6 + .2 * f); if (s.t % 16 === 0) EM(s)('smoke', 64, 72); } };
+  A.t_tower = { H: 52, tex: false,
+    base(c, w, d, P, s) { c.fillStyle = 'rgba(60,40,24,.4)'; c.beginPath(); c.ellipse(32, 40, 28, 18, 0, 0, TAU); c.fill(); for (const [x, y] of [[16, 22], [46, 22], [16, 48], [46, 48]]) box(c, x - 2, y - 2, 4, 4, 0, 30, WOOD2);
+      c.strokeStyle = WOOD2; c.lineWidth = 2; c.beginPath(); c.moveTo(16, 48 - 6); c.lineTo(46, 48 - 22); c.moveTo(46, 48 - 6); c.lineTo(16, 48 - 22); c.stroke(); box(c, 10, 16, 44, 36, 30, 4, WOOD);
+      c.fillStyle = P.main; c.fillRect(10, 52 - 34 + 1, 44, 2); roof(c, 8, 14, 48, 40, 42, 10, THATCH); },
+    live(c, w, d, P, s) { const f = Math.sin(s.t * .35) * 1.5; c.fillStyle = '#ffb347'; c.beginPath(); c.moveTo(48, 52 - 34 - 6); c.quadraticCurveTo(50 + f, 52 - 34 - 13, 51, 52 - 34 - 6); c.fill(); glow(c, 50, 52 - 34 - 8, 12, '#ff8a2a', .6); GL(s)(50, 10, 26, '#ff8a2a', .5); } };
+
   RTS.BUILD3D = A;
   // base를 그릴 때 그림자를 shCtx(검정)에 함께 그린다
   RTS.b3dBase = function (art, c, shCtx, w, d, P, s) { SH = shCtx; if (SH) SH.fillStyle = '#000'; try { art.base(c, w, d, P, s); } finally { SH = null; } };
@@ -5349,7 +5401,7 @@ const HTML = `
       <button id="k-exbtn" class="k-ex-open" title="거래소 (M)">거래소</button>
       <button id="k-dipbtn" class="k-ex-open" title="자유상단 (N)">상단</button>
       <button id="k-idle" title="쉬는 일꾼 선택 (.)">쉬는 일꾼 <b id="k-idlen">0</b></button>
-      <button id="k-boxbtn" class="k-touch" title="터치 범위 선택">범위 선택</button>
+      <button id="k-boxbtn" class="k-touch" title="터치 범위 선택(두 손가락을 0.3초 대고 있다가 벌려도 됩니다)">범위 선택</button>
       <button id="k-chatbtn" hidden title="채팅 (Enter)">채팅</button><button id="k-voicebtn" hidden title="음성 채팅: 내 마이크 켜고 끄기">음성 켜기</button><button id="k-speed" title="게임 속도">1배속</button>
       <button id="k-pause" title="일시정지 (F2)">정지</button>
       <button id="k-mute" title="소리">소리 끔</button>
@@ -5357,7 +5409,7 @@ const HTML = `
       <button id="k-menu">메뉴</button>
     </div>
   </header>
-  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-obj" id="k-obj" hidden aria-label="미션 목표"></aside><div class="k-story" id="k-story" hidden aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-away" id="k-away" hidden role="alert"></div><div class="k-away" id="k-exitask" hidden role="alertdialog" aria-label="게임 나가기 확인"></div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
+  <div class="k-stage" id="k-stage"><canvas id="k-view" tabindex="0" aria-label="전장"></canvas><div class="k-tbar" id="k-tbar" hidden aria-label="터치 보조"><button id="tb-add" title="켜면 탭·범위 선택이 지금 선택에 더해집니다(Shift)">더하기</button><button id="tb-queue" title="켜면 명령이 차례로 예약됩니다(Shift)">예약</button><button id="tb-army" title="일꾼을 뺀 내 병력 모두 선택">전체 병력</button><button id="tb-home" title="사령부로 화면 이동(누를 때마다 다음 사령부)">본진</button><div class="tb-grp"><button data-g="1">1</button><button data-g="2">2</button><button data-g="3">3</button><button data-g="4">4</button></div></div><div class="k-msgs" id="k-msgs" aria-live="polite"></div><aside class="k-obj" id="k-obj" hidden aria-label="미션 목표"></aside><div class="k-story" id="k-story" hidden aria-live="polite"></div><aside class="k-tribe" id="k-tribe" hidden aria-label="잿빛 부족"></aside><div class="k-mode" id="k-modebar" hidden></div><div class="k-paused" id="k-paused" hidden>일시정지</div><div class="k-wait" id="k-wait" hidden>상대 기기를 기다리는 중</div><div class="k-away" id="k-away" hidden role="alert"></div><div class="k-away" id="k-exitask" hidden role="alertdialog" aria-label="게임 나가기 확인"></div><div class="k-chatlog" id="k-chatlog" aria-live="polite"></div><form class="k-chatbox" id="k-chatbox" hidden><div class="k-quick" id="k-quick"></div><div class="k-chatrow"><input class="k-in" id="k-chatin" maxlength="80" autocomplete="off" enterkeyhint="send" placeholder="메시지 입력 후 Enter" aria-label="채팅 메시지"><button type="submit">보내기</button><button type="button" id="k-chatx">닫기</button></div></form><aside class="k-ex" id="k-ex" hidden aria-label="거래소"></aside><aside class="k-ex" id="k-dip" hidden aria-label="자유상단"></aside></div>
   <footer class="k-bottom" id="k-bottom">
     <div class="k-mapbox"><canvas id="k-mini" width="176" height="176" aria-label="미니맵"></canvas></div>
     <div class="k-info" id="k-info"></div>
@@ -5626,7 +5678,14 @@ RTS.mount = function (root, opts = {}) {
       else if (e.built !== undefined && !RTS.complete(e)) prod = `<div class="k-prod"><span>건설 중</span><i><s style="width:${Math.round(e.built / e.buildT * 100)}%"></s></i></div>`;
       h = `<div class="k-one">${d.resource ? '' : `<img src="${R.icon(e.def, e.team, f)}" alt="">`}<div><h3>${d.name}${e.lv ? ` <small class="k-lv">강화 ${e.lv}단계</small>` : ''}${e.rank ? ` <small class="k-lv">${'★'.repeat(e.rank)}</small>` : ''}</h3>${max ? `<p class="k-hp">${Math.ceil(e.hp)} / ${Math.round(max)}</p>` : ''}<p class="k-st">${stats.join(' · ')}</p>${prod}</div></div>`;
     } else { const sum = {}; h = '<div class="k-many">' + list.slice(0, 32).map(u => { const k = Math.max(0, u.hp / RTS.stat(G, u, 'hp')); return `<button data-id="${u.id}" title="${RTS.defOf(u).name}"><img src="${R.icon(u.def, u.team, f)}" alt=""><i style="width:${Math.round(k * 100)}%;background:${k > .55 ? 'var(--ok)' : k > .28 ? 'var(--warn)' : 'var(--bad)'}"></i></button>`; }).join('') + '</div>'; }
-    if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(b => { b.onclick = () => { app.sel = [+b.dataset.id]; }; }); } }
+    if (h !== app.infoSig) { el.innerHTML = h; app.infoSig = h; el.querySelectorAll('.k-many button').forEach(manyBtn); } }
+  // 여러 기 선택 창의 아이콘: 탭 = 그 유닛만, 두 번 탭(또는 Ctrl) = 같은 종류만 남김, 길게 누르기(또는 Shift) = 선택에서 뺌
+  let manyT = null, manyLong = false, manyLast = { id: 0, t: 0 };
+  function manyBtn(b) { const id = +b.dataset.id;
+    b.onpointerdown = () => { manyLong = false; clearTimeout(manyT); manyT = setTimeout(() => { manyLong = true; app.sel = app.sel.filter(i => i !== id); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} }, 500); };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(manyT);
+    b.onclick = e => { if (manyLong) { manyLong = false; return; } const u = app.G.byId[id]; if (!u) return; const now = performance.now(), dbl = manyLast.id === id && now - manyLast.t < 350; manyLast = { id, t: now };
+      if (e.shiftKey) app.sel = app.sel.filter(i => i !== id); else if (dbl || e.ctrlKey || e.metaKey) app.sel = app.sel.filter(i => app.G.byId[i] && app.G.byId[i].def === u.def); else app.sel = [id]; }; }
   function renderHud() { const G = app.G, t = G.teams[app.team]; if (!t) return; if (app.exOpen) updateExchange(); if (app.dipOpen) updateDip();
     $('k-ore').textContent = Math.floor(t.res.ore); $('k-gas').textContent = Math.floor(t.res.gas); $('k-sup').textContent = Math.ceil(t.sup) + '/' + t.cap; $('k-sup').parentNode.classList.toggle('full', t.sup >= t.cap);
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
@@ -5682,7 +5741,11 @@ RTS.mount = function (root, opts = {}) {
   const touches = new Map(), pinch = { on: false, lock: false };
   const ptAt = e => { const r = view.getBoundingClientRect(), k = view.width / r.width; return { x: (e.clientX - r.left) * k, y: (e.clientY - r.top) * k }; };
   function pinchState() { const [a, b] = [...touches.values()]; return { d: Math.max(1, Math.hypot(a.x - b.x, a.y - b.y)), x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }; }
-  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
+  // 두 손가락을 0.3초 가만히 대고 있으면 '범위 선택': 두 손가락이 상자의 두 모서리. 그 전에 움직이면 확대·축소(예전과 같음)
+  const SPAN_MS = 300, SPAN_PX = 10;
+  function spanBox() { const [a, b] = [...touches.values()]; app.box = { x0: a.x, y0: a.y, x1: b.x, y1: b.y }; }
+  function pinchStart() { const p = pinchState(); [pinch.wx, pinch.wy] = toWorld(p.x, p.y); clearTimeout(pinch.spanT); pinch.p0 = [...touches.values()].map(q => ({ ...q })); pinch.moved = false; pinch.span = false;
+    pinch.spanT = setTimeout(() => { if (touches.size === 2 && !pinch.moved && app.G && !app.demo) { pinch.span = true; pinch.on = false; spanBox(); try { navigator.vibrate && navigator.vibrate(15); } catch (e) {} } }, SPAN_MS); Object.assign(pinch, { on: true, lock: true, d0: p.d, z0: cam.z });
     drag.on = false; app.box = null; clearTimeout(htip.timer); htip.long = false; hideHover(); closePop(); }
   function setMouse(e) { const r = view.getBoundingClientRect(), k = view.width / r.width; app.mouse.x = (e.clientX - r.left) * k; app.mouse.y = (e.clientY - r.top) * k; [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }
   app.placeTile = id => { const d = RTS.defs.entities[id]; return [Math.round(app.mouse.wx - d.size[0] / 2), Math.round(app.mouse.wy - d.size[1] / 2)]; };
@@ -5812,18 +5875,19 @@ RTS.mount = function (root, opts = {}) {
     hideHover(); closePop(); htip.long = false; if (!app.mode && e.button === 0) { const sx = app.mouse.x, sy = app.mouse.y; htip.timer = setTimeout(() => { if (drag.on && !drag.moved && !app.box) { const [x, y] = toWorld(sx, sy), t = pick(x, y); if (t && popItems(t).length) { openPop(t, sx, sy); htip.long = true; } else if (t && touch) { showHover(t, sx, sy); htip.long = true; } } }, 500); }
     app.mouse.inside = true; if (e.button === 2) { if (app.mode) { app.mode = null; return; } context(wx, wy, e.shiftKey); return; }
     Object.assign(drag, { on: true, touch, sx: app.mouse.x, sy: app.mouse.y, cx: cam.x, cy: cam.y, moved: false, shift: e.shiftKey, ctrl: e.ctrlKey || e.metaKey }); });
-  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.on && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
+  view.addEventListener('pointermove', e => { if (e.pointerType === 'touch' && touches.has(e.pointerId)) { touches.set(e.pointerId, ptAt(e)); if (pinch.span && touches.size >= 2) { spanBox(); return; } if (!pinch.moved && pinch.p0 && [...touches.values()].some((q, i) => pinch.p0[i] && Math.hypot(q.x - pinch.p0[i].x, q.y - pinch.p0[i].y) > SPAN_PX)) pinch.moved = true; if (pinch.on && pinch.moved && touches.size >= 2) { const p = pinchState(); zoomAt(pinch.z0 * p.d / pinch.d0, p.x, p.y, pinch.wx, pinch.wy); return; } if (pinch.lock) return; }
     setMouse(e); if (!drag.on) { if (e.pointerType === 'mouse' && !app.mode) hoverAt(app.mouse.x, app.mouse.y, 350); else hideHover(); return; } const dx = app.mouse.x - drag.sx, dy = app.mouse.y - drag.sy; if (Math.hypot(dx, dy) > 6) { drag.moved = true; if (!htip.long) hideHover(); }
     if (!drag.moved || app.mode) return; if (drag.touch && !app.boxTouch) { cam.x = drag.cx - dx / cam.z; cam.y = drag.cy - dy / cam.z; clampCam(); } else app.box = { x0: drag.sx, y0: drag.sy, x1: app.mouse.x, y1: app.mouse.y }; });
-  const touchEnd = e => { if (e.pointerType !== 'touch') return false; touches.delete(e.pointerId); if (!pinch.lock) return false;
+  const touchEnd = e => { if (e.pointerType !== 'touch') return false; if (pinch.span && touches.size === 2 && app.box) { selectBox(app.box, !!app.touchAdd); app.box = null; pinch.span = false; } touches.delete(e.pointerId); clearTimeout(pinch.spanT); if (!pinch.lock) return false;
     if (touches.size < 2) pinch.on = false; if (touches.size === 2) pinchStart(); if (!touches.size) pinch.lock = false; return true; };
   view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
   view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
-    if (app.box) { selectBox(app.box, drag.shift); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
+    if (app.box) { selectBox(app.box, drag.shift || (drag.touch && !!app.touchAdd)); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
     if (drag.moved && drag.touch) return;
-    if (app.mode) { execMode(wx, wy, drag.shift); return; }
+    if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
+    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
     const t = pick(wx, wy);
-    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, false)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
+    if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
     if (!t) { app.sel = []; app.menu = 'main'; return; }
     app.menu = 'main'; const dbl = now - (app.lastClick || 0) < 320 && app.lastPick === t.def; app.lastClick = now; app.lastPick = t.def;
     if ((dbl || drag.ctrl) && t.team === app.team) { const vw = view.width / cam.z / TS, vh = view.height / cam.z / TS, x0 = cam.x / TS, y0 = cam.y / TS; app.sel = G.ents.filter(e => e.team === app.team && e.def === t.def && e.x >= x0 && e.x <= x0 + vw && e.y >= y0 && e.y <= y0 + vh).map(e => e.id); return; }
@@ -6386,6 +6450,20 @@ RTS.mount = function (root, opts = {}) {
   // ① 전체화면: 브라우저는 탭(사용자 동작) 없이는 전체화면을 허락하지 않는다. 그래서 게임 중 화면을 누르거나 시작 버튼을 누를 때 들어간다(설정 '게임 중 전체화면')
   // ② 뒤로가기: 게임 중 첫 탭에 기록 한 칸을 넣어 두고, 뒤로가기(태블릿 버튼·제스처·브라우저 버튼)가 오면 '나가기 확인' 창을 띄운다(설정 '나가기 확인')
   // ③ 닫기·새로고침: 확인 창(PC에서 주로 뜬다). ④ PC 전체화면에서 Esc는 길게 눌러야 풀린다(Keyboard Lock, 크롬·엣지)
+  // ── 터치 보조 줄(2026-11): 터치 기기에서 게임 중 오른쪽에 뜬다(설정 '터치 보조 버튼'). 마우스·키보드에만 있던 조작을 버튼으로
+  //   더하기(Shift 선택) · 예약(Shift 명령) 켜고 끄기, 전체 병력, 본진(사령부 차례로), 부대 1~4(길게 = 지금 선택을 저장, 탭 = 불러오기, 두 번 탭 = 그 부대로 화면 이동)
+  let tbTouch = !!(window.matchMedia && matchMedia('(pointer: coarse)').matches); addEventListener('pointerdown', e => { if (e.pointerType === 'touch' && !tbTouch) { tbTouch = true; tbShow(); } }, { capture: true, passive: true });
+  function tbShow() { const el = $('k-tbar'); if (!el) return; el.hidden = !(tbTouch && app.settings.touchBar !== false && app.G && !app.demo && !app.G.over); $('tb-add').classList.toggle('on', !!app.touchAdd); $('tb-queue').classList.toggle('on', !!app.touchQueue); }
+  app.tbShow = tbShow; setInterval(tbShow, 700);
+  $('tb-add').onclick = () => { app.touchAdd = !app.touchAdd; tbShow(); };
+  $('tb-queue').onclick = () => { app.touchQueue = !app.touchQueue; tbShow(); };
+  $('tb-army').onclick = () => { if (!app.G) return; app.sel = app.G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).kind === 'unit' && !RTS.defOf(e).gather && !RTS.defOf(e).heal && !RTS.defOf(e).cart).map(e => e.id); app.menu = 'main'; };
+  let homeI = 0; $('tb-home').onclick = () => { if (!app.G) return; const hs = app.G.ents.filter(e => e.team === app.team && !e.dead && RTS.defOf(e).dropoff && RTS.complete(e)); if (!hs.length) return; const h = hs[homeI++ % hs.length]; centerOn(h.x, h.y); };
+  document.querySelectorAll('#k-tbar [data-g]').forEach(b => { const k = b.dataset.g; let t = null, long = false, last = 0;
+    b.onpointerdown = () => { long = false; clearTimeout(t); t = setTimeout(() => { long = true; const list = selected().filter(u => u.team === app.team).map(u => u.id); if (!list.length) return; app.groups[k] = list; notice(`${k}번 부대 지정`, 'ok'); try { navigator.vibrate && navigator.vibrate(20); } catch (e) {} }, 550); };
+    b.onpointerup = b.onpointerleave = () => clearTimeout(t);
+    b.onclick = () => { if (long) { long = false; return; } const g = (app.groups[k] || []).filter(i => app.G && app.G.byId[i]); if (!g.length) { notice(`${k}번 부대가 없습니다. 유닛을 고르고 이 버튼을 길게 누르세요`); return; } const now = performance.now();
+      app.sel = g; app.menu = 'main'; if (now - last < 350) { const u = app.G.byId[g[0]]; centerOn(u.x, u.y); } last = now; }; });
   // ── 기기 옮기기(2026-11) ── 계정·서버 없이 둘이 하기와 같은 직접 연결(PeerJS)로 이 기기의 기록을 다른 기기에 보낸다.
   //   보내는 기기: 4자리 번호를 띄우고 기다린다 → 받는 기기가 번호를 넣으면 버전을 확인하고 기록을 3만 자씩 나눠 보낸다 → 받았다는 답이 오면 이 기기의 '이어하기' 저장을 지운다(두 기기에서 같은 판이 갈라지지 않게).
   //   받는 기기: 기록을 덮어쓰고(이 기기 전용 설정은 그대로), 하던 게임이 있으면 바로 이어 한다.

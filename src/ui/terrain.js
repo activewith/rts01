@@ -79,12 +79,15 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
     const wA = ss(.3, .7, a), wB = ss(.45, .7, b) * .6, wD = ss(.6, .78, b * .6 + a * .4) * .55, wL = ss(.62, .82, 1 - b) * .35, wS1 = ss(.3, .7, b), wS2 = ss(.55, .8, a) * .5, wR1 = ss(.35, .75, b), wR2 = ss(.5, .8, a) * .4;
     const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? cov[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
     const ev = elv ? elv[i] : 0, cl = cliffV ? Math.min(1, cliffV[i] * 1.5) : 0, slope = elv ? Math.min(1, Math.max(0, Math.hypot(gx, gy) / SC - .9) * .8) * (1 - ro) : 0; // 고지대 경사면
+    // 고지대 절벽 방향: 북쪽이 높으면(남향 절벽) 3/4 시점에서 벽면이 보이므로 세로 결(wstr)과 윗단 밝음(wtop), 남쪽이 높으면(북향) 그늘진 가장자리
+    const egy = elv && y > 1 && y < H - 2 ? elv[i + 2 * W] - elv[i - 2 * W] : 0, wall = cl > .05 ? (egy < -.08 ? 1 : egy > .08 ? -1 : 0) : 0;
+    const wstr = .35 + .2 * Math.sin(x * SC * .9 + b * 9) + .12 * (a - .5), wtop = wall > 0 ? Math.max(0, Math.min(1, (elv[i] - Math.floor(elv[i])) * 2.2)) : 0;
     const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a) * (.92 + ev * .11);
     for (let ch = 0; ch < 3; ch++) { let v = gP[1][ch] + (gP[2][ch] - gP[1][ch]) * wA; v += (gP[0][ch] - v) * wB; v += (dry[ch] - v) * wD; v += (lush[ch] - v) * wL;
       let sv = sP[1][ch] + (sP[2][ch] - sP[1][ch]) * wS1; sv += (sP[0][ch] - sv) * wS2; v += (sv - v) * sa;
       let rv = rP[1][ch] + (rP[2][ch] - rP[1][ch]) * wR1; rv += (rP[0][ch] - rv) * wR2; v += (rv - v) * tp;
       if (face > 0) v += ((rP[0][ch] + (rP[1][ch] - rP[0][ch]) * rfk) * fmul - v) * wF;
-      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * rfk) * .92 - v) * Math.min(.85, Math.max(slope, cl * .7));
+      if (slope > 0 || cl > 0) v += ((rP[1][ch] + (rP[2][ch] - rP[1][ch]) * (wall > 0 ? wstr : rfk)) * (wall > 0 ? .7 + .45 * wtop : wall < 0 ? .62 : .92) - v) * Math.min(.9, Math.max(slope, cl * (wall ? .95 : .7)));
       D[i * 4 + ch] = v * k > 255 ? 255 : v * k; }
     D[i * 4 + 3] = 255; }
   const lo = document.createElement('canvas'); lo.width = W; lo.height = H; lo.getContext('2d').putImageData(img, 0, 0);
