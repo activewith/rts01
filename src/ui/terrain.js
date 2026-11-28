@@ -51,18 +51,21 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   const rock = new Float32Array(N), sand = new Float32Array(N);
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, n = cg(nC, x, y) - .5;
     rock[i] = ss(.42, .58, rockV[i] + n * .3); sand[i] = ss(.25, .75, sandV[i] + n * .5); }
-  // 높이: 암벽 윗면(남쪽 절벽면 띠만큼 위로 깎음) + 울퉁불퉁 + 모래 물결
-  const FB = Math.round(18 / SC), HC = 30, Hf = new Float32Array(N), top = new Float32Array(N);
+  // 3/4 시점 암벽: 바닥 칸(rock)은 그대로 두고, 윗면을 HH만큼 위로 올려 그린다. 화면에서 암벽이 덮는 곳(cov) = 바닥 칸 + 그 위(북쪽) LIFT px,
+  //   윗면(top) = HH px 아래가 암벽인 곳, 절벽면 = cov - top(바닥 칸 남쪽 HH px 띠). 북쪽으로 솟은 부분은 그 뒤에 선 유닛을 가리므로 따로 떼어 낸다(아래 cv.over)
+  const LIFT = 14, Lp = Math.round(LIFT / SC), FB = Math.round(18 / SC) + Lp, HC = 42, Hf = new Float32Array(N), top = new Float32Array(N), cov = new Float32Array(N);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x; let m = rock[i]; for (let k = 2; k <= Lp; k += 2) if (y + k < H) m = Math.max(m, rock[i + k * W]); cov[i] = m; }
+  const rockFoot = rock; // 바닥 칸(통행 기준)
   for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, b = cg(nB, x, y), a = cg(nA, x, y);
-    const tp = y + FB < H ? rock[i + FB * W] * rock[i] : rock[i]; top[i] = tp;
+    const tp = y + FB < H ? rockFoot[i + FB * W] * cov[i] : cov[i]; top[i] = tp;
     const c2 = cg(nC, x, y), hz = T[((y * 7 + x * 13) & 65535)] - .5; // 암벽 윗면: 능선(ridged) + 거친 결
-    Hf[i] = rock[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - rock[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2) + (elv ? elv[i] * HE : 0); }
+    Hf[i] = cov[i] * HC + tp * ((b - .5) * 12 + (1 - Math.abs(c2 * 2 - 1)) * 9 + hz * 2.2) + (1 - cov[i]) * ((a - .5) * 6 + (b - .5) * 2.5 - sand[i] * 2) + (elv ? elv[i] * HE : 0); }
   const L = [-.52, -.62, .58], Ll = Math.hypot(...L); L[0] /= Ll; L[1] /= Ll; L[2] /= Ll; // 햇빛 방향(빛 쪽을 향함): 왼쪽 위
   const tanE = L[2] / Math.hypot(L[0], L[1]), sx = L[0] / Math.hypot(L[0], L[1]), sy = L[1] / Math.hypot(L[0], L[1]);
   const img = new ImageData(W, H), D = img.data;
   const mix = (A, B, t) => [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t, A[2] + (B[2] - A[2]) * t];
   const dry = mix(gP[0], sP[0], .4), lush = mix(gP[2], [gP[2][0] * .9, gP[2][1] * 1.08, gP[2][2] * .95], .6);
-  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, a = cg(nA, x, y), b = cg(nB, x, y), ro = rock[i], tp = top[i], face = Math.max(0, ro - tp);
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, a = cg(nA, x, y), b = cg(nB, x, y), ro = cov[i], tp = top[i], face = Math.max(0, ro - tp);
     // 명암(법선·햇빛). 평지 = 1
     const xl = x > 0 ? i - 1 : i, xr = x < W - 1 ? i + 1 : i, yu = y > 0 ? i - W : i, yd = y < H - 1 ? i + W : i;
     const gx = (Hf[xr] - Hf[xl]) * .5, gy = (Hf[yd] - Hf[yu]) * .5, nl = Math.sqrt(gx * gx + gy * gy + SC * SC);
@@ -71,10 +74,10 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
     let occ = 0; if (ro < .5) { const h0 = Hf[i];
       for (let k = 4 / SC; k <= 52 / SC; k += 4 / SC) { const qx = Math.round(x + sx * k), qy = Math.round(y + sy * k); if (qx < 0 || qy < 0 || qx >= W || qy >= H) break;
         const d = Hf[qy * W + qx] - (h0 + k * SC * tanE); if (d > 0) { occ = Math.max(occ, Math.min(1, d / 6)); if (occ >= 1) break; } } }
-    const ao = 1 - .4 * Math.min(1, Math.max(0, (rockV[i] - ro) * 2.4)) * (1 - ro); // 절벽 기슭
+    const ao = 1 - .4 * Math.min(1, Math.max(0, (rockV[i] - rock[i]) * 2.4)) * (1 - ro); // 절벽 기슭
     // 색: 땅(얼룩·마른 땅·짙은 곳) → 모래 → 암벽 윗면 / 절벽면. 표본마다 배열을 만들지 않도록 채널별로 계산한다.
     const wA = ss(.3, .7, a), wB = ss(.45, .7, b) * .6, wD = ss(.6, .78, b * .6 + a * .4) * .55, wL = ss(.62, .82, 1 - b) * .35, wS1 = ss(.3, .7, b), wS2 = ss(.55, .8, a) * .5, wR1 = ss(.35, .75, b), wR2 = ss(.5, .8, a) * .4;
-    const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? rock[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
+    const sa = sand[i], rfk = .35 + .125 * Math.sin(y * SC * .55 + b * 14) + .15 * (b - .5), fpos = y + (FB >> 1) < H ? cov[i + (FB >> 1) * W] : 1, fmul = .62 + .3 * fpos, wF = Math.min(1, face * 1.2); // 절벽면 층리, 띠 위쪽은 조금 밝게
     const ev = elv ? elv[i] : 0, cl = cliffV ? Math.min(1, cliffV[i] * 1.5) : 0, slope = elv ? Math.min(1, Math.max(0, Math.hypot(gx, gy) / SC - .9) * .8) * (1 - ro) : 0; // 고지대 경사면
     const k = (face > .3 ? 1 : sh) * (1 - occ * .52) * ao * (.9 + .2 * a) * (.92 + ev * .11);
     for (let ch = 0; ch < 3; ch++) { let v = gP[1][ch] + (gP[2][ch] - gP[1][ch]) * wA; v += (gP[0][ch] - v) * wB; v += (dry[ch] - v) * wD; v += (lush[ch] - v) * wL;
@@ -93,7 +96,7 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   gx2.putImageData(gi, 0, 0); x.globalCompositeOperation = 'overlay'; x.globalAlpha = .32; x.fillStyle = x.createPattern(gr, 'repeat'); x.fillRect(0, 0, cv.width, cv.height);
   x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.setTransform(OUT, 0, 0, OUT, 0, 0); const CW2 = G.w * TS, CH2 = G.h * TS; // 장식은 월드 px 좌표로
   // 장식: 자잘한 돌, 풀·얼음·덤불, 암벽 균열. 통행 판정과 무관하게 아주 작게만 그린다.
-  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: Math.max(rock[i], cliffV ? cliffV[i] : 0), tp: top[i], sa: sand[i] }; };
+  const dec = RTS.TERRAIN_DECOR[themeId] || RTS.TERRAIN_DECOR.dusk, at = (px, py) => { const i = Math.min(H - 1, Math.max(0, py / SC | 0)) * W + Math.min(W - 1, Math.max(0, px / SC | 0)); return { ro: Math.max(cov[i], cliffV ? cliffV[i] : 0), tp: top[i], sa: sand[i] }; };
   for (let n = 0; n < G.w * G.h * (low ? .25 : .5); n++) { const px = r() * CW2, py = r() * CH2, q = at(px, py); if (q.ro > .05) continue;
     const z = 1 + r() * 2.2; x.fillStyle = 'rgba(0,0,0,.35)'; x.beginPath(); x.ellipse(px + 1, py + 1, z * 1.2, z * .8, 0, 0, Math.PI * 2); x.fill();
     x.fillStyle = dec.pebble[0]; x.beginPath(); x.ellipse(px, py, z * 1.1, z * .75, r() * 3, 0, Math.PI * 2); x.fill();
@@ -109,5 +112,23 @@ RTS.bakeTerrainHD = function (G, th, themeId, low) {
   x.strokeStyle = 'rgba(0,0,0,.28)'; x.lineWidth = 1; // 암벽 윗면 균열
   for (let n = 0; n < G.w * G.h * .25; n++) { let px = r() * CW2, py = r() * CH2; if (at(px, py).tp < .9) continue; x.beginPath(); x.moveTo(px, py);
     for (let j = 0; j < 4; j++) { px += (r() - .5) * 14; py += (r() - .5) * 10; if (at(px, py).tp < .8) break; x.lineTo(px, py); } x.stroke(); }
+  // 앞을 가리는 암벽 조각(cv.over): 윗면 가운데 북쪽 가장자리 띠(바닥 칸 위로 솟은 부분 + 그 아래 NB px)만 떼어 2×1칸 조각으로 저장한다.
+  //   key = 그 조각 아래 암벽의 남쪽 끝(칸). render.js가 건물·유닛과 함께 위→아래 순서로 그려, 암벽 북쪽(뒤)에 선 것을 가린다.
+  const NB = Math.round(26 / SC), om = new Uint8ClampedArray(N * 4); let any = 0;
+  for (let y = 0; y < H; y++) for (let x = 0; x < W; x++) { const i = y * W + x, north = y - NB >= 0 ? rockFoot[i - NB * W] : 1, v = top[i] * (1 - north); if (v > .05) { om[i * 4 + 3] = Math.min(255, v * 400); any = 1; } }
+  cv.over = []; if (!any) return cv;
+  const mk = document.createElement('canvas'); mk.width = W; mk.height = H; mk.getContext('2d').putImageData(new ImageData(om, W, H), 0, 0);
+  const CWt = 2, tileRock = (tx, ty) => tx < 0 || ty < 0 || tx >= G.w || ty >= G.h || G.tiles[ty * G.w + tx] === 1;
+  for (let ty = 0; ty < G.h; ty++) for (let tx = 0; tx < G.w; tx += CWt) { // 이 조각 안에 마스크 픽셀이 있는지(낮은 해상도에서 확인)
+    const x0 = tx * TS / SC, y0 = ty * TS / SC, w0 = CWt * TS / SC, h0 = TS / SC; let has = false;
+    for (let yy = y0; yy < y0 + h0 && !has; yy++) for (let xx = x0; xx < Math.min(W, x0 + w0); xx++) if (om[(yy * W + xx) * 4 + 3] > 12) { has = true; break; }
+    if (!has) continue; let key = Infinity;
+    for (let cx = tx; cx < tx + CWt; cx++) { let k = ty; while (k < G.h && tileRock(cx, k)) k++; if (k > ty || tileRock(cx, ty + 1)) { if (k === ty) { k = ty + 1; while (k < G.h && tileRock(cx, k)) k++; } key = Math.min(key, k); } }
+    if (!isFinite(key)) key = ty + 1;
+    // 가장자리 2px 여백을 함께 복사해 두고 안쪽만 그린다(확대할 때 조각 경계에서 이웃 픽셀을 섞어 이음매가 보이지 않게)
+    const PD = 2, pw = Math.ceil(CWt * TS * OUT), ph = Math.ceil(TS * OUT), pc = document.createElement('canvas'); pc.width = pw + PD * 2; pc.height = ph + PD * 2; const u = pc.getContext('2d');
+    u.drawImage(cv, tx * TS * OUT - PD, ty * TS * OUT - PD, pw + PD * 2, ph + PD * 2, 0, 0, pw + PD * 2, ph + PD * 2); u.globalCompositeOperation = 'destination-in'; u.imageSmoothingEnabled = true;
+    const mpx = OUT * TS / (TS / SC); u.drawImage(mk, x0 - PD / mpx, y0 - PD / mpx, w0 + PD * 2 / mpx, h0 + PD * 2 / mpx, 0, 0, pw + PD * 2, ph + PD * 2);
+    cv.over.push({ x: tx * TS, y: ty * TS, w: CWt * TS, h: TS, key, cv: pc, pd: PD, pw, ph }); }
   return cv;
 };
