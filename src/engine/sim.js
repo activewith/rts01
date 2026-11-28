@@ -10,7 +10,8 @@ RTS.spawn = function (G, defId, team, x, y) {
   if (d.kind === 'building') { e.buildT = Math.round((d.time || 10) * RTS.HZ); e.built = 0; e.prod = []; e.rally = null; e.hp = Math.max(1, d.hp * .1); }
   if (d.kind === 'unit') { e.cargo = 0; e.cargoType = null; e.path = null; e.pathI = 0; e.dest = null; e.destEnt = 0; e.needPath = false; e.stuck = 0; e.stuckN = 0; }
   G.ents.push(e); G.byId[e.id] = e;
-  if (d.size) RTS.occupy(G, e, e.id);
+  if (d.size) { RTS.occupy(G, e, e.id); // 새 건물이 지형과 함께 둘러싼 곳에 유닛이 갇히지 않게 밖으로 내보낸다
+    const r = RTS.rectOf(e); for (const u of G.ents) if (u !== e && !u.dead && D()[u.def].kind === 'unit' && u.x > r.x0 - 3 && u.x < r.x0 + r.w + 3 && u.y > r.y0 - 3 && u.y < r.y0 + r.h + 3) RTS.unpocket(G, u); }
   if (d.kind === 'unit' && team >= 0) e.hp = RTS.stat(G, e, 'hp');
   return e;
 };
@@ -371,9 +372,9 @@ function runBuilding(G, b) {
   if (p.kind === 'level') { RTS.levelDone(G, b, p.lv); return; }
   if (p.kind === 'upgrade') { t.upgrades[p.id] = 1; delete t.research[p.id]; t.mods = {}; say(G, b.team, RTS.defs.upgrades[p.id].name + ' 연구 완료', 'ok'); RTS.emit(G, 'researched', { team: b.team, id: p.id }); return; }
   const r = RTS.rectOf(b), side = b.rally ? Math.atan2(b.rally.y - b.y, b.rally.x - b.x) : 1.57;
-  const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.nearestFree(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
+  const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.openSpot(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
   const ud = D()[p.id];
-  for (let k = 0; k < (ud.count || 1); k++) { const q = k ? RTS.nearestFree(G, pos.x + .6, pos.y + .6) : pos; trainedOne(G, b, t, p.id, ud, q); }
+  for (let k = 0; k < (ud.count || 1); k++) { const q = k ? RTS.openSpot(G, pos.x + .6, pos.y + .6) : pos; trainedOne(G, b, t, p.id, ud, q); }
 }
 function trainedOne(G, b, t, id, ud, pos) {
   const u = RTS.spawn(G, id, b.team, pos.x, pos.y); t.stats.made++;
@@ -388,6 +389,7 @@ function pathFor(G, u) {
   const t = u.destEnt && G.byId[u.destEnt];
   if (d.air) { u.path = [[u.dest.x, u.dest.y]]; u.pathI = 0; return; }
   if (t && t.dead) { stopMove(u); return; }
+  if (RTS.unpocket(G, u)) u.needPath = false; // 건물과 지형 사이 갇힌 곳이면 먼저 밖으로 꺼낸다(그대로 두면 벽 앞까지만 가고 멈춘다)
   let goal;
   if (t && defOf(t).size) { const r = RTS.rectOf(t); goal = { x0: Math.round(r.x0) - 1, y0: Math.round(r.y0) - 1, x1: Math.round(r.x0) + r.w, y1: Math.round(r.y0) + r.h }; }
   else { const f = RTS.nearestFree(G, u.dest.x, u.dest.y); u.dest = f; goal = f; }
@@ -413,7 +415,7 @@ function moveUnits(G) {
     if (moved < step * .3) u.stuck++; else u.stuck = Math.max(0, u.stuck - 1);
     const last = u.path[u.path.length - 1];
     if (u.stuck > 12 && !u.destEnt && Math.hypot(last[0] - u.x, last[1] - u.y) < 2.4) { u.path = null; continue; } // 무리 도착
-    if (u.stuck > 30) { u.stuck = 0; u.stuckN++; if (u.stuckN > 3) { u.path = null; u.stuckN = 0; } else u.needPath = true; }
+    if (u.stuck > 30) { u.stuck = 0; u.stuckN++; if (u.stuckN > 3) { if (!RTS.unpocket(G, u)) { u.path = null; u.stuckN = 0; } } else u.needPath = true; } // 갇힌 곳에 끼였으면 밖으로 꺼내 다시 길을 찾는다
   }
 }
 function separate(G) {
@@ -442,7 +444,7 @@ function fixPos(G, u) {
   if (RTS.walkable(G, u.px | 0, u.y | 0)) { u.x = u.px; return; }
   if (RTS.walkable(G, u.x | 0, u.py | 0)) { u.y = u.py; return; }
   if (RTS.walkable(G, u.px | 0, u.py | 0)) { u.x = u.px; u.y = u.py; return; }
-  const f = RTS.nearestFree(G, u.x, u.y); u.x = f.x; u.y = f.y;
+  const f = RTS.openSpot(G, u.x, u.y); u.x = f.x; u.y = f.y;
 }
 
 // ── 시스템 파이프라인 등록 ─────────────────────────────────

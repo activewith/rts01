@@ -111,7 +111,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 .k-tribe .tr-q{cursor:pointer}.k-tribe .tr-q.sel{outline:2px solid #7bd65a;outline-offset:2px}.k-tribe .tr-ask{color:#e6f7c6;font-size:14px;line-height:1.45}.k-tribe .tr-ask b{font:700 17px var(--num);color:#ffd36b;white-space:nowrap}
 .k-tribe .tr-ans{display:flex;align-items:baseline;gap:8px;border-top:1px solid var(--line);padding-top:5px}.k-tribe .tr-ans output{font:700 20px var(--num);color:#ffd36b;min-width:4ch}.k-tribe .tr-ans span{font-size:12px;color:var(--dim)}
 .k-tribe .tr-pad{display:grid;grid-template-columns:repeat(6,1fr);gap:3px}.k-tribe .tr-pad button{margin:0;padding:0;height:32px;font:600 15px var(--num);touch-action:manipulation}.k-tribe .tr-pad .go{grid-column:span 1;font-size:12px;background:#2f5a26;border-color:#7bd65a;color:#e9ffd9}
-.k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:4px 12px;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
+.k-mode{position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:var(--brass);color:#16110a;font-weight:600;padding:7px 14px;cursor:pointer;pointer-events:auto;z-index:5;white-space:nowrap;max-width:94%;overflow:hidden;text-overflow:ellipsis}
 .k-paused{position:absolute;inset:0;display:grid;place-items:center;font:400 44px var(--display);letter-spacing:.06em;background:rgba(8,12,22,.45);pointer-events:none}
 .k-bottom{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;background:var(--panel);border-top:2px solid var(--brass);padding-block:8px;padding-left:max(12px,env(safe-area-inset-left,0px));padding-right:max(12px,env(safe-area-inset-right,0px));min-height:176px}
 .k-mapbox{width:160px;height:160px;background:#0a0f18;border:1px solid var(--line)}
@@ -235,7 +235,7 @@ body{margin:0;background:var(--ink);color:var(--text);font-family:var(--body);ov
 </head>
 <body>
 <div id="kr-app"></div>
-<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '053b757';
+<script>(globalThis.RTS = globalThis.RTS || {}).BUILD = '0be6e74';
 globalThis.RTS.VOICE_FILES = {};
 // ─────────────────────────────────────────────────────────────
 // core.js — 네임스페이스, 데이터 레지스트리, 모드 API, 난수, 게임 생성
@@ -450,6 +450,35 @@ RTS.nearestFree = function (G, x, y, maxR = 12) {
   return { x, y };
 };
 
+// 갇힌 곳 판정: (x,y) 칸에서 4방향으로 이어진 빈칸이 lim개보다 적으면 갇힌 곳(건물과 지형 사이 등)이다.
+// 갇혔으면 true. 막힌 칸이면 false(그 경우는 fixPos·nearestFree가 처리한다)
+const PK = { n: 0 };
+RTS.pocketAt = function (G, x, y, lim = 30) {
+  if (!RTS.walkable(G, x, y)) return false;
+  const W = G.w, N = W * G.h; if (PK.n !== N) { PK.n = N; PK.m = new Int32Array(N); PK.q = new Int32Array(N); PK.g = 0; }
+  const g = ++PK.g, M = PK.m, Q = PK.q; let h = 0, t = 0; const s = y * W + x; M[s] = g; Q[t++] = s;
+  while (h < t) { if (t >= lim) return false; const i = Q[h++], cx = i % W, cy = (i / W) | 0;
+    for (let k = 0; k < 4; k++) { const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = cy + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (!RTS.walkable(G, nx, ny)) continue; const j = ny * W + nx; if (M[j] === g) continue; M[j] = g; Q[t++] = j; } }
+  return true;
+};
+// 갇히지 않은 가장 가까운 빈칸. 유닛을 내보내거나 새로 놓을 때 쓴다
+RTS.openSpot = function (G, x, y, maxR = 14) {
+  const cx = Math.floor(x), cy = Math.floor(y);
+  if (RTS.walkable(G, cx, cy) && !RTS.pocketAt(G, cx, cy)) return { x, y };
+  for (let r = 1; r <= maxR; r++) { const ring = [];
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !RTS.walkable(G, cx + dx, cy + dy)) continue;
+      ring.push([(cx + dx + .5 - x) ** 2 + (cy + dy + .5 - y) ** 2, cx + dx, cy + dy]); }
+    ring.sort((a, b) => a[0] - b[0] || a[2] - b[2] || a[1] - b[1]);
+    for (const [, tx, ty] of ring) if (!RTS.pocketAt(G, tx, ty)) return { x: tx + .5, y: ty + .5 }; }
+  return RTS.nearestFree(G, x, y, maxR);
+};
+// 지상 유닛이 갇힌 곳에 있으면 가까운 열린 곳으로 옮긴다. 옮겼으면 true
+RTS.unpocket = function (G, u) { const d = RTS.defs.entities[u.def];
+  if (d.kind !== 'unit' || d.air || d.immobile || u.inside || u.dead || !RTS.pocketAt(G, u.x | 0, u.y | 0)) return false;
+  const f = RTS.openSpot(G, u.x, u.y); if (RTS.pocketAt(G, f.x | 0, f.y | 0)) return false;
+  u.x = u.px = f.x; u.y = u.py = f.y; u.stuck = 0; u.stuckN = 0; if (u.dest) u.needPath = true; return true; };
+
 RTS.lineClear = function (G, x0, y0, x1, y1, r = .32) {
   const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
   if (len < .01) return true;
@@ -652,7 +681,8 @@ RTS.spawn = function (G, defId, team, x, y) {
   if (d.kind === 'building') { e.buildT = Math.round((d.time || 10) * RTS.HZ); e.built = 0; e.prod = []; e.rally = null; e.hp = Math.max(1, d.hp * .1); }
   if (d.kind === 'unit') { e.cargo = 0; e.cargoType = null; e.path = null; e.pathI = 0; e.dest = null; e.destEnt = 0; e.needPath = false; e.stuck = 0; e.stuckN = 0; }
   G.ents.push(e); G.byId[e.id] = e;
-  if (d.size) RTS.occupy(G, e, e.id);
+  if (d.size) { RTS.occupy(G, e, e.id); // 새 건물이 지형과 함께 둘러싼 곳에 유닛이 갇히지 않게 밖으로 내보낸다
+    const r = RTS.rectOf(e); for (const u of G.ents) if (u !== e && !u.dead && D()[u.def].kind === 'unit' && u.x > r.x0 - 3 && u.x < r.x0 + r.w + 3 && u.y > r.y0 - 3 && u.y < r.y0 + r.h + 3) RTS.unpocket(G, u); }
   if (d.kind === 'unit' && team >= 0) e.hp = RTS.stat(G, e, 'hp');
   return e;
 };
@@ -1013,9 +1043,9 @@ function runBuilding(G, b) {
   if (p.kind === 'level') { RTS.levelDone(G, b, p.lv); return; }
   if (p.kind === 'upgrade') { t.upgrades[p.id] = 1; delete t.research[p.id]; t.mods = {}; say(G, b.team, RTS.defs.upgrades[p.id].name + ' 연구 완료', 'ok'); RTS.emit(G, 'researched', { team: b.team, id: p.id }); return; }
   const r = RTS.rectOf(b), side = b.rally ? Math.atan2(b.rally.y - b.y, b.rally.x - b.x) : 1.57;
-  const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.nearestFree(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
+  const pos = D()[p.id].air ? { x: b.x, y: b.y } : RTS.openSpot(G, b.x + Math.cos(side) * (r.w / 2 + .7), b.y + Math.sin(side) * (r.h / 2 + .7));
   const ud = D()[p.id];
-  for (let k = 0; k < (ud.count || 1); k++) { const q = k ? RTS.nearestFree(G, pos.x + .6, pos.y + .6) : pos; trainedOne(G, b, t, p.id, ud, q); }
+  for (let k = 0; k < (ud.count || 1); k++) { const q = k ? RTS.openSpot(G, pos.x + .6, pos.y + .6) : pos; trainedOne(G, b, t, p.id, ud, q); }
 }
 function trainedOne(G, b, t, id, ud, pos) {
   const u = RTS.spawn(G, id, b.team, pos.x, pos.y); t.stats.made++;
@@ -1030,6 +1060,7 @@ function pathFor(G, u) {
   const t = u.destEnt && G.byId[u.destEnt];
   if (d.air) { u.path = [[u.dest.x, u.dest.y]]; u.pathI = 0; return; }
   if (t && t.dead) { stopMove(u); return; }
+  if (RTS.unpocket(G, u)) u.needPath = false; // 건물과 지형 사이 갇힌 곳이면 먼저 밖으로 꺼낸다(그대로 두면 벽 앞까지만 가고 멈춘다)
   let goal;
   if (t && defOf(t).size) { const r = RTS.rectOf(t); goal = { x0: Math.round(r.x0) - 1, y0: Math.round(r.y0) - 1, x1: Math.round(r.x0) + r.w, y1: Math.round(r.y0) + r.h }; }
   else { const f = RTS.nearestFree(G, u.dest.x, u.dest.y); u.dest = f; goal = f; }
@@ -1055,7 +1086,7 @@ function moveUnits(G) {
     if (moved < step * .3) u.stuck++; else u.stuck = Math.max(0, u.stuck - 1);
     const last = u.path[u.path.length - 1];
     if (u.stuck > 12 && !u.destEnt && Math.hypot(last[0] - u.x, last[1] - u.y) < 2.4) { u.path = null; continue; } // 무리 도착
-    if (u.stuck > 30) { u.stuck = 0; u.stuckN++; if (u.stuckN > 3) { u.path = null; u.stuckN = 0; } else u.needPath = true; }
+    if (u.stuck > 30) { u.stuck = 0; u.stuckN++; if (u.stuckN > 3) { if (!RTS.unpocket(G, u)) { u.path = null; u.stuckN = 0; } } else u.needPath = true; } // 갇힌 곳에 끼였으면 밖으로 꺼내 다시 길을 찾는다
   }
 }
 function separate(G) {
@@ -1084,7 +1115,7 @@ function fixPos(G, u) {
   if (RTS.walkable(G, u.px | 0, u.y | 0)) { u.x = u.px; return; }
   if (RTS.walkable(G, u.x | 0, u.py | 0)) { u.y = u.py; return; }
   if (RTS.walkable(G, u.px | 0, u.py | 0)) { u.x = u.px; u.y = u.py; return; }
-  const f = RTS.nearestFree(G, u.x, u.y); u.x = f.x; u.y = f.y;
+  const f = RTS.openSpot(G, u.x, u.y); u.x = f.x; u.y = f.y;
 }
 
 // ── 시스템 파이프라인 등록 ─────────────────────────────────
@@ -5717,6 +5748,7 @@ RTS.mount = function (root, opts = {}) {
   const cardRank = e => { const d = RTS.defOf(e); return (d.abilities ? 3 : 0) + (d.gather ? 2 : 0) + (d.kind === 'unit' ? 1 : 0); };
 
   function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
+    if (app.mode) { items.push({ key: 'Escape', label: 'Esc', text: '취소', name: '취소', desc: modeText(app.mode) + ' — 누르면 그만둡니다(키보드 Esc, 우클릭과 같음)', ok: true, run: () => { app.mode = null; } }); return items; } // 키보드가 없는 기기에서도 고르기 모드를 그만둘 수 있게
     if (list.length === 1 && list[0].tribeHall && G.tribe) { const why = RTS.tribeBlock(G, app.team); items.push({ key: 'N', text: '외교', name: '잿빛 부족 외교', desc: why || '공병(일꾼)을 선택하고 이 회당을 우클릭하면 외교 미션 2개를 받습니다. 2개 성공 동맹, 1개 중립, 0개 적대', ok: !why, why, run: () => notice('공병을 선택하고 회당을 우클릭하세요', 'ok') }); return items; }
     if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
     if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(G, c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(G, c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 ${RTS.cfg(G).fee}%)`, ok: true, run: () => trade(id, qty) });
@@ -5872,7 +5904,13 @@ RTS.mount = function (root, opts = {}) {
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     const idle = G.ents.filter(e => e.team === app.team && RTS.defOf(e).gather && !e.order); $('k-idlen').textContent = idle.length; app.idle = idle;
     renderTribe(); renderInfo(); renderCard(); if (htip.shown) { const x = app.G.byId[htip.id]; if (!x || x.dead || !canSee(x)) hideHover(); else { const h = tipHTML({ ent: x }); if (h !== htip.sig) { htip.sig = h; $('k-htip').innerHTML = h; } } } const m = app.mode, mb = $('k-modebar');
-    if (m) { mb.hidden = false; const txt = m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요' : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 이동 지점을 고르세요' : '순찰 지점을 고르세요'; if (mb.textContent !== txt + ' · Esc 취소') mb.textContent = txt + ' · Esc 취소'; } else mb.hidden = true; }
+    if (m) { mb.hidden = false; const txt = modeText(m) + ' · ✕ 취소'; if (mb.textContent !== txt) mb.textContent = txt; } else mb.hidden = true; }
+  // 고르기 모드 안내문(화면 아래 띠·명령 카드 취소 버튼 설명)
+  function modeText(m) { return m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요'
+    : m.svc === 'demolish' ? '철거할 내 건물을 누르세요' : m.svc === 'repair' ? '수리할 대상을 누르세요'
+    : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 지점을 누르세요 (부족을 누르면 강제 공격)'
+    : m.order === 'escort' ? '호위할 내 유닛을 누르세요' : m.order === 'patrol' ? '순찰 지점을 고르세요' : '지점을 고르세요'; }
+  function cancelMode() { if (!app.mode) return; app.mode = null; app.cardSig = ''; app.sfx('click'); }
   // 잿빛 부족 상태와 외교 미션 진행도. 부족을 발견한 뒤에만 보인다
   function renderTribe() { const G = app.G, T = G.tribe, el = $('k-tribe'), me = app.team; if (!T || me < 0 || !T.found[me]) { if (!el.hidden) { el.hidden = true; app.tribeSig = ''; } return; }
     const r = T.dead ? 'gone' : T.rel[me], L = T.missions[me], wait = T.wait[me] > G.tick ? Math.ceil((T.wait[me] - G.tick) / 20) : 0;
@@ -5962,8 +6000,11 @@ RTS.mount = function (root, opts = {}) {
         const why = RTS.tribeBlock(G, app.team); if (why) { notice(why, 'warn'); return true; }
         const w = workers.slice().sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
         send({ type: 'order', ids: [w.id], order: { type: 'envoy', target: t.id }, queue }); notice('공병이 회당으로 외교하러 갑니다', 'ok'); R.pings.push({ x: t.x, y: t.y, life: 24, max: 24, c: '#9dffb5' }); return true; }
-      if (!RTS.foe(G, app.team, RTS.TRIBE)) { // 중립·동맹 부족은 한 번 더 눌러야 공격한다
-        const arm = app.tribeArm; if (!arm || arm.id !== t.id || performance.now() - arm.at > 3000) { app.tribeArm = { id: t.id, at: performance.now() }; notice(T.rel[app.team] === 'ally' ? '동맹 부족입니다. 한 번 더 누르면 공격하고 동맹이 깨집니다' : '한 번 더 누르면 부족을 공격합니다. 공격하면 적대 관계가 됩니다', 'warn'); return true; }
+      if (T.rel[app.team] === 'ally') { // 동맹 부족: 실수로 눌러도 공격하지 않는다. 그 자리로 이동만 한다
+        if (performance.now() - (app.allyWarn || 0) > 4000) { app.allyWarn = performance.now(); notice('동맹 부족입니다. 공격하려면 공격(A) 버튼을 누른 뒤 부족을 누르세요', 'ok'); }
+        send({ type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+      if (!RTS.foe(G, app.team, RTS.TRIBE)) { // 중립 부족은 한 번 더 눌러야 공격한다
+        const arm = app.tribeArm; if (!arm || arm.id !== t.id || performance.now() - arm.at > 3000) { app.tribeArm = { id: t.id, at: performance.now() }; notice('한 번 더 누르면 부족을 공격합니다. 공격하면 적대 관계가 됩니다', 'warn'); return true; }
         app.tribeArm = null; }
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
@@ -5983,6 +6024,10 @@ RTS.mount = function (root, opts = {}) {
       R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
     if (m.order === 'escort') { const t = pick(wx, wy); if (!t || t.dead || RTS.defOf(t).kind !== 'unit' || !(t.team === app.team || RTS.ally(G, app.team, t.team)) || ids.includes(t.id) && ids.length === 1) { notice('호위할 내 유닛(또는 수송차)을 누르세요', 'warn'); return; }
       send({ type: 'order', ids: ids.filter(i => i !== t.id), order: { type: 'escort', target: t.id }, queue: shift }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); if (!shift) app.mode = null; return; }
+    if (m.order === 'amove' && G.tribe && ids.length) { const t = pick(wx, wy); // 강제 공격: 동맹·중립 잿빛 부족은 공격(A)을 누른 뒤 직접 눌러야만 공격한다
+      if (t && !t.dead && t.team === RTS.TRIBE && !RTS.foe(G, app.team, RTS.TRIBE)) { const was = G.tribe.rel[app.team];
+        send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue: shift }); notice(`강제 공격: 잿빛 부족과 ${was === 'ally' ? '동맹이 깨지고 ' : ''}적대 관계가 됩니다`, 'warn');
+        R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; return; } }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
@@ -6066,9 +6111,10 @@ RTS.mount = function (root, opts = {}) {
   view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
   view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift || (drag.touch && !!app.touchAdd)); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
+    const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
+    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; } // 고르기 모드: 끌어서 위치를 맞춘 뒤 떼도 실행(건설 미리보기가 손가락을 따라간다)
     if (drag.moved && drag.touch) return;
-    if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
-    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
+    if (drag.touch && app.touchAdd) drag.shift = true;
     const t = pick(wx, wy);
     if (drag.touch && t && t.team === app.team && RTS.defOf(t).transport && selected().some(s => s.team === app.team && s !== t && RTS.defOf(s).kind === 'unit' && !RTS.defOf(s).air) && context(wx, wy, tq)) return; // 터치: 유닛을 고른 채 내 수송선을 탭하면 태우기
     if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
@@ -6079,6 +6125,7 @@ RTS.mount = function (root, opts = {}) {
     app.sel = [t.id]; });
   view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); if (!e.deltaY) return; zoomAt(cam.z * Math.pow(1.1, Math.max(-3, Math.min(3, -e.deltaY / (e.deltaMode ? 3 : 100)))), app.mouse.x, app.mouse.y, app.mouse.wx, app.mouse.wy); [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }, { passive: false });
   const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
+  $('k-modebar').addEventListener('click', e => { e.stopPropagation(); cancelMode(); });
   mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
   mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
   mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });

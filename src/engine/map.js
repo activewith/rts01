@@ -37,6 +37,35 @@ RTS.nearestFree = function (G, x, y, maxR = 12) {
   return { x, y };
 };
 
+// 갇힌 곳 판정: (x,y) 칸에서 4방향으로 이어진 빈칸이 lim개보다 적으면 갇힌 곳(건물과 지형 사이 등)이다.
+// 갇혔으면 true. 막힌 칸이면 false(그 경우는 fixPos·nearestFree가 처리한다)
+const PK = { n: 0 };
+RTS.pocketAt = function (G, x, y, lim = 30) {
+  if (!RTS.walkable(G, x, y)) return false;
+  const W = G.w, N = W * G.h; if (PK.n !== N) { PK.n = N; PK.m = new Int32Array(N); PK.q = new Int32Array(N); PK.g = 0; }
+  const g = ++PK.g, M = PK.m, Q = PK.q; let h = 0, t = 0; const s = y * W + x; M[s] = g; Q[t++] = s;
+  while (h < t) { if (t >= lim) return false; const i = Q[h++], cx = i % W, cy = (i / W) | 0;
+    for (let k = 0; k < 4; k++) { const nx = cx + (k === 0 ? 1 : k === 1 ? -1 : 0), ny = cy + (k === 2 ? 1 : k === 3 ? -1 : 0);
+      if (!RTS.walkable(G, nx, ny)) continue; const j = ny * W + nx; if (M[j] === g) continue; M[j] = g; Q[t++] = j; } }
+  return true;
+};
+// 갇히지 않은 가장 가까운 빈칸. 유닛을 내보내거나 새로 놓을 때 쓴다
+RTS.openSpot = function (G, x, y, maxR = 14) {
+  const cx = Math.floor(x), cy = Math.floor(y);
+  if (RTS.walkable(G, cx, cy) && !RTS.pocketAt(G, cx, cy)) return { x, y };
+  for (let r = 1; r <= maxR; r++) { const ring = [];
+    for (let dy = -r; dy <= r; dy++) for (let dx = -r; dx <= r; dx++) { if (Math.max(Math.abs(dx), Math.abs(dy)) !== r || !RTS.walkable(G, cx + dx, cy + dy)) continue;
+      ring.push([(cx + dx + .5 - x) ** 2 + (cy + dy + .5 - y) ** 2, cx + dx, cy + dy]); }
+    ring.sort((a, b) => a[0] - b[0] || a[2] - b[2] || a[1] - b[1]);
+    for (const [, tx, ty] of ring) if (!RTS.pocketAt(G, tx, ty)) return { x: tx + .5, y: ty + .5 }; }
+  return RTS.nearestFree(G, x, y, maxR);
+};
+// 지상 유닛이 갇힌 곳에 있으면 가까운 열린 곳으로 옮긴다. 옮겼으면 true
+RTS.unpocket = function (G, u) { const d = RTS.defs.entities[u.def];
+  if (d.kind !== 'unit' || d.air || d.immobile || u.inside || u.dead || !RTS.pocketAt(G, u.x | 0, u.y | 0)) return false;
+  const f = RTS.openSpot(G, u.x, u.y); if (RTS.pocketAt(G, f.x | 0, f.y | 0)) return false;
+  u.x = u.px = f.x; u.y = u.py = f.y; u.stuck = 0; u.stuckN = 0; if (u.dest) u.needPath = true; return true; };
+
 RTS.lineClear = function (G, x0, y0, x1, y1, r = .32) {
   const dx = x1 - x0, dy = y1 - y0, len = Math.hypot(dx, dy);
   if (len < .01) return true;

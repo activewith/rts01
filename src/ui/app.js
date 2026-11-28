@@ -147,6 +147,7 @@ RTS.mount = function (root, opts = {}) {
   const cardRank = e => { const d = RTS.defOf(e); return (d.abilities ? 3 : 0) + (d.gather ? 2 : 0) + (d.kind === 'unit' ? 1 : 0); };
 
   function cardItems() { const G = app.G, list = selected(), L = leader(list), t = G.teams[app.team], items = [];
+    if (app.mode) { items.push({ key: 'Escape', label: 'Esc', text: '취소', name: '취소', desc: modeText(app.mode) + ' — 누르면 그만둡니다(키보드 Esc, 우클릭과 같음)', ok: true, run: () => { app.mode = null; } }); return items; } // 키보드가 없는 기기에서도 고르기 모드를 그만둘 수 있게
     if (list.length === 1 && list[0].tribeHall && G.tribe) { const why = RTS.tribeBlock(G, app.team); items.push({ key: 'N', text: '외교', name: '잿빛 부족 외교', desc: why || '공병(일꾼)을 선택하고 이 회당을 우클릭하면 외교 미션 2개를 받습니다. 2개 성공 동맹, 1개 중립, 0개 적대', ok: !why, why, run: () => notice('공병을 선택하고 회당을 우클릭하세요', 'ok') }); return items; }
     if (list.length === 1 && list[0].branch) { items.push({ key: 'N', text: '상단', name: '자유상단 열기', desc: '동맹과 거래 메뉴를 엽니다', ok: true, run: () => { if (!app.dipOpen) toggleDip(); } }); return items; }
     if (list.length === 1 && list[0].company) { const id = list[0].company, c = G.market.cos[id], tr = (qty, key, text, name) => items.push({ key, text, name, desc: qty > 0 ? `예상 비용 광석 ${Math.ceil(RTS.quote(G, c, Math.min(qty, c.free)).total)}` : `예상 수령 광석 ${Math.floor(RTS.quote(G, c, -Math.min(-qty, c.shares[app.team] || 0)).total)} (수수료 ${RTS.cfg(G).fee}%)`, ok: true, run: () => trade(id, qty) });
@@ -302,7 +303,13 @@ RTS.mount = function (root, opts = {}) {
     const s = Math.floor(G.tick / 20); $('k-clock').textContent = String(Math.floor(s / 60)).padStart(2, '0') + ':' + String(s % 60).padStart(2, '0');
     const idle = G.ents.filter(e => e.team === app.team && RTS.defOf(e).gather && !e.order); $('k-idlen').textContent = idle.length; app.idle = idle;
     renderTribe(); renderInfo(); renderCard(); if (htip.shown) { const x = app.G.byId[htip.id]; if (!x || x.dead || !canSee(x)) hideHover(); else { const h = tipHTML({ ent: x }); if (h !== htip.sig) { htip.sig = h; $('k-htip').innerHTML = h; } } } const m = app.mode, mb = $('k-modebar');
-    if (m) { mb.hidden = false; const txt = m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요' : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 이동 지점을 고르세요' : '순찰 지점을 고르세요'; if (mb.textContent !== txt + ' · Esc 취소') mb.textContent = txt + ' · Esc 취소'; } else mb.hidden = true; }
+    if (m) { mb.hidden = false; const txt = modeText(m) + ' · ✕ 취소'; if (mb.textContent !== txt) mb.textContent = txt; } else mb.hidden = true; }
+  // 고르기 모드 안내문(화면 아래 띠·명령 카드 취소 버튼 설명)
+  function modeText(m) { return m.type === 'place' ? RTS.defs.entities[m.def].name + ' 건설 위치를 고르세요'
+    : m.svc === 'demolish' ? '철거할 내 건물을 누르세요' : m.svc === 'repair' ? '수리할 대상을 누르세요'
+    : m.ability ? RTS.defs.abilities[m.ability].name + ' 지점을 고르세요' : m.order === 'amove' ? '공격 지점을 누르세요 (부족을 누르면 강제 공격)'
+    : m.order === 'escort' ? '호위할 내 유닛을 누르세요' : m.order === 'patrol' ? '순찰 지점을 고르세요' : '지점을 고르세요'; }
+  function cancelMode() { if (!app.mode) return; app.mode = null; app.cardSig = ''; app.sfx('click'); }
   // 잿빛 부족 상태와 외교 미션 진행도. 부족을 발견한 뒤에만 보인다
   function renderTribe() { const G = app.G, T = G.tribe, el = $('k-tribe'), me = app.team; if (!T || me < 0 || !T.found[me]) { if (!el.hidden) { el.hidden = true; app.tribeSig = ''; } return; }
     const r = T.dead ? 'gone' : T.rel[me], L = T.missions[me], wait = T.wait[me] > G.tick ? Math.ceil((T.wait[me] - G.tick) / 20) : 0;
@@ -392,8 +399,11 @@ RTS.mount = function (root, opts = {}) {
         const why = RTS.tribeBlock(G, app.team); if (why) { notice(why, 'warn'); return true; }
         const w = workers.slice().sort((a, b) => Math.hypot(a.x - t.x, a.y - t.y) - Math.hypot(b.x - t.x, b.y - t.y))[0];
         send({ type: 'order', ids: [w.id], order: { type: 'envoy', target: t.id }, queue }); notice('공병이 회당으로 외교하러 갑니다', 'ok'); R.pings.push({ x: t.x, y: t.y, life: 24, max: 24, c: '#9dffb5' }); return true; }
-      if (!RTS.foe(G, app.team, RTS.TRIBE)) { // 중립·동맹 부족은 한 번 더 눌러야 공격한다
-        const arm = app.tribeArm; if (!arm || arm.id !== t.id || performance.now() - arm.at > 3000) { app.tribeArm = { id: t.id, at: performance.now() }; notice(T.rel[app.team] === 'ally' ? '동맹 부족입니다. 한 번 더 누르면 공격하고 동맹이 깨집니다' : '한 번 더 누르면 부족을 공격합니다. 공격하면 적대 관계가 됩니다', 'warn'); return true; }
+      if (T.rel[app.team] === 'ally') { // 동맹 부족: 실수로 눌러도 공격하지 않는다. 그 자리로 이동만 한다
+        if (performance.now() - (app.allyWarn || 0) > 4000) { app.allyWarn = performance.now(); notice('동맹 부족입니다. 공격하려면 공격(A) 버튼을 누른 뒤 부족을 누르세요', 'ok'); }
+        send({ type: 'order', ids, order: { type: 'move', x: wx, y: wy }, spread: spread(ids, wx, wy), queue }); R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: color }); return true; }
+      if (!RTS.foe(G, app.team, RTS.TRIBE)) { // 중립 부족은 한 번 더 눌러야 공격한다
+        const arm = app.tribeArm; if (!arm || arm.id !== t.id || performance.now() - arm.at > 3000) { app.tribeArm = { id: t.id, at: performance.now() }; notice('한 번 더 누르면 부족을 공격합니다. 공격하면 적대 관계가 됩니다', 'warn'); return true; }
         app.tribeArm = null; }
       send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
     if (t && t.team !== app.team && (t.team >= 0 || t.company) && !RTS.ally(G, app.team, t.team)) { send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); return true; }
@@ -413,6 +423,10 @@ RTS.mount = function (root, opts = {}) {
       R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: m.svc === 'demolish' ? '#ffb347' : '#7dffa8' }); if (!shift) app.mode = null; return; }
     if (m.order === 'escort') { const t = pick(wx, wy); if (!t || t.dead || RTS.defOf(t).kind !== 'unit' || !(t.team === app.team || RTS.ally(G, app.team, t.team)) || ids.includes(t.id) && ids.length === 1) { notice('호위할 내 유닛(또는 수송차)을 누르세요', 'warn'); return; }
       send({ type: 'order', ids: ids.filter(i => i !== t.id), order: { type: 'escort', target: t.id }, queue: shift }); R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#8fd3ff' }); if (!shift) app.mode = null; return; }
+    if (m.order === 'amove' && G.tribe && ids.length) { const t = pick(wx, wy); // 강제 공격: 동맹·중립 잿빛 부족은 공격(A)을 누른 뒤 직접 눌러야만 공격한다
+      if (t && !t.dead && t.team === RTS.TRIBE && !RTS.foe(G, app.team, RTS.TRIBE)) { const was = G.tribe.rel[app.team];
+        send({ type: 'order', ids, order: { type: 'attack', target: t.id }, queue: shift }); notice(`강제 공격: 잿빛 부족과 ${was === 'ally' ? '동맹이 깨지고 ' : ''}적대 관계가 됩니다`, 'warn');
+        R.pings.push({ x: t.x, y: t.y, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; return; } }
     if (m.ability) send({ type: 'ability', ids, ability: m.ability, x: wx, y: wy, one: true });
     else send({ type: 'order', ids, order: { type: m.order, x: wx, y: wy }, spread: spread(ids, wx, wy), queue: shift });
     R.pings.push({ x: wx, y: wy, life: 20, max: 20, c: '#ff5a48' }); if (!shift) app.mode = null; }
@@ -496,9 +510,10 @@ RTS.mount = function (root, opts = {}) {
   view.addEventListener('pointercancel', e => { if (touchEnd(e)) return; if (e.pointerType === 'touch') { drag.on = false; app.box = null; clearTimeout(htip.timer); } });
   view.addEventListener('pointerup', e => { if (touchEnd(e)) return; setMouse(e); if (!drag.on) return; drag.on = false; clearTimeout(htip.timer); if (htip.long) { htip.long = false; return; } /* 길게 눌러 메뉴·도움말을 연 뒤에는 탭 명령을 내지 않는다 */ const G = app.G, wx = app.mouse.wx, wy = app.mouse.wy, now = performance.now();
     if (app.box) { selectBox(app.box, drag.shift || (drag.touch && !!app.touchAdd)); app.box = null; if (drag.touch) { app.boxTouch = false; $('k-boxbtn').classList.remove('on'); } return; }
+    const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
+    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; } // 고르기 모드: 끌어서 위치를 맞춘 뒤 떼도 실행(건설 미리보기가 손가락을 따라간다)
     if (drag.moved && drag.touch) return;
-    if (drag.touch && app.touchAdd) drag.shift = true; const tq = drag.touch && !!app.touchQueue; // 터치 보조 줄: 더하기(Shift 선택), 예약(Shift 명령)
-    if (app.mode) { execMode(wx, wy, drag.shift || tq); return; }
+    if (drag.touch && app.touchAdd) drag.shift = true;
     const t = pick(wx, wy);
     if (drag.touch && t && t.team === app.team && RTS.defOf(t).transport && selected().some(s => s.team === app.team && s !== t && RTS.defOf(s).kind === 'unit' && !RTS.defOf(s).air) && context(wx, wy, tq)) return; // 터치: 유닛을 고른 채 내 수송선을 탭하면 태우기
     if (drag.touch && selected().some(s => s.team === app.team) && (!t || t.team !== app.team || (RTS.defOf(t).kind === 'building' && selected().some(s => RTS.defOf(s).gather) && (!RTS.complete(t) || RTS.defOf(t).placeOn))) && context(wx, wy, tq)) return; /* 터치: 일꾼을 고른 채 내 추출기를 탭하면 선택이 아니라 채취 명령 */
@@ -509,6 +524,7 @@ RTS.mount = function (root, opts = {}) {
     app.sel = [t.id]; });
   view.addEventListener('wheel', e => { e.preventDefault(); hideHover(); if (app.demo) return; setMouse(e); if (!e.deltaY) return; zoomAt(cam.z * Math.pow(1.1, Math.max(-3, Math.min(3, -e.deltaY / (e.deltaMode ? 3 : 100)))), app.mouse.x, app.mouse.y, app.mouse.wx, app.mouse.wy); [app.mouse.wx, app.mouse.wy] = toWorld(app.mouse.x, app.mouse.y); }, { passive: false });
   const miniEv = e => { const r = mini.getBoundingClientRect(), k = mini.width / r.width, T = app.miniT; if (!T) return null; return [((e.clientX - r.left) * k - T.ox) / T.sc, ((e.clientY - r.top) * k - T.oy) / T.sc]; };
+  $('k-modebar').addEventListener('click', e => { e.stopPropagation(); cancelMode(); });
   mini.addEventListener('contextmenu', e => { e.preventDefault(); const p = miniEv(e); if (p) context(p[0], p[1], e.shiftKey); });
   mini.addEventListener('pointerdown', e => { if (e.button !== 0 || app.demo) return; const p = miniEv(e); if (!p) return; if (app.mode && app.mode.type === 'target') { execMode(p[0], p[1], e.shiftKey); return; } mini.setPointerCapture(e.pointerId); centerOn(p[0], p[1]); app.miniDrag = true; });
   mini.addEventListener('pointermove', e => { if (app.miniDrag) { const p = miniEv(e); if (p) centerOn(p[0], p[1]); } });
