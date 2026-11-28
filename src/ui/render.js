@@ -5,6 +5,13 @@ RTS.TEAM = [{ main: '#46c4ff', dark: '#14557e', light: '#c6efff' }, { main: '#ff
 RTS.FACTION_COLOR = { pioneers: RTS.TEAM[0], ironclad: RTS.TEAM[1], swarm: RTS.TEAM[3] };
 // 협동: 진영이 같아도 나·동료·중립세력이 구분되도록 팀 슬롯 색을 쓴다(파랑·보라·주황)
 RTS.COOP_COLOR = [RTS.TEAM[0], RTS.TEAM[3], RTS.TEAM[1]];
+// 같은 진영이 둘 이상이면 뒤 팀은 아직 안 쓴 색으로 바꾼다(노랑 → 청록 → 연두). 팀 번호 순서라 두 기기에서 같다. 캠페인은 미션이 정한 대로 둔다
+RTS.ALT_COLOR = [{ main: '#ffd23f', dark: '#7a5c08', light: '#fff3c2' }, { main: '#3ce0c8', dark: '#10645a', light: '#c9fff6' }, RTS.TEAM[2]];
+RTS.teamPalette = function (G) { const used = new Set(), all = [...RTS.ALT_COLOR, ...Object.values(RTS.FACTION_COLOR)];
+  return G.teams.map((t, i) => { let c = G.coop && !G.camp ? RTS.COOP_COLOR[i] : RTS.FACTION_COLOR[t.faction];
+    if (!G.camp && (!c || used.has(c))) c = all.find(x => !used.has(x)) || c; used.add(c); return c; }); };
+// 건물 움직임: cycle 프레임마다 되풀이(buildart.js가 속도를 맞춘다). 건물 그림 저장소는 step 프레임마다 한 장씩 그려 둔다
+RTS.BANIM = { cycle: 240, step: 8 };
 RTS.TEAM[RTS.TRIBE] = { main: '#7bd65a', dark: '#2f5e22', light: '#d9f7c6' }; // 잿빛 부족
 RTS.THEMES = {
   dusk:  { ground: ['#34505a', '#2f4954', '#395762'], sand: ['#6d6a58', '#625f4f', '#77735f'], rock: ['#1b2536', '#253349', '#3f5470'] },
@@ -195,7 +202,8 @@ function siteBase(c, w, h, p, s, col) { plate(c, w, h, s); shade(c, 12, 12, w - 
   const cx = w / 2, cy = h / 2; c.strokeStyle = p.light; c.lineWidth = 3; c.beginPath(); c.moveTo(cx - 20, cy + 20); c.lineTo(cx, cy - 24); c.lineTo(cx + 20, cy + 20); c.moveTo(cx - 12, cy + 2); c.lineTo(cx + 12, cy + 2); c.stroke();
   circ(c, cx, cy + 13, 9, s.m[3]); circ(c, cx, cy + 13, 5 + (s.down ? 0 : Math.sin(s.t * .12)), s.down ? '#55606e' : col); }
 // 입체감: 건물 높이(px). 데이터에 height가 있으면 그 값을 쓴다.
-function heightOf(d) { return d.height ?? Math.min(12, 4 + Math.min(d.size[0], d.size[1]) * 2.5); }
+function heightOf(d) { const a = RTS.BUILD3D && RTS.BUILD3D[d.art]; if (a) return a.H * .55; return d.height ?? Math.min(12, 4 + Math.min(d.size[0], d.size[1]) * 2.5); }
+const art3d = d => RTS.BUILD3D && d && RTS.BUILD3D[d.art]; // 3/4 시점 건물(build3d.js)
 const WALL = { t_hall: '#3e2e1c', t_tower: '#3e2e1c' }; // 벽면 색. 없으면 재질의 가장 어두운 색
 function plate(c, w, h, s) { const m = s.m, k = 9; // 바닥판 + 입체 모서리. 철갑회는 모서리를 더 깎는다.
   const q = s.faction === 'ironclad' ? 15 : k;
@@ -291,7 +299,11 @@ RTS.Renderer = function (canvas, app) {
     const st = app.store; if (st && !app.demo && !app.paused && !G.over && !app.settings.lowSpec && !st.get('lowRun')) { const e = now - PF.t0;
       if (e > 3000 && dt < 500) PF.n++; if (e > 18000) { const avg = PF.n / 15; st.set('lowRun', '1'); if (avg < 32) { app.settings.lowSpec = true; app.saveSettings && app.saveSettings();
           app.notice && app.notice(`평균 ${Math.round(avg)}프레임이라 저사양 모드를 켰습니다. 설정에서 끌 수 있습니다`); } } }
-    if (app.settings.fps) { o.save(); o.setTransform(1, 0, 0, 1, 0, 0); const f = Math.round(PF.fps), txt = f + ' fps' + (app.settings.lowSpec ? ' · 저사양' : R.gl ? (gfx && gfx.low ? ' · GL 낮춤' : ' · GL') : '');
+    // 그림 저장소 감시(5초마다): 적중률·메모리를 기록하고, 저사양에서 3/4 건물 그림을 버렸다 다시 그리는 일이 잦으면 배율 상한을 한 단계 내린다
+    if (!PF.cw || now - PF.cw.t > 5000) { const h = B3.hits + UCACHE.hits + BC.hits, m = B3.miss + UCACHE.miss + BC.miss, p0 = PF.cw || { h, m, b3m: B3.miss, t: now };
+      const dh = h - p0.h, dm = m - p0.m, b3m = B3.miss - p0.b3m; PF.hit = dh + dm ? dh / (dh + dm) : 1; PF.cw = { h, m, b3m: B3.miss, t: now };
+      if (app.settings.lowSpec && !app.demo && !app.paused && now - PF.t0 > 12000 && b3m > 40 && B3.cap > .5) { B3.cap = B3.cap > .75 ? .75 : .5; B3.lowered++; app.notice && app.notice(`건물 그림을 다시 그리는 일이 잦아 그림 해상도를 ${Math.round(B3.cap * 100)}%로 낮췄습니다`); } }
+    if (app.settings.fps) { o.save(); o.setTransform(1, 0, 0, 1, 0, 0); const f = Math.round(PF.fps), mb = Math.round((B3.px + UCACHE.px + BC.px) * 4 / 1e6), txt = f + ' fps' + (app.settings.lowSpec ? ' · 저사양' : R.gl ? (gfx && gfx.low ? ' · GL 낮춤' : ' · GL') : '') + ` · 그림 ${mb}MB ${Math.round((PF.hit ?? 1) * 100)}%` + (app.settings.lowSpec && B3.cap < 1 ? ` · ${Math.round(B3.cap * 100)}%` : '');
       o.font = '700 13px "Chakra Petch",monospace'; const tw = o.measureText(txt).width; o.fillStyle = 'rgba(8,12,22,.75)'; o.fillRect(8, H - 28, tw + 14, 20); o.fillStyle = f >= 50 ? '#7dffa8' : f >= 30 ? '#f2c14e' : '#ff6a5a'; o.fillText(txt, 15, H - 13); o.restore(); } }
   function updateFogGL(G, team) { // 고급 그래픽 안개: 타일마다 0 보임, 140 본 적 있음, 255 처음
     const t = G.teams[team], N = G.w * G.h; if (!fogGL.data || fogGL.data.length !== N) fogGL.data = new Uint8Array(N);
@@ -328,21 +340,23 @@ RTS.Renderer = function (canvas, app) {
   }
 
   // ── 입체감용 작업 캔버스. 확대율에 맞춰 그려 흐려지지 않게 한다. ──
-  const S = {}; for (const n of ['roof', 'sil', 'unit']) { S[n] = document.createElement('canvas'); S[n].width = S[n].height = 8; }
+  const S = {}; for (const n of ['roof', 'sil', 'unit', 'fin']) { S[n] = document.createElement('canvas'); S[n].width = S[n].height = 8; }
   function fit(cv, W, H) { if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); } const x = cv.getContext('2d'); x.setTransform(1, 0, 0, 1, 0, 0); x.globalCompositeOperation = 'source-over'; x.globalAlpha = 1; x.clearRect(0, 0, cv.width, cv.height); return x; }
   // 벽·그림자는 실루엣에서만 나오므로 (그림, 재질, 높이, 포탑 방향)마다 한 번 만들어 재사용한다. 지붕만 매 프레임 그린다.
   const wallCache = new Map(); let wallK = 0;
-  function sprite(art, w, h, P, st, hz, wall, key) {
-    const k = Math.min(2, R.cam.z), pad = 4, rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), step = 2;
-    const r = fit(S.roof, rw, rh); r.setTransform(k, 0, 0, k, pad * k, pad * k); art(r, w, h, P, st); // 지붕: 왼쪽 위에서 빛
-    r.globalCompositeOperation = 'source-atop'; const g = r.createLinearGradient(0, 0, w, h); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)');
-    r.fillStyle = g; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); if (st.hit) { r.fillStyle = 'rgba(255,255,255,.22)'; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); }
+  const zq = () => Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)); // 그림 배율: 0.25 단위로 끊어 확대·축소 중에 매번 다시 그리지 않게 한다
+  function roofLight(r, w, h, pad, hit) { r.globalCompositeOperation = 'source-atop'; const g = r.createLinearGradient(0, 0, w, h); g.addColorStop(0, 'rgba(255,255,255,.2)'); g.addColorStop(.5, 'rgba(255,255,255,0)'); g.addColorStop(1, 'rgba(0,0,0,.26)');
+    r.fillStyle = g; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); if (hit) { r.fillStyle = 'rgba(255,255,255,.22)'; r.fillRect(-pad, -pad, w + pad * 2, h + pad * 2); } r.globalCompositeOperation = 'source-over'; }
+  // roofCv가 있으면(건물 그림 저장소) 지붕은 그대로 쓰고 벽·그림자만 찾는다. 없으면 작업 캔버스에 지붕을 그린다
+  function sprite(art, w, h, P, st, hz, wall, key, roofCv) {
+    const k = zq(), pad = 4, rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), step = 2;
+    let roof = roofCv; if (!roof) { const r = fit(S.roof, rw, rh); r.setTransform(k, 0, 0, k, pad * k, pad * k); art(r, w, h, P, st); roofLight(r, w, h, pad, st.hit); roof = S.roof; } // 지붕: 왼쪽 위에서 빛
     if (k !== wallK) { wallCache.clear(); wallK = k; }
     const ck = key + '|' + hz, bh = Math.ceil((h + pad * 2 + hz) * k), dx = hz * 1.1 + 3, dy = hz * .7 + 4, sw = rw + Math.ceil(dx * k), sh = rh + Math.ceil(dy * k);
     let W = wallCache.get(ck);
-    if (!W) { if (wallCache.size > 60) wallCache.clear();
+    if (!W) { if (wallCache.size > 80) wallCache.clear();
       W = { walls: document.createElement('canvas'), shadow: document.createElement('canvas') };
-      const s = fit(S.sil, rw, rh); s.drawImage(S.roof, 0, 0); s.globalCompositeOperation = 'source-in'; s.fillStyle = wall; s.fillRect(0, 0, rw, rh);
+      const s = fit(S.sil, rw, rh); s.drawImage(roof, 0, 0, rw, rh, 0, 0, rw, rh); s.globalCompositeOperation = 'source-in'; s.fillStyle = wall; s.fillRect(0, 0, rw, rh);
       W.walls.width = rw; W.walls.height = bh; const b = W.walls.getContext('2d'); // 벽: 실루엣을 바닥부터 지붕 아래까지 쌓는다
       for (let z = 0; z < hz; z += step) b.drawImage(S.sil, 0, 0, rw, rh, 0, Math.round((hz - z) * k), rw, rh);
       if (hz > 0) { b.globalCompositeOperation = 'source-atop'; const v = b.createLinearGradient(0, rh * .5, 0, bh); v.addColorStop(0, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,.35)'); b.fillStyle = v; b.fillRect(0, 0, rw, bh); }
@@ -350,17 +364,77 @@ RTS.Renderer = function (canvas, app) {
       for (let i = 0; i <= n; i++) sd.drawImage(S.sil, 0, 0, rw, rh, Math.round(dx * k * i / n), Math.round(dy * k * i / n), rw, rh);
       sd.globalCompositeOperation = 'source-in'; sd.fillStyle = '#000'; sd.fillRect(0, 0, sw, sh);
       wallCache.set(ck, W); }
-    return { roof: S.roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
+    return { roof, walls: W.walls, shadow: W.shadow, k, pad, rw, rh, bh, sw, sh };
   }
+  // ── 건물 그림 저장소: 진영 건물(buildart.js)의 지붕을 (그림, 팀 색, 진영, 생산 중, 피해 단계, 움직임 단계, 포탑 방향, 배율, 입체감)마다
+  //    한 번 그려 두고 매 프레임 복사만 한다. 움직임은 RTS.BANIM.step 프레임 간격으로 끊고, 건물마다 단계를 엇갈리게 해서 한꺼번에 움직이지 않게 한다.
+  //    고급 그래픽 빛(s.glow)과 연기(s.emit)는 그릴 때 받아 적어 두었다가 매 프레임(연기는 단계가 바뀔 때) 다시 낸다.
+  //    저장할 때 마무리: 진영 질감, 가장자리 빛·그늘(모서리가 서 보이게), 어두운 외곽선, 팀 색 테두리(같은 진영끼리도 색으로 구분).
+  const BC = { map: new Map(), px: 0, budget: 1.4e7, hits: 0, miss: 0, last: new Map(), turretDirs: 16, turretStep: 30 };
+  R.bcache = BC;
+  const TURRET = /turret|spine/, TEX = {};
+  function factionTex(f) { if (TEX[f]) return TEX[f]; const cv = document.createElement('canvas'); cv.width = cv.height = 48; const x = cv.getContext('2d'); let q = 7;
+    const r = () => (q = (q * 1664525 + 1013904223) >>> 0) / 4294967296;
+    if (f === 'ironclad') { x.strokeStyle = 'rgba(0,0,0,.5)'; x.lineWidth = 1; for (let j = 0; j < 4; j++) for (let i = 0; i < 4; i++) { const cx = i * 12 + (j % 2) * 6, cy = j * 12; x.beginPath(); for (let a = 0; a < 6; a++) x.lineTo(cx + Math.cos(a * TAU / 6) * 6, cy + Math.sin(a * TAU / 6) * 6); x.closePath(); x.stroke(); } }
+    else if (f === 'swarm') { for (let i = 0; i < 70; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.55)' : 'rgba(255,190,230,.5)'; x.beginPath(); x.arc(r() * 48, r() * 48, .6 + r() * 1.4, 0, TAU); x.fill(); } }
+    else { for (let i = 0; i < 40; i++) { x.fillStyle = r() < .5 ? 'rgba(0,0,0,.5)' : 'rgba(255,255,255,.45)'; x.fillRect(r() * 48, r() * 48, 2 + r() * 9, .7); } } // 개척단: 판금 긁힘
+    return (TEX[f] = cv); }
+  function finishRoof(u, cv, k, P, faction, noBevel) { const W = cv.width, H = cv.height, sil = fit(S.sil, W, H); sil.drawImage(cv, 0, 0);
+    u.setTransform(1, 0, 0, 1, 0, 0); u.globalCompositeOperation = 'source-atop'; u.globalAlpha = .14; u.fillStyle = u.createPattern(factionTex(faction), 'repeat'); u.save(); u.scale(k, k); u.fillRect(0, 0, W / k, H / k); u.restore(); u.globalAlpha = 1;
+    const o = Math.max(1, Math.round(1.3 * k)), band = (dx, dy, col, a) => { const b = fit(S.fin, W, H); b.drawImage(sil.canvas, 0, 0); b.globalCompositeOperation = 'destination-out'; b.drawImage(sil.canvas, dx, dy); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
+    if (!noBevel) { band(o, o, '#fff', .3); band(-o, -o, '#000', .38); } // 위·왼쪽 모서리 빛, 아래·오른쪽 그늘
+    const ring = (d, col, a) => { const b = fit(S.fin, W, H); for (let i = 0; i < 8; i++) b.drawImage(sil.canvas, Math.round(Math.cos(i * TAU / 8) * d), Math.round(Math.sin(i * TAU / 8) * d)); b.globalCompositeOperation = 'source-in'; b.fillStyle = col; b.fillRect(0, 0, W, H); u.globalCompositeOperation = 'destination-over'; u.globalAlpha = a; u.drawImage(S.fin, 0, 0, W, H, 0, 0, W, H); u.globalAlpha = 1; };
+    ring(Math.max(1, Math.round(k)), '#06080d', .8); ring(Math.max(2, Math.round(2.4 * k)), P.main, .75); u.globalCompositeOperation = 'source-over'; }
+  function bRoof(name, art, w, h, P, st, lit, tb) {
+    const k = zq(), pad = 4, A = RTS.BANIM, tur = TURRET.test(name), step = tur ? BC.turretStep : A.step, ph = Math.floor(tb / step) % (A.cycle / step), hp = st.hp ?? 1, dmg = hp < .33 ? 2 : hp < .66 ? 1 : 0, slot = dmg ? 1 + (st.id || 0) % 3 : 0;
+    const fb = tur ? ((Math.round((st.facing || 0) / TAU * BC.turretDirs) % BC.turretDirs) + BC.turretDirs) % BC.turretDirs : 0;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.busy ? 1 : 0) + (st.down ? 1 : 0) + '|' + dmg + slot + '|' + ph + '|' + fb + '|' + k + (lit ? 'L' : '');
+    let e = BC.map.get(key);
+    if (e) { BC.hits++; BC.map.delete(key); BC.map.set(key, e); }
+    else { BC.miss++; const rw = Math.ceil((w + pad * 2) * k), rh = Math.ceil((h + pad * 2) * k), cv = document.createElement('canvas'); cv.width = rw; cv.height = rh; const u = cv.getContext('2d'), glows = [], emits = [];
+      const s2 = Object.assign({}, st, { t: ph * step, id: slot, hp: [1, .5, .2][dmg], facing: fb * TAU / BC.turretDirs, low: false, hit: false,
+        glow: (x, y, r, col, i) => { glows.push([x, y, r, col3(col), i]); }, emit: (kk, x, y) => { emits.push([kk, x, y]); } });
+      u.setTransform(k, 0, 0, k, pad * k, pad * k); art(u, w, h, P, s2); finishRoof(u, cv, k, P, st.faction);
+      if (lit) { u.setTransform(k, 0, 0, k, pad * k, pad * k); roofLight(u, w, h, pad, false); }
+      e = { cv, glows, emits, px: rw * rh, ph }; BC.map.set(key, e); BC.px += e.px;
+      for (const [kk, v] of BC.map) { if (BC.px <= (app.settings.lowSpec ? 8e6 : BC.budget)) break; BC.map.delete(kk); BC.px -= v.px; } }
+    return e;
+  }
+  // ── 3/4 시점 건물 저장소: 고정 부분(base)과 그림자만 (그림, 팀 색, 진영, 피해 단계, 배율)마다 한 장씩 저장한다. 움직이는 부품(live)은 매 프레임 직접 그린다.
+  //    저사양: 배율 상한 B3.cap(기본 1, 기기 메모리 2GB 이하 0.75), 메모리 한도 400만 픽셀. 그림을 버렸다 다시 그리는 일이 잦으면 상한을 한 단계 내린다(autoLow).
+  const B3 = { map: new Map(), px: 0, hits: 0, miss: 0, cap: (typeof navigator !== 'undefined' && navigator.deviceMemory && navigator.deviceMemory <= 2) ? .75 : 1, win: [], lowered: 0 };
+  R.b3cache = B3;
+  const SXK = .8, SYK = .42;
+  function b3Entry(name, art, w, d, P, st) {
+    const k = app.settings.lowSpec ? Math.min(zq(), B3.cap) : zq(), pad = 6, H = art.H, hp = st.hp ?? 1, dmg = hp < .33 ? 2 : hp < .66 ? 1 : 0, slot = dmg ? 1 + (st.id || 0) % 3 : 0;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + dmg + slot + '|' + k;
+    let e = B3.map.get(key);
+    if (e) { B3.hits++; B3.map.delete(key); B3.map.set(key, e); return e; }
+    B3.miss++; const cw = Math.ceil((w + pad * 2) * k), ch = Math.ceil((d + H + pad * 2) * k), cv = document.createElement('canvas'); cv.width = cw; cv.height = ch;
+    const sw = Math.ceil((w + pad * 2 + H * SXK + 8) * k), sh = Math.ceil((d + pad * 2 + H * SYK + 8) * k), scv = document.createElement('canvas'); scv.width = sw; scv.height = sh;
+    const u = cv.getContext('2d'), g = scv.getContext('2d'), glows = [];
+    const s2 = Object.assign({}, st, { t: 0, id: slot, hp: [1, .5, .2][dmg], busy: false, low: false, hit: false, glow: (x, y, r, col, i) => { glows.push([x, y, r, col3(col), i]); }, emit: () => {} });
+    u.setTransform(k, 0, 0, k, pad * k, (pad + H) * k); g.setTransform(k, 0, 0, k, pad * k, pad * k);
+    RTS.b3dBase(art, u, g, w, d, P, s2);
+    if (dmg && RTS.artDamage) { u.save(); u.globalCompositeOperation = 'source-atop'; u.translate(0, -H); RTS.artDamage(u, w, d + H, s2); u.restore(); }
+    finishRoof(u, cv, k, P, st.faction, true);
+    e = { cv, scv, glows, k, pad, H, px: cw * ch + sw * sh }; B3.map.set(key, e); B3.px += e.px;
+    const lim = app.settings.lowSpec ? 4e6 : 8e6; for (const [kk, v] of B3.map) { if (B3.px <= lim) break; B3.map.delete(kk); B3.px -= v.px; }
+    return e; }
+  // 바닥 그림자(유닛보다 먼저 그린다)
+  function drawB3Shadow(c, e, d) { const art = art3d(d); if (!art) return; const P = RTS.TEAM[e.team] || NEUTRAL, st = stateOf(d, e, app.frame); st.id = e.id; st.hp = e.buildT && e.built < e.buildT ? 1 : e.hp / (RTS.stat(app.G, e, 'hp') || d.hp);
+    const E = b3Entry(d.art, art, d.size[0] * TS, d.size[1] * TS, P, st), r = RTS.rectOf(e), prog = e.buildT ? Math.min(1, e.built / e.buildT) : 1, a0 = c.globalAlpha;
+    c.globalAlpha = a0 * .34 * prog; c.drawImage(E.scv, 0, 0, E.scv.width, E.scv.height, r.x0 * TS - E.pad, r.y0 * TS - E.pad, E.scv.width / E.k, E.scv.height / E.k); c.globalAlpha = a0; }
+  R.b3Top = d => { const a = art3d(d); return a ? a.H / TS : 0; }; // 건물이 바닥판 위로 솟는 높이(칸). 선택 판정·가림 처리에 쓴다
   let unitLight = null;
   // 유닛 그림 저장소: (그림, 팀 색, 진영, 종류, 방향 16칸, 움직임 단계, 상태, 크기, 배율)마다 한 번 그려 두고 매 프레임 복사한다.
   // 방향 칸 사이는 복사할 때 남은 각도만큼 돌린다(빛 방향 오차 ±11°). 메모리는 픽셀 수 한도(UCACHE.budget)를 넘으면 오래 안 쓴 그림부터 버린다.
   const UCACHE = { map: new Map(), px: 0, budget: 7e6, dirs: 16, phases: 6, hits: 0, miss: 0 };
   R.ucache = UCACHE;
   function unitSpriteCached(name, fn, P, st, facing, size) {
-    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = UCACHE.dirs, fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
+    const k = Math.min(2, Math.max(.5, Math.round(Math.min(2, R.cam.z) * 4) / 4)), N = app.settings.lowSpec ? 8 : UCACHE.dirs, /* 저사양은 8방향(사이 각도는 돌려서) */ fb = ((Math.round(facing / TAU * N) % N) + N) % N, fq = fb * TAU / N;
     const ph = Math.floor(st.t / 3) % UCACHE.phases; st.t = ph * 3 + (st.moving ? 0 : 0);
-    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
+    const key = name + '|' + P.main + '|' + st.faction + '|' + (st.tint || 0) + '|' + fb + '/' + N + '|' + ph + '|' + (st.moving ? 1 : 0) + (st.cargo || '') + (st.sieged ? 1 : 0) + (st.low ? 1 : 0) + '|' + Math.round(size) + '|' + k;
     let e = UCACHE.map.get(key);
     if (e) { UCACHE.hits++; UCACHE.map.delete(key); UCACHE.map.set(key, e); }
     else { UCACHE.miss++; const L = Math.max(76, Math.ceil(size * 2.5)), px = Math.ceil(L * k), cv = document.createElement('canvas'); cv.width = cv.height = px; const u = cv.getContext('2d');
@@ -393,12 +467,26 @@ RTS.Renderer = function (canvas, app) {
       if (prog >= 1 && R.onScreen(e.x, e.y)) st.emit = (k, x, y) => { const wx = (ox0 + x) / TS, wy = (oy0 + y) / TS, z = hzUse;
         if (k === 'smoke') fx({ k: 'smoke', x: wx, y: wy, z, s: 5, vx: .004, life: 40 }); else if (k === 'steam') fx({ k: 'steam', x: wx, y: wy, z, s: 6, life: 30 }); else if (k === 'spark' && rich()) sparks(wx, wy, 3, '#ffd27a', undefined, 0, z); }; }
     const art = (cc, ww, hh, PP, ss) => { art0(cc, ww, hh, PP, ss); if (ss.hp < .66 && RTS.artDamage) RTS.artDamage(cc, ww, hh, ss); };
+    const A3 = art3d(d);
+    if (A3) { // 3/4 시점: 저장한 고정 부분 + 움직이는 부품
+      const E = b3Entry(d.art, A3, w, h, P, st), X = -E.pad, Y = -E.pad - E.H, DW = E.cv.width / E.k, DH = E.cv.height / E.k;
+      if (st.glow && prog >= 1) for (const g of E.glows) light(ox0 + g[0], oy0 + g[1], g[2], g[3], g[4]);
+      if (prog < 1) { c.globalAlpha = base * .45; c.drawImage(E.cv, X, Y, DW, DH); c.globalAlpha = base; const y0 = Y + DH * (1 - prog); c.save(); c.beginPath(); c.rect(X, y0, DW, DH); c.clip(); c.drawImage(E.cv, X, Y, DW, DH); c.restore();
+        if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, -E.H * prog); c.fillStyle = '#ffcb5c'; c.fillRect(X + E.pad, Math.max(y0, -E.H) - 1.5, w, 3); }
+      else { c.drawImage(E.cv, X, Y, DW, DH); if (!ghost && e.hitAt && G.tick - e.hitAt < 2) { const g0 = c.globalCompositeOperation; c.globalCompositeOperation = 'lighter'; c.globalAlpha = base * .28; c.drawImage(E.cv, X, Y, DW, DH); c.globalCompositeOperation = g0; c.globalAlpha = base; }
+        RTS.b3dLive(A3, c, w, h, P, st); } // st.glow·st.emit은 위에서 건물 안 좌표 → 월드로 바꿔 둔 것(높이는 그림 좌표에 이미 들어 있다)
+    } else {
+    // 진영 건물은 그림 저장소에서 꺼낸다(배치 미리보기만 직접 그린다). 맞은 순간은 저장된 그림을 밝게 한 번 더 겹친다
+    const BE = !A3 && !ghost && e.id && RTS.BANIM.arts && RTS.BANIM.arts.has(d.art) ? bRoof(d.art, art, w, h, P, st, depthOn(), app.frame + e.id * 37) : null;
+    if (BE) { hzUse = depthOn() ? Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1)) : 0; const L = BC.last; if (st.emit && L.get(e.id) !== BE.ph && BE.emits.length) for (const [kk, x, y] of BE.emits) st.emit(kk, x, y); L.set(e.id, BE.ph); if (L.size > 3000) L.clear();
+      if (st.glow) for (const g of BE.glows) light(ox0 + g[0], oy0 + g[1] - hzUse, g[2], g[3], g[4]); }
+    const flash = (cv, x, y, ww, hh) => { if (!BE || !(e.hitAt && G.tick - e.hitAt < 2)) return; const g0 = c.globalCompositeOperation, a0 = c.globalAlpha; c.globalCompositeOperation = 'lighter'; c.globalAlpha = a0 * .28; c.drawImage(cv, 0, 0, cv.width, cv.height, x, y, ww, hh); c.globalCompositeOperation = g0; c.globalAlpha = a0; };
     if (depthOn()) { // 지붕(그림+조명) → 벽(실루엣을 쌓아 올림) → 그림자. 짓는 중이면 높이가 같이 자란다.
       const hz = Math.round(heightOf(d) * (prog < 1 ? .2 + .8 * prog : 1)); hzUse = hz;
       st.hit = !ghost && e.hitAt && G.tick - e.hitAt < 2;
-      const sp = sprite(art, w, h, P, st, hz, WALL[d.art] || st.m[3], d.art + '|' + st.faction + '|' + (/turret/.test(d.art) ? Math.round((st.facing || 0) * 4) : ''));
+      const sp = sprite(art, w, h, P, st, hz, WALL[d.art] || st.m[3], d.art + '|' + st.faction + '|' + (TURRET.test(d.art) ? Math.round((st.facing || 0) / TAU * BC.turretDirs) % BC.turretDirs : ''), BE && BE.cv);
       c.globalAlpha = base * .34; c.drawImage(sp.shadow, 0, 0, sp.sw, sp.sh, -sp.pad, -sp.pad, sp.sw / sp.k, sp.sh / sp.k);
-      const put = () => { c.drawImage(sp.walls, 0, 0, sp.rw, sp.bh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.bh / sp.k); c.drawImage(sp.roof, 0, 0, sp.rw, sp.rh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); };
+      const put = () => { c.drawImage(sp.walls, 0, 0, sp.rw, sp.bh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.bh / sp.k); c.drawImage(sp.roof, 0, 0, sp.rw, sp.rh, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); flash(sp.roof, -sp.pad, -sp.pad - hz, sp.rw / sp.k, sp.rh / sp.k); };
       c.globalAlpha = base * (prog < 1 ? .5 : 1); put();
       if (prog < 1) { c.globalAlpha = base; const y0 = -hz + (h + hz) * (1 - prog); c.save(); c.beginPath(); c.rect(-sp.pad, y0, w + sp.pad * 2, h + hz); c.clip(); put(); c.restore();
         if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, -hz);
@@ -406,10 +494,12 @@ RTS.Renderer = function (canvas, app) {
     } else {
       c.fillStyle = 'rgba(0,0,0,.32)'; c.fillRect(4, 8, w, h);
       if (prog < 1) { c.globalAlpha = base * .5; }
-      art(c, w, h, P, st);
-      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); art(c, w, h, P, st); c.restore(); if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, 0);
+      const flat = BE ? () => { c.drawImage(BE.cv, 0, 0, BE.cv.width, BE.cv.height, -4, -4, w + 8, h + 8); flash(BE.cv, -4, -4, w + 8, h + 8); } : () => art(c, w, h, P, st);
+      flat();
+      if (prog < 1) { c.globalAlpha = base; c.beginPath(); c.rect(0, h * (1 - prog), w, h * prog); c.save(); c.clip(); flat(); c.restore(); if (RTS.artScaffold && !ghost) RTS.artScaffold(c, w, h, prog, app.frame + (e.id || 0) * 13, 0);
         c.strokeStyle = '#ffcb5c'; c.setLineDash([7, 6]); c.lineWidth = 2; c.strokeRect(2, 2, w - 4, h - 4); c.setLineDash([]);
         c.fillStyle = '#ffcb5c'; c.fillRect(0, h * (1 - prog) - 1.5, w, 3); }
+    }
     }
     c.globalAlpha = base;
     if (prog >= 1 && !ghost && e.hp < d.hp * .25 && app.frame % 5 === 0 && R.onScreen(e.x, e.y)) fx({ k: 'fire', x: e.x + rnd(-.3, .3) * d.size[0], y: e.y + rnd(-.3, .3) * d.size[1], z: depthOn() ? heightOf(d) : 0, life: rnd(16, 26) | 0 });
@@ -473,15 +563,16 @@ RTS.Renderer = function (canvas, app) {
       if (d.kind === 'resource') { if (me < 0 || G.nofog || G.teams[me].seen[(e.y | 0) * G.w + (e.x | 0)]) drawNode(c, G, e, d); continue; }
       if (vis(e)) list.push(e); }
     const bl = list.filter(e => RTS.defOf(e).kind === 'building');
-    for (const e of bl) { const d = RTS.defOf(e); if (sel.has(e.id)) selBox(c, e, d); drawBuilding(c, G, e, d, alpha); if (e.lv) levelPips(c, e, d);
-      if (e.rally && sel.has(e.id)) { c.strokeStyle = 'rgba(120,255,190,.75)'; c.setLineDash([6, 6]); c.lineWidth = 1.5; c.beginPath(); c.moveTo(e.x * TS, e.y * TS); c.lineTo(e.rally.x * TS, e.rally.y * TS); c.stroke(); c.setLineDash([]); circ(c, e.rally.x * TS, e.rally.y * TS, 4, '#78ffbe'); } }
+    if (depthOn()) for (const e of bl) drawB3Shadow(c, e, RTS.defOf(e)); // 3/4 시점 건물 그림자는 바닥에 먼저
+    const drawB = e => { const d = RTS.defOf(e); if (sel.has(e.id)) selBox(c, e, d); drawBuilding(c, G, e, d, alpha); if (e.lv) levelPips(c, e, d);
+      if (e.rally && sel.has(e.id)) { c.strokeStyle = 'rgba(120,255,190,.75)'; c.setLineDash([6, 6]); c.lineWidth = 1.5; c.beginPath(); c.moveTo(e.x * TS, e.y * TS); c.lineTo(e.rally.x * TS, e.rally.y * TS); c.stroke(); c.setLineDash([]); circ(c, e.rally.x * TS, e.rally.y * TS, 4, '#78ffbe'); } };
     const us = list.filter(e => RTS.defOf(e).kind === 'unit');
     const pos = e => [(e.px + (e.x - e.px) * alpha) * TS, (e.py + (e.y - e.py) * alpha) * TS];
     for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 : 0; // 그림자 + 선택 링
       c.fillStyle = d.air ? 'rgba(0,0,0,.22)' : 'rgba(0,0,0,.32)'; c.beginPath(); c.ellipse(x + 3 + lift * .6, y + 4 + lift * .4, d.r * TS * (d.air ? .8 : 1), d.r * TS * .72, 0, 0, TAU); c.fill();
       if (sel.has(e.id)) { c.strokeStyle = ringCol(e); c.lineWidth = 1.6; c.beginPath(); c.ellipse(x, y - lift * 0, d.r * TS + 4, (d.r * TS + 4) * .78, 0, 0, TAU); c.stroke(); } }
-    us.sort((a, b) => (RTS.defOf(a).air ? 1 : 0) - (RTS.defOf(b).air ? 1 : 0) || a.y - b.y);
-    for (const e of us) { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
+    // 그리기 순서: 건물(바닥판 아래 끝)과 지상 유닛을 위에서 아래로 섞어 그린다(3/4 시점에서 앞에 있는 것이 뒤를 가린다). 나는 유닛은 맨 나중
+    const drawU = e => { const d = RTS.defOf(e), [x, y] = pos(e), lift = d.air ? 20 + Math.sin(t * .06 + e.id) * 2 : 0;
       const fn = RTS.art.units[d.art] || RTS.art.units.trooper, hit = e.hitAt && G.tick - e.hitAt < 2;
       if (e.path && !d.air && rich() && (t + e.id) % 9 === 0) { const bio = (d.tags || []).includes('bio');
         if (!bio && d.r >= .55) R.tracks.push({ x: e.x, y: e.y, a: e.facing, w: d.r * TS * .7, life: 150 });
@@ -499,7 +590,15 @@ RTS.Renderer = function (canvas, app) {
       if (e.merging) { const j = RTS.mergeJob(G, e);
         if (j && j.at) { if (e.id === j.host) { const f = Math.min(1, (G.tick - j.at) / j.total), rr = d.r * TS + 9; c.lineWidth = 4; c.strokeStyle = 'rgba(20,14,4,.75)'; c.beginPath(); c.arc(x, y - lift, rr, 0, TAU); c.stroke(); c.strokeStyle = '#ffd25a'; c.beginPath(); c.arc(x, y - lift, rr, -Math.PI / 2, -Math.PI / 2 + f * TAU); c.stroke(); }
           else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }
-        else { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } } }
+        else { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } } };
+    const order = []; for (const e of bl) order.push([e.y + RTS.defOf(e).size[1] / 2, e, 1]); for (const e of us) if (!RTS.defOf(e).air) order.push([pos(e)[1] / TS, e, 0]);
+    order.sort((a, b) => a[0] - b[0]); for (const it of order) (it[2] ? drawB : drawU)(it[1]);
+    for (const e of us) if (RTS.defOf(e).air) drawU(e);
+    // 가림 처리: 내 지상 유닛이 앞(남쪽)에 있는 3/4 건물의 솟은 부분에 가려지면 반투명으로 한 번 더 그린다
+    if (me >= 0) for (const e of us) { const d = RTS.defOf(e); if (e.team !== me || d.air) continue; const [x, y] = pos(e);
+      for (const b of bl) { const bd = RTS.defOf(b), a3 = art3d(bd); if (!a3) continue; const r = RTS.rectOf(b), by = (r.y0 + r.h) * TS; if (y >= by) continue;
+        if (x > r.x0 * TS - 4 && x < (r.x0 + r.w) * TS + 4 && y > r.y0 * TS - a3.H - 6) { const fn = RTS.art.units[d.art] || RTS.art.units.trooper, sp = unitSpriteCached(d.art, fn, RTS.TEAM[e.team] || NEUTRAL, stateOf(d, e, t + e.id * 3), e.facing, d.r * TS);
+          c.save(); c.globalAlpha = .5; c.translate(x, y); if (sp.rot) c.rotate(sp.rot); c.drawImage(sp.cv, -sp.L / 2, -sp.L / 2, sp.L, sp.L); c.restore(); c.strokeStyle = 'rgba(255,255,255,.55)'; c.lineWidth = 1.2; c.beginPath(); c.ellipse(x, y, d.r * TS + 2, (d.r * TS + 2) * .78, 0, 0, TAU); c.stroke(); break; } } }
     // 투사체
     for (const p of G.projectiles) { if (!R.onScreen(p.x, p.y)) continue; const a = Math.atan2(p.ty - p.y, p.tx - p.x), X = p.x * TS, Y = p.y * TS, P = RTS.TEAM[p.team] || RTS.TEAM[0];
       if (p.art === 'shell') { // 포탄: 포물선으로 날아가는 것처럼 띄우고 바닥에 그림자, 뒤로 연기
@@ -520,7 +619,7 @@ RTS.Renderer = function (canvas, app) {
     const o = glOn ? ctx : c; if (glOn) { o.setTransform(1, 0, 0, 1, 0, 0); o.clearRect(0, 0, W, H); o.setTransform(cam.z, 0, 0, cam.z, -cam.x * cam.z + ox, -cam.y * cam.z + oy); }
     // 체력 바
     for (const e of list) { const d = RTS.defOf(e), max = RTS.stat(G, e, 'hp'); if (!sel.has(e.id) && e.hp >= max) continue;
-      const w = d.size ? d.size[0] * TS - 10 : Math.max(22, d.r * TS * 2), x = e.x * TS - w / 2, y = (d.size ? e.y - d.size[1] / 2 : e.y) * TS - (d.size ? 8 + (depthOn() ? heightOf(d) : 0) : d.r * TS + (d.air ? 28 : 8)), k = Math.max(0, e.hp / max);
+      const w = d.size ? d.size[0] * TS - 10 : Math.max(22, d.r * TS * 2), x = e.x * TS - w / 2, y = (d.size ? e.y - d.size[1] / 2 : e.y) * TS - (d.size ? 8 + (art3d(d) ? art3d(d).H : depthOn() ? heightOf(d) : 0) : d.r * TS + (d.air ? 28 : 8)), k = Math.max(0, e.hp / max);
       o.fillStyle = 'rgba(0,0,0,.65)'; o.fillRect(x - 1, y - 1, w + 2, 5); o.fillStyle = k > .55 ? '#58e08a' : k > .28 ? '#f2c14e' : '#ee5545'; o.fillRect(x, y, w * k, 3); }
 
     // 건설 미리보기 & 드래그 박스
@@ -609,9 +708,11 @@ RTS.Renderer = function (canvas, app) {
   // 아이콘: 실제 그림 함수를 작은 캔버스에 그린다. 새 유닛도 자동으로 아이콘이 생긴다.
   const icons = {};
   R.icon = function (defId, team, faction) {
-    const k = defId + team + faction; if (icons[k]) return icons[k];
+    const k = defId + team + faction + ((RTS.TEAM[team] || RTS.TEAM[0]).main); if (icons[k]) return icons[k]; // 팀 색이 판마다 바뀔 수 있다(같은 진영·협동)
     const d = RTS.defs.entities[defId], cv = document.createElement('canvas'); cv.width = cv.height = 64; const c = cv.getContext('2d'), P = RTS.TEAM[team] || RTS.TEAM[0], m = matOf(faction);
     if (d.kind === 'unit') { c.translate(32, 32); c.rotate(-.5); const s = 48 / Math.max(44, (d.r * TS * 2) + 16) * (d.r < .5 ? 1.6 : 1); c.scale(s, s); (RTS.art.units[d.art] || RTS.art.units.trooper)(c, P, { t: 0, faction, tint: d.tint, moving: false, m }); }
+    else if (art3d(d)) { const A3 = art3d(d), w = d.size[0] * TS, h = d.size[1] * TS, H = A3.H, s = 60 / Math.max(w, h + H), Pn = team < 0 ? NEUTRAL : P, st = { t: 0, faction, m, facing: .6, hp: 1, glow: () => {}, emit: () => {} }; // 아이콘도 3/4 시점 그림
+      c.translate((64 - w * s) / 2, (64 - (h + H) * s) / 2 + H * s); c.scale(s, s); RTS.b3dBase(A3, c, null, w, h, Pn, st); RTS.b3dLive(A3, c, w, h, Pn, st); }
     else { const w = d.size[0] * TS, h = d.size[1] * TS, s = 60 / Math.max(w, h), Pn = team < 0 ? NEUTRAL : P; c.translate((64 - w * s) / 2, (64 - h * s) / 2); c.scale(s, s); (RTS.art.buildings[d.art] || plate)(c, w, h, Pn, { t: 0, faction, m, facing: -.6 }); }
     return (icons[k] = cv.toDataURL());
   };
