@@ -1019,10 +1019,17 @@ RTS.mount = function (root, opts = {}) {
       el.querySelector('#r-more').onclick = () => parentGate(() => { if (play.why === 'day') { const k = dayKey(Date.now()); play.dayExt[k] = (play.dayExt[k] || 0) + 600; } endRest(600); notice('보호자가 10분 연장했습니다', 'ok'); }, '10분 더 하려면 보호자 PIN을 넣으세요.');
       el.querySelector('#r-end').onclick = () => parentGate(() => { if (play.why === 'day') { const k = dayKey(Date.now()); play.dayExt[k] = (play.dayExt[k] || 0) + Math.max(0, (play.log[k] || 0) + 1800 - (S.dayMax * 60 + (play.dayExt[k] || 0))); } endRest(0); notice('보호자가 쉬는 시간을 끝냈습니다', 'ok'); }, '쉬는 시간을 끝내려면 보호자 PIN을 넣으세요.'); }
     const t = el.querySelector('#r-left'); if (t) t.textContent = left > 3600 ? `${Math.floor(left / 3600)}시간 ${Math.floor(left % 3600 / 60)}분` : mmss(left); }
-  function playTick() { const S = app.settings, now = Date.now(), dt = playLast ? Math.min(5, (now - playLast) / 1000) : 0; playLast = now;
+  // 세는 조건(게임을 안 하는 시간은 빼기): 화면이 보이고(visibilityState), 이 창에 초점이 있고(다른 앱·창으로 가면 멈춤),
+  // 마지막 터치·키 입력 뒤 PLAY_IDLE초 안(게임 중 PLAY_IDLE_GAME초), 그리고 타이머가 끊기지 않았을 때(직전 확인과 3초 넘게 벌어지면 기기가 잠들었던 것으로 보고 그 사이는 세지 않음)
+  const PLAY_IDLE = 120, PLAY_IDLE_GAME = 180; let playInput = Date.now(), playFocus = true;
+  for (const ev of ['pointerdown', 'keydown', 'wheel', 'touchstart']) addEventListener(ev, () => { playInput = Date.now(); }, { capture: true, passive: true });
+  addEventListener('focus', () => { playFocus = true; playInput = Date.now(); }); addEventListener('blur', () => { playFocus = false; });
+  document.addEventListener('visibilitychange', () => { playLast = 0; if (document.visibilityState === 'visible') playInput = Date.now(); });
+  app.playCounting = () => document.visibilityState === 'visible' && (playFocus || (document.hasFocus && document.hasFocus())) && Date.now() - playInput < (live() ? PLAY_IDLE_GAME : PLAY_IDLE) * 1000;
+  function playTick() { const S = app.settings, now = Date.now(), gap = playLast ? (now - playLast) / 1000 : 0, dt = gap <= 3 ? gap : 0; playLast = now;
     if (!S.playLimit) { if (!$('k-rest').hidden) $('k-rest').hidden = true; playBar(''); return; }
     if (play.restUntil) { if (now < play.restUntil) { showRest(now); return; } endRest(0); notice('쉬는 시간이 끝났어요. 다시 놀 수 있어요', 'ok'); return; }
-    if (document.visibilityState !== 'visible') return;
+    if (!app.playCounting()) { if (play.warned || play.used > S.playMin * 60 - 300) playBar(play.used < S.playMin * 60 ? `놀이 시간 멈춤 · ${mmss(S.playMin * 60 - play.used)} 남음` : ''); return; } // 안 하는 동안은 멈춘다
     if (play.active && now - play.active >= S.restMin * 60e3) { play.used = 0; play.warned = 0; playSave(); } // 앱을 닫아 두었거나 화면을 꺼 둔 시간이 휴식 시간 이상이면 쉰 것으로 본다
     play.active = now; const k = dayKey(now); play.used += dt; play.log[k] = (play.log[k] || 0) + dt;
     const lim = S.playMin * 60, dayLim = S.dayMax ? S.dayMax * 60 + (play.dayExt[k] || 0) : Infinity, left = Math.min(lim - play.used, dayLim - play.log[k]), dayOut = play.log[k] >= dayLim;

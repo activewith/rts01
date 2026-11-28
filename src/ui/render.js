@@ -592,7 +592,8 @@ RTS.Renderer = function (canvas, app) {
           else { c.strokeStyle = `rgba(255,214,110,${.5 + .4 * Math.sin(t * .3)})`; c.lineWidth = 1.5; const h = G.byId[j.host]; if (h) { const [hx, hy] = pos(h); c.beginPath(); c.moveTo(x, y - lift); c.lineTo(hx, hy - (RTS.defOf(h).air ? 20 : 0)); c.stroke(); } } }
         else { const k = (t % 30) / 30; c.strokeStyle = `rgba(255,214,110,${(1 - k) * .9})`; c.lineWidth = 2; c.beginPath(); c.arc(x, y - lift, d.r * TS + 3 + k * 10, 0, TAU); c.stroke(); } } };
     const order = []; for (const e of bl) order.push([e.y + RTS.defOf(e).size[1] / 2, e, 1]); for (const e of us) if (!RTS.defOf(e).air) order.push([pos(e)[1] / TS, e, 0]);
-    order.sort((a, b) => a[0] - b[0]); for (const it of order) (it[2] ? drawB : drawU)(it[1]);
+    if (bake && bake.over && depthOn()) for (const o of bake.over) if (o.x + o.w > cam.x && o.x < cam.x + vw && o.y + o.h > cam.y && o.y < cam.y + vh) order.push([o.key - .001, o, 2]); // 앞을 가리는 암벽 조각(terrain.js)
+    order.sort((a, b) => a[0] - b[0]); for (const it of order) it[2] === 2 ? c.drawImage(it[1].cv, it[1].pd, it[1].pd, it[1].pw, it[1].ph, it[1].x, it[1].y, it[1].w, it[1].h) : (it[2] ? drawB : drawU)(it[1]);
     for (const e of us) if (RTS.defOf(e).air) drawU(e);
     // 가림 처리: 내 지상 유닛이 앞(남쪽)에 있는 3/4 건물의 솟은 부분에 가려지면 반투명으로 한 번 더 그린다
     if (me >= 0) for (const e of us) { const d = RTS.defOf(e); if (e.team !== me || d.air) continue; const [x, y] = pos(e);
